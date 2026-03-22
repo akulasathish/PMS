@@ -2,15 +2,15 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Building2, 
-  Mail, 
-  Phone, 
-  Lock, 
-  Eye, 
-  EyeOff, 
-  ArrowRight, 
-  Loader2, 
+import {
+  Building2,
+  Mail,
+  Phone,
+  Lock,
+  Eye,
+  EyeOff,
+  ArrowRight,
+  Loader2,
   AlertCircle,
   ShieldCheck
 } from 'lucide-react';
@@ -20,10 +20,10 @@ export default function OwnerLogin() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-  
+
   const [showEmail, setShowEmail] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
@@ -37,7 +37,7 @@ export default function OwnerLogin() {
     await new Promise(resolve => setTimeout(resolve, 800));
 
     // Valid credentials
-    if (email === 'owner@pms.com' && phone === '9876543210' && password === 'password123') {
+    if (email === 'owner@pms.com' && phone === '8686113435' && password === 'password123') {
       document.cookie = "owner_session=owner_secure_entry_2026; path=/; max-age=86400; SameSite=Strict";
       router.push('/dashboard');
     } else {
@@ -48,14 +48,14 @@ export default function OwnerLogin() {
 
   return (
     <div className="fixed inset-0 bg-[#060608] flex items-center justify-center p-6 z-50 font-sans selection:bg-emerald-500/30 overflow-hidden">
-      
+
       {/* Background Decor - Minimalist */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-[20%] left-[15%] w-[300px] h-[300px] bg-emerald-500/5 rounded-full blur-[100px]" />
         <div className="absolute bottom-[20%] right-[15%] w-[300px] h-[300px] bg-indigo-500/5 rounded-full blur-[100px]" />
       </div>
 
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
@@ -73,7 +73,7 @@ export default function OwnerLogin() {
         {/* Login Form - Micro Portal Format */}
         <div className="w-full bg-zinc-900/60 backdrop-blur-3xl border border-white/[0.08] rounded-[2rem] p-7 shadow-2xl shadow-black">
           <form onSubmit={handleLogin} className="space-y-4">
-            
+
             {/* Email Field */}
             <div className="space-y-1">
               <label className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest ml-1">Email</label>
@@ -81,7 +81,7 @@ export default function OwnerLogin() {
                 <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-emerald-400 transition-colors">
                   <Mail size={14} />
                 </div>
-                <input 
+                <input
                   type={showEmail ? "text" : "email"}
                   required
                   value={email}
@@ -89,7 +89,7 @@ export default function OwnerLogin() {
                   placeholder="owner@pms.com"
                   className="w-full bg-black/60 border border-white/[0.05] rounded-xl py-2.5 pl-10 pr-10 text-white text-sm placeholder:text-zinc-800 focus:outline-none focus:border-emerald-500/40 transition-all"
                 />
-                <button 
+                <button
                   type="button"
                   onClick={() => setShowEmail(!showEmail)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-emerald-400 p-1 transition-colors"
@@ -106,7 +106,7 @@ export default function OwnerLogin() {
                 <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-emerald-400 transition-colors">
                   <Phone size={14} />
                 </div>
-                <input 
+                <input
                   type="tel"
                   required
                   value={phone}
@@ -129,7 +129,7 @@ export default function OwnerLogin() {
                 <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-emerald-400 transition-colors">
                   <Lock size={14} />
                 </div>
-                <input 
+                <input
                   type={showPassword ? "text" : "password"}
                   required
                   value={password}
@@ -137,7 +137,7 @@ export default function OwnerLogin() {
                   placeholder="••••••••"
                   className="w-full bg-black/60 border border-white/[0.05] rounded-xl py-2.5 pl-10 pr-10 text-white text-sm placeholder:text-zinc-800 focus:outline-none focus:border-emerald-500/40 transition-all"
                 />
-                <button 
+                <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-emerald-400 p-1 transition-colors"
@@ -151,7 +151,7 @@ export default function OwnerLogin() {
             <div className="min-h-[16px] flex items-center px-1">
               <AnimatePresence mode="wait">
                 {error && (
-                  <motion.div 
+                  <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
@@ -165,7 +165,7 @@ export default function OwnerLogin() {
             </div>
 
             {/* Submit Button */}
-            <button 
+            <button
               type="submit"
               disabled={isLoading}
               className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-600/50 text-white rounded-xl py-3 font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-lg shadow-emerald-500/10 mt-1"
