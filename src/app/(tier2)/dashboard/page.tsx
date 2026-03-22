@@ -2,11 +2,11 @@
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  TrendingUp, 
-  DollarSign, 
-  Users, 
-  BedDouble, 
+import {
+  TrendingUp,
+  DollarSign,
+  Users,
+  BedDouble,
   Calendar,
   ArrowUpRight,
   ArrowDownRight,
@@ -29,6 +29,7 @@ import {
   Building2,
   ChevronDown
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 // --- MOCK DATA FOR OWNER ---
 const RECENT_BOOKINGS = [
@@ -139,10 +140,17 @@ const StatCard = ({ title, value, subtitle, icon: Icon, color = "indigo", trend,
 
 export default function Tier2Dashboard() {
   const [searchOpen, setSearchOpen] = useState(false);
-  
+  const router = useRouter();
+
+  const handleLogout = () => {
+    // Clear the owner session cookie
+    document.cookie = "owner_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    router.push('/dashboard/login');
+  };
+
   return (
     <div className="flex min-h-screen bg-[#08080a]">
-      
+
       {/* ===== SIDEBAR ===== */}
       <aside className="hidden lg:flex flex-col w-[260px] border-r border-white/[0.06] bg-[#0a0a0c]/80 backdrop-blur-xl">
         {/* Logo / Brand */}
@@ -164,11 +172,10 @@ export default function Tier2Dashboard() {
           {NAV_ITEMS.map((item) => (
             <button
               key={item.label}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-300 ${
-                item.active
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-300 ${item.active
                   ? 'bg-white/[0.06] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.02]'
-              }`}
+                }`}
             >
               <item.icon size={17} className={item.active ? 'text-indigo-400' : ''} />
               {item.label}
@@ -189,8 +196,13 @@ export default function Tier2Dashboard() {
               <p className="text-[12px] font-semibold text-zinc-300 truncate">Ishitha M.</p>
               <p className="text-[10px] text-zinc-600 truncate">Property Owner</p>
             </div>
-            <button className="text-zinc-600 hover:text-zinc-400 transition-colors">
-              <LogOut size={15} />
+            <button 
+              onClick={handleLogout}
+              className="group flex items-center gap-2 text-zinc-600 hover:text-rose-400 transition-all px-2 py-1.5 rounded-lg hover:bg-rose-500/5"
+              title="Terminate Session"
+            >
+              <LogOut size={16} />
+              <span className="text-[11px] font-bold uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity">Logout</span>
             </button>
           </div>
         </div>
@@ -198,7 +210,7 @@ export default function Tier2Dashboard() {
 
       {/* ===== MAIN CONTENT ===== */}
       <main className="flex-1 overflow-y-auto">
-        
+
         {/* TOP BAR */}
         <header className="sticky top-0 z-30 backdrop-blur-xl bg-[#08080a]/80 border-b border-white/[0.04] px-8 py-4">
           <div className="flex justify-between items-center">
@@ -212,7 +224,7 @@ export default function Tier2Dashboard() {
               </div>
               <p className="text-[11px] text-zinc-600 mt-0.5">Real-time property intelligence &bull; March 22, 2026</p>
             </motion.div>
-            
+
             <div className="flex items-center gap-3">
               <button className="p-2.5 rounded-xl border border-white/[0.06] text-zinc-500 hover:text-white hover:bg-white/[0.04] transition-all">
                 <Search size={16} />
@@ -230,32 +242,32 @@ export default function Tier2Dashboard() {
         </header>
 
         <div className="p-8 space-y-8">
-          
+
           {/* STAT CARDS ROW */}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
-            <StatCard 
-              title="Total Revenue" subtitle="vs. $38,100 last month" 
-              icon={Wallet} color="emerald" value="$42,850" trend="12.5%" trendUp={true} 
+            <StatCard
+              title="Total Revenue" subtitle="vs. $38,100 last month"
+              icon={Wallet} color="emerald" value="$42,850" trend="12.5%" trendUp={true}
             />
-            <StatCard 
-              title="Avg Daily Rate" subtitle="Per room per night" 
-              icon={DollarSign} color="indigo" value="$185" trend="3.2%" trendUp={true} 
+            <StatCard
+              title="Avg Daily Rate" subtitle="Per room per night"
+              icon={DollarSign} color="indigo" value="$185" trend="3.2%" trendUp={true}
             />
-            <StatCard 
-              title="Occupancy Rate" subtitle="46 of 62 rooms occupied" 
-              icon={Percent} color="amber" value="74.2%" trend="2.1%" trendUp={false} 
+            <StatCard
+              title="Occupancy Rate" subtitle="46 of 62 rooms occupied"
+              icon={Percent} color="amber" value="74.2%" trend="2.1%" trendUp={false}
             />
-            <StatCard 
-              title="Guest Rating" subtitle="From 284 reviews" 
-              icon={Star} color="violet" value="4.8" trend="0.3" trendUp={true} 
+            <StatCard
+              title="Guest Rating" subtitle="From 284 reviews"
+              icon={Star} color="violet" value="4.8" trend="0.3" trendUp={true}
             />
           </div>
 
           <div className="grid grid-cols-12 gap-6">
-            
+
             {/* ===== LEFT COLUMN ===== */}
             <div className="col-span-12 xl:col-span-8 space-y-6">
-              
+
               {/* REVENUE CHART */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
@@ -275,7 +287,7 @@ export default function Tier2Dashboard() {
                     </button>
                   </div>
                 </div>
-                
+
                 {/* Bar Chart */}
                 <div className="flex items-end justify-between gap-3 h-[180px]">
                   {REVENUE_DAYS.map((d, i) => (
@@ -286,11 +298,10 @@ export default function Tier2Dashboard() {
                           initial={{ height: 0 }}
                           animate={{ height: `${d.pct}%` }}
                           transition={{ duration: 0.8, delay: i * 0.08, ease: "easeOut" }}
-                          className={`w-full rounded-xl ${
-                            d.day === 'Fri' 
-                              ? 'bg-gradient-to-t from-indigo-600 to-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.3)]' 
+                          className={`w-full rounded-xl ${d.day === 'Fri'
+                              ? 'bg-gradient-to-t from-indigo-600 to-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.3)]'
                               : 'bg-white/[0.06] hover:bg-white/[0.1]'
-                          } transition-colors cursor-pointer`}
+                            } transition-colors cursor-pointer`}
                           style={{ minHeight: '8px', position: 'absolute', bottom: 0, left: 0, right: 0 }}
                         />
                         <div style={{ height: '140px' }} />
@@ -318,7 +329,7 @@ export default function Tier2Dashboard() {
                     <ChevronRight size={13} />
                   </button>
                 </div>
-                
+
                 {/* Table Header */}
                 <div className="grid grid-cols-12 gap-4 text-[10px] text-zinc-500 uppercase tracking-[0.15em] font-bold pb-4 border-b border-white/[0.04] mb-2">
                   <div className="col-span-4">Guest</div>
@@ -331,11 +342,11 @@ export default function Tier2Dashboard() {
                 {/* Table Rows */}
                 <div className="space-y-1">
                   {RECENT_BOOKINGS.map((bk, i) => (
-                    <motion.div 
+                    <motion.div
                       initial={{ opacity: 0, x: -8 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.3 + i * 0.06 }}
-                      key={bk.id} 
+                      key={bk.id}
                       className="grid grid-cols-12 gap-4 items-center py-4 rounded-xl hover:bg-white/[0.02] transition-all cursor-pointer group px-2"
                     >
                       <div className="col-span-4 flex items-center gap-3">
@@ -369,7 +380,7 @@ export default function Tier2Dashboard() {
 
             {/* ===== RIGHT COLUMN ===== */}
             <div className="col-span-12 xl:col-span-4 space-y-6">
-              
+
               {/* TEAM CTA */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
@@ -412,11 +423,11 @@ export default function Tier2Dashboard() {
                   {STAFF.map((person, i) => {
                     const ss = staffStatusStyles[person.status] || staffStatusStyles["Off Duty"];
                     return (
-                      <motion.div 
+                      <motion.div
                         initial={{ opacity: 0, x: 8 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: 0.35 + i * 0.06 }}
-                        key={person.name} 
+                        key={person.name}
                         className="flex items-center gap-3 group cursor-pointer"
                       >
                         <div className="relative">
@@ -456,8 +467,8 @@ export default function Tier2Dashboard() {
                   ].map((item) => {
                     const c = colorMap[item.color] || colorMap.indigo;
                     return (
-                      <button 
-                        key={item.label} 
+                      <button
+                        key={item.label}
                         className="w-full flex items-center gap-3.5 p-3.5 hover:bg-white/[0.03] rounded-xl transition-all group border border-transparent hover:border-white/[0.06]"
                       >
                         <div className={`p-2 rounded-lg ${c.bg} ${c.text} border ${c.border} group-hover:scale-105 transition-transform`}>
