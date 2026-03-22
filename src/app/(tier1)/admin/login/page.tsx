@@ -11,30 +11,44 @@ import {
   AlertCircle,
   ShieldEllipsis
 } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
 export default function AdminLogin() {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
+  const supabase = createClient();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
 
-    // Simulate network delay for premium feel
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    const { data, error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-    if (username === 'pmsadmin' && password === '8686113435') {
-      document.cookie = "admin_session=pms_secure_entry_2026; path=/; max-age=86400; SameSite=Strict";
-      router.push('/admin');
-    } else {
-      setError('Invalid administrative credentials.');
+    if (authError) {
+      setError(authError.message);
       setIsLoading(false);
+      return;
     }
+
+    // Role check - ensure this user is an 'admin'
+    const role = data.user?.user_metadata?.role;
+    if (role !== 'admin') {
+      await supabase.auth.signOut();
+      setError('Access denied. Insufficient administrative privileges.');
+      setIsLoading(false);
+      return;
+    }
+
+    router.push('/admin');
+    router.refresh();
   };
 
   return (
@@ -66,17 +80,17 @@ export default function AdminLogin() {
             
             {/* Username */}
             <div className="space-y-1">
-              <label className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest ml-1">Admin ID</label>
+              <label className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest ml-1">Admin Email</label>
               <div className="relative group">
                 <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-indigo-400 transition-colors">
                   <User size={14} />
                 </div>
                 <input 
-                  type="text"
+                   type="email"
                   required
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="pmsadmin"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="admin@pms.com"
                   className="w-full bg-black/60 border border-white/[0.05] rounded-xl py-2.5 pl-10 pr-4 text-white text-sm placeholder:text-zinc-800 focus:outline-none focus:border-indigo-500/40 transition-all"
                 />
               </div>

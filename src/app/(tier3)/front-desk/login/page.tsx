@@ -13,33 +13,46 @@ import {
   LayoutDashboard,
   ShieldCheck
 } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
 export default function FrontDeskLogin() {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
+  const supabase = createClient();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
 
-    // Fast, responsive delay
-    await new Promise(resolve => setTimeout(resolve, 800));
+    const { data, error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-    // Demo/Development entry - no credentials enforced as requested
-    if (username && password) {
-      document.cookie = "frontdesk_session=fd_secure_entry_2026; path=/; max-age=86400; SameSite=Strict";
-      router.push('/front-desk');
-    } else {
-      setError('Provide both username and password.');
+    if (authError) {
+      setError(authError.message);
       setIsLoading(false);
+      return;
     }
+
+    // Role check - ensure this user is 'front-desk'
+    const role = data.user?.user_metadata?.role;
+    if (role !== 'front-desk') {
+      await supabase.auth.signOut();
+      setError('Access denied. You do not have front-desk permissions.');
+      setIsLoading(false);
+      return;
+    }
+
+    router.push('/front-desk');
+    router.refresh();
   };
 
   return (
@@ -72,17 +85,17 @@ export default function FrontDeskLogin() {
             
             {/* Username Field */}
             <div className="space-y-1">
-              <label className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest ml-1">Username</label>
+              <label className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest ml-1">Work Email</label>
               <div className="relative group">
                 <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-azure-400 transition-colors">
                   <User size={14} />
                 </div>
                 <input 
-                  type="text"
+                  type="email"
                   required
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="frontdesk_admin"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="staff@pms.com"
                   className="w-full bg-black/60 border border-white/[0.05] rounded-xl py-2.5 pl-10 pr-4 text-white text-sm placeholder:text-zinc-800 focus:outline-none focus:border-azure-500/40 transition-all"
                 />
               </div>

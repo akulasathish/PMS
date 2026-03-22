@@ -7,7 +7,6 @@ import {
   DollarSign,
   Users,
   BedDouble,
-  Calendar,
   ArrowUpRight,
   ArrowDownRight,
   UserPlus,
@@ -22,40 +21,14 @@ import {
   Bell,
   Search,
   LogOut,
-  Star,
-  CreditCard,
-  Activity,
-  Clock,
   Building2,
-  ChevronDown
+  ChevronDown,
+  Loader2,
+  Activity,
+  Clock
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-
-// --- MOCK DATA FOR OWNER ---
-const RECENT_BOOKINGS = [
-  { id: "BK-99", guest: "Aman Sharma", room: "102", amount: "$450", status: "Confirmed", date: "Today", nights: 3 },
-  { id: "BK-98", guest: "Sarah Jenkins", room: "305", amount: "$1,200", status: "Pending", date: "Today", nights: 5 },
-  { id: "BK-97", guest: "Raj Malhotra", room: "201", amount: "$300", status: "Confirmed", date: "Yesterday", nights: 2 },
-  { id: "BK-96", guest: "Elena Rodriguez", room: "404", amount: "$890", status: "Confirmed", date: "Yesterday", nights: 4 },
-  { id: "BK-95", guest: "James Wilson", room: "108", amount: "$675", status: "Checked In", date: "2 days ago", nights: 3 },
-];
-
-const STAFF = [
-  { name: "Anita Deshmukh", role: "Front Desk Manager", status: "On Shift", avatar: "AD", lastActive: "Now" },
-  { name: "Vikram Singhania", role: "Housekeeping Lead", status: "Break", avatar: "VS", lastActive: "10m ago" },
-  { name: "Suresh Kumar", role: "Night Security", status: "On Shift", avatar: "SK", lastActive: "Now" },
-  { name: "Priya Nair", role: "Concierge", status: "Off Duty", avatar: "PN", lastActive: "3h ago" },
-];
-
-const REVENUE_DAYS = [
-  { day: "Mon", value: 5200, pct: 65 },
-  { day: "Tue", value: 6800, pct: 85 },
-  { day: "Wed", value: 4100, pct: 51 },
-  { day: "Thu", value: 7200, pct: 90 },
-  { day: "Fri", value: 8400, pct: 100 },
-  { day: "Sat", value: 7800, pct: 93 },
-  { day: "Sun", value: 6100, pct: 76 },
-];
+import { createClient } from '@/lib/supabase/client';
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Dashboard", active: true },
@@ -65,6 +38,31 @@ const NAV_ITEMS = [
   { icon: Users, label: "Staff", active: false },
   { icon: Settings, label: "Settings", active: false },
 ];
+
+interface Property {
+  id: string;
+  name: string;
+  tier: string;
+  location?: string;
+}
+
+interface Room {
+  id: string;
+  property_id: string;
+  room_number: string;
+  type: string;
+  status: string;
+}
+
+interface Booking {
+  id: string;
+  property_id: string;
+  room_id: string;
+  guest_name: string;
+  check_in: string;
+  status: string;
+  amount: number;
+}
 
 // --- COLOR MAP (Tailwind JIT-safe) ---
 const colorMap: Record<string, { bg: string; text: string; border: string; glow: string }> = {
@@ -101,15 +99,9 @@ const statusStyles: Record<string, string> = {
   "Checked In": "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
 };
 
-const staffStatusStyles: Record<string, { dot: string; text: string }> = {
-  "On Shift": { dot: "bg-emerald-500", text: "text-emerald-400" },
-  "Break": { dot: "bg-amber-500", text: "text-amber-400" },
-  "Off Duty": { dot: "bg-zinc-600", text: "text-zinc-500" },
-};
-
 // --- PREMIUM STAT CARD ---
 const StatCard = ({ title, value, subtitle, icon: Icon, color = "indigo", trend, trendUp }: {
-  title: string; value: string; subtitle: string; icon: any; color?: string; trend: string; trendUp: boolean;
+  title: string; value: string; subtitle: string; icon: React.ElementType; color?: string; trend: string; trendUp: boolean;
 }) => {
   const c = colorMap[color] || colorMap.indigo;
   return (
@@ -139,14 +131,61 @@ const StatCard = ({ title, value, subtitle, icon: Icon, color = "indigo", trend,
 };
 
 export default function Tier2Dashboard() {
-  const [searchOpen, setSearchOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [property, setProperty] = useState<Property | null>(null);
+  const supabase = createClient();
   const router = useRouter();
 
-  const handleLogout = () => {
-    // Clear the owner session cookie
-    document.cookie = "owner_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-    router.push('/dashboard/login');
+  React.useEffect(() => {
+    async function fetchData() {
+      setIsLoading(true);
+      
+      // Fetch property details (assuming we are managing the first one for now)
+      const { data: propData } = await supabase
+        .from('properties')
+        .select('*')
+        .limit(1)
+        .single();
+      
+      if (propData) {
+        setProperty(propData);
+        
+        // Fetch rooms for this property
+        const { data: roomsData } = await supabase
+          .from('rooms')
+          .select('*')
+          .eq('property_id', propData.id);
+        
+        // Fetch bookings for this property
+        const { data: bookingsData } = await supabase
+          .from('bookings')
+          .select('*')
+          .eq('property_id', propData.id)
+          .order('check_in', { ascending: false });
+
+        if (roomsData) setRooms(roomsData);
+        if (bookingsData) setBookings(bookingsData);
+      }
+      setIsLoading(false);
+    }
+
+    fetchData();
+  }, [supabase]);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.refresh();
   };
+
+  // --- METRIC CALCULATIONS ---
+  const totalRevenue = bookings.reduce((acc, b) => acc + Number(b.amount), 0);
+  const distinctGuests = new Set(bookings.map(b => b.guest_name)).size;
+  const occupiedRooms = rooms.filter(r => r.status === 'Occupied').length;
+  const totalRoomsCount = rooms.length || 1;
+  const occupancyRate = ((occupiedRooms / totalRoomsCount) * 100).toFixed(1);
+  const avgDailyRate = bookings.length > 0 ? (totalRevenue / bookings.length).toFixed(0) : "0";
 
   return (
     <div className="flex min-h-screen bg-[#08080a]">
@@ -160,7 +199,7 @@ export default function Tier2Dashboard() {
               <Building2 size={18} className="text-white" />
             </div>
             <div>
-              <h1 className="text-[13px] font-bold text-white tracking-tight">Grand Hyatt</h1>
+              <h1 className="text-[13px] font-bold text-white tracking-tight">{property?.name || 'Grand Hyatt'}</h1>
               <p className="text-[10px] text-zinc-600 font-medium">Owner Dashboard</p>
             </div>
           </div>
@@ -169,12 +208,12 @@ export default function Tier2Dashboard() {
         {/* Navigation */}
         <nav className="flex-1 px-3 space-y-1">
           <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-[0.2em] px-3 mb-3">Navigation</p>
-          {NAV_ITEMS.map((item) => (
+          {NAV_ITEMS.map((item: { icon: React.ElementType, label: string, active: boolean }) => (
             <button
               key={item.label}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-300 ${item.active
                   ? 'bg-white/[0.06] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.02]'
+                  : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.02]'
                 }`}
             >
               <item.icon size={17} className={item.active ? 'text-indigo-400' : ''} />
@@ -193,7 +232,7 @@ export default function Tier2Dashboard() {
               IS
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[12px] font-semibold text-zinc-300 truncate">Ishitha M.</p>
+              <p className="text-[12px] font-semibold text-zinc-300 truncate">Sathish A.</p>
               <p className="text-[10px] text-zinc-600 truncate">Property Owner</p>
             </div>
             <button 
@@ -226,7 +265,7 @@ export default function Tier2Dashboard() {
             </motion.div>
 
             <div className="flex items-center gap-3">
-              <button className="p-2.5 rounded-xl border border-white/[0.06] text-zinc-500 hover:text-white hover:bg-white/[0.04] transition-all">
+              <button className="p-2.5 rounded-xl border border-white/[0.06] text-zinc-500 cursor-not-allowed">
                 <Search size={16} />
               </button>
               <button className="p-2.5 rounded-xl border border-white/[0.06] text-zinc-500 hover:text-white hover:bg-white/[0.04] transition-all relative">
@@ -246,20 +285,20 @@ export default function Tier2Dashboard() {
           {/* STAT CARDS ROW */}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
             <StatCard
-              title="Total Revenue" subtitle="vs. $38,100 last month"
-              icon={Wallet} color="emerald" value="$42,850" trend="12.5%" trendUp={true}
+              title="Total Revenue" subtitle="Current historical total"
+              icon={Wallet} color="emerald" value={`$${totalRevenue.toLocaleString()}`} trend="12.5%" trendUp={true}
             />
             <StatCard
-              title="Avg Daily Rate" subtitle="Per room per night"
-              icon={DollarSign} color="indigo" value="$185" trend="3.2%" trendUp={true}
+              title="Avg Booking Value" subtitle="Per reservation"
+              icon={DollarSign} color="indigo" value={`$${avgDailyRate}`} trend="3.2%" trendUp={true}
             />
             <StatCard
-              title="Occupancy Rate" subtitle="46 of 62 rooms occupied"
-              icon={Percent} color="amber" value="74.2%" trend="2.1%" trendUp={false}
+              title="Occupancy Rate" subtitle={`${occupiedRooms} of ${totalRoomsCount} rooms occupied`}
+              icon={Percent} color="amber" value={`${occupancyRate}%`} trend="2.1%" trendUp={false}
             />
             <StatCard
-              title="Guest Rating" subtitle="From 284 reviews"
-              icon={Star} color="violet" value="4.8" trend="0.3" trendUp={true}
+              title="Total Guests" subtitle={`Across ${bookings.length} bookings`}
+              icon={Users} color="violet" value={distinctGuests.toString()} trend="0.3" trendUp={true}
             />
           </div>
 
@@ -288,27 +327,9 @@ export default function Tier2Dashboard() {
                   </div>
                 </div>
 
-                {/* Bar Chart */}
-                <div className="flex items-end justify-between gap-3 h-[180px]">
-                  {REVENUE_DAYS.map((d, i) => (
-                    <div key={d.day} className="flex-1 flex flex-col items-center gap-2">
-                      <span className="text-[10px] font-semibold text-zinc-500">${(d.value / 1000).toFixed(1)}k</span>
-                      <div className="w-full relative">
-                        <motion.div
-                          initial={{ height: 0 }}
-                          animate={{ height: `${d.pct}%` }}
-                          transition={{ duration: 0.8, delay: i * 0.08, ease: "easeOut" }}
-                          className={`w-full rounded-xl ${d.day === 'Fri'
-                              ? 'bg-gradient-to-t from-indigo-600 to-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.3)]'
-                              : 'bg-white/[0.06] hover:bg-white/[0.1]'
-                            } transition-colors cursor-pointer`}
-                          style={{ minHeight: '8px', position: 'absolute', bottom: 0, left: 0, right: 0 }}
-                        />
-                        <div style={{ height: '140px' }} />
-                      </div>
-                      <span className={`text-[11px] font-semibold ${d.day === 'Fri' ? 'text-indigo-400' : 'text-zinc-600'}`}>{d.day}</span>
-                    </div>
-                  ))}
+                {/* Bar Chart (Placeholder) */}
+                <div className="flex items-end justify-center h-[180px] border border-white/5 rounded-xl bg-white/[0.01]">
+                   <p className="text-[11px] text-zinc-700">Analytics processing...</p>
                 </div>
               </motion.div>
 
@@ -341,7 +362,9 @@ export default function Tier2Dashboard() {
 
                 {/* Table Rows */}
                 <div className="space-y-1">
-                  {RECENT_BOOKINGS.map((bk, i) => (
+                  {isLoading ? (
+                    <div className="py-20 flex justify-center"><Loader2 className="animate-spin text-indigo-500" size={24} /></div>
+                  ) : bookings.slice(0, 5).map((bk: Booking, i: number) => (
                     <motion.div
                       initial={{ opacity: 0, x: -8 }}
                       animate={{ opacity: 1, x: 0 }}
@@ -351,15 +374,15 @@ export default function Tier2Dashboard() {
                     >
                       <div className="col-span-4 flex items-center gap-3">
                         <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-zinc-800 to-zinc-700 border border-white/[0.06] flex items-center justify-center text-[11px] font-bold text-zinc-300 group-hover:from-indigo-600 group-hover:to-indigo-500 group-hover:text-white group-hover:border-indigo-500/30 transition-all duration-300">
-                          {bk.guest.split(' ').map(n => n[0]).join('')}
+                          {bk.guest_name.split(' ').map((n: string) => n[0]).join('')}
                         </div>
                         <div>
-                          <p className="text-[13px] font-semibold text-zinc-200 group-hover:text-white transition-colors">{bk.guest}</p>
-                          <p className="text-[10px] text-zinc-600">{bk.id} &bull; {bk.date}</p>
+                          <p className="text-[13px] font-semibold text-zinc-200 group-hover:text-white transition-colors">{bk.guest_name}</p>
+                          <p className="text-[10px] text-zinc-600">{bk.id.slice(0, 8)} &bull; {new Date(bk.check_in).toLocaleDateString()}</p>
                         </div>
                       </div>
                       <div className="col-span-2">
-                        <span className="text-[12px] text-zinc-400 font-medium">Room {bk.room}</span>
+                        <span className="text-[12px] text-zinc-400 font-medium">Room {rooms.find((r: Room) => r.id === bk.room_id)?.room_number || 'N/A'}</span>
                       </div>
                       <div className="col-span-2">
                         <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border ${statusStyles[bk.status] || ''}`}>
@@ -367,10 +390,10 @@ export default function Tier2Dashboard() {
                         </span>
                       </div>
                       <div className="col-span-2">
-                        <span className="text-[12px] text-zinc-500">{bk.nights} nights</span>
+                        <span className="text-[12px] text-zinc-500">Live</span>
                       </div>
                       <div className="col-span-2 text-right">
-                        <span className="text-[13px] font-bold text-white">{bk.amount}</span>
+                        <span className="text-[13px] font-bold text-white">${bk.amount}</span>
                       </div>
                     </motion.div>
                   ))}
@@ -405,49 +428,18 @@ export default function Tier2Dashboard() {
                 <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-violet-500/20 rounded-full blur-3xl" />
               </motion.div>
 
-              {/* STAFF MONITOR */}
+              {/* STAFF MONITOR (Placeholder) */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 }}
                 className="bg-zinc-900/40 backdrop-blur-md border border-white/[0.06] rounded-2xl p-7"
               >
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-2.5">
-                    <Activity size={14} className="text-indigo-400" />
-                    <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-[0.15em]">Active Staff</h3>
-                  </div>
-                  <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">3 Online</span>
+                <div className="flex items-center gap-2.5">
+                  <Activity size={14} className="text-indigo-400" />
+                  <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-[0.15em]">Staff Activity</h3>
                 </div>
-                <div className="space-y-4">
-                  {STAFF.map((person, i) => {
-                    const ss = staffStatusStyles[person.status] || staffStatusStyles["Off Duty"];
-                    return (
-                      <motion.div
-                        initial={{ opacity: 0, x: 8 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.35 + i * 0.06 }}
-                        key={person.name}
-                        className="flex items-center gap-3 group cursor-pointer"
-                      >
-                        <div className="relative">
-                          <div className="w-9 h-9 rounded-xl bg-zinc-800 border border-white/[0.06] flex items-center justify-center text-[10px] font-bold text-zinc-400 group-hover:border-white/[0.12] transition-all">
-                            {person.avatar}
-                          </div>
-                          <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full ${ss.dot} border-2 border-[#0a0a0c]`} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[12px] font-semibold text-zinc-300 group-hover:text-white transition-colors truncate">{person.name}</p>
-                          <p className="text-[10px] text-zinc-600 truncate">{person.role}</p>
-                        </div>
-                        <div className="text-right">
-                          <span className={`text-[10px] font-semibold ${ss.text}`}>{person.status}</span>
-                          <p className="text-[9px] text-zinc-700">{person.lastActive}</p>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </div>
+                <p className="text-[11px] text-zinc-600 italic text-center py-4">Live staff tracking coming soon.</p>
               </motion.div>
 
               {/* QUICK MANAGEMENT */}
@@ -461,10 +453,10 @@ export default function Tier2Dashboard() {
                 <div className="space-y-2">
                   {[
                     { label: 'Inventory & Rates', description: 'Manage rooms and pricing', icon: BedDouble, color: 'indigo' },
-                    { label: 'Financial Overview', description: 'Revenue and expenses', icon: CreditCard, color: 'emerald' },
+                    { label: 'Financial Overview', description: 'Revenue and expenses', icon: Building2, color: 'emerald' },
                     { label: 'Channel Manager', description: 'OTA connections', icon: TrendingUp, color: 'amber' },
                     { label: 'Recent Activity', description: 'Audit log & events', icon: Clock, color: 'violet' },
-                  ].map((item) => {
+                  ].map((item: { label: string, description: string, icon: React.ElementType, color: string }) => {
                     const c = colorMap[item.color] || colorMap.indigo;
                     return (
                       <button
@@ -517,18 +509,18 @@ export default function Tier2Dashboard() {
                       </defs>
                     </svg>
                     <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <span className="text-2xl font-bold text-white">74.2%</span>
+                      <span className="text-2xl font-bold text-white">{occupancyRate}%</span>
                       <span className="text-[9px] text-zinc-500 font-medium uppercase tracking-wider">Occupied</span>
                     </div>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 text-center">
                   <div className="bg-white/[0.03] rounded-xl py-3 px-2">
-                    <p className="text-lg font-bold text-white">46</p>
+                    <p className="text-lg font-bold text-white">{occupiedRooms}</p>
                     <p className="text-[10px] text-zinc-600">Occupied</p>
                   </div>
                   <div className="bg-white/[0.03] rounded-xl py-3 px-2">
-                    <p className="text-lg font-bold text-zinc-400">16</p>
+                    <p className="text-lg font-bold text-zinc-400">{totalRoomsCount - occupiedRooms}</p>
                     <p className="text-[10px] text-zinc-600">Available</p>
                   </div>
                 </div>

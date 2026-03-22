@@ -9,25 +9,85 @@ import {
   UserCheck, 
   Clock, 
   ArrowRightLeft, 
-  MoreHorizontal,
   ChevronLeft,
   ChevronRight,
-  Filter,
-  Plus
+  Plus,
+  Loader2
 } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
+import { useRouter } from 'next/navigation';
 
-// --- MOCK DATA ---
 const DAYS = ["22 Mar", "23 Mar", "24 Mar", "25 Mar", "26 Mar", "27 Mar", "28 Mar"];
-const ROOMS = [
-  { id: "101", type: "Deluxe", status: "Occupied", guest: "John Wick", color: "bg-indigo-500/20 text-indigo-400 border-indigo-500/40" },
-  { id: "102", type: "Standard", status: "Available", guest: null },
-  { id: "103", type: "Suite", status: "Occupied", guest: "Sarah Connor", color: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40" },
-  { id: "104", type: "Standard", status: "Dirty", guest: null },
-  { id: "201", type: "Deluxe", status: "Occupied", guest: "Bruce Wayne", color: "bg-amber-500/20 text-amber-400 border-amber-500/40" },
-];
+
+interface Room {
+  id: string;
+  property_id: string;
+  room_number: string;
+  type: string;
+  status: string;
+  created_at: string;
+}
+
+interface Booking {
+  id: string;
+  property_id: string;
+  room_id: string;
+  guest_name: string;
+  check_in: string;
+  status: string;
+  amount: number;
+}
 
 export default function Tier3FrontDesk() {
-  const [searchQuery, setSearchQuery] = useState("");
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const supabase = createClient();
+  const router = useRouter();
+
+  React.useEffect(() => {
+    async function fetchData() {
+      setIsLoading(true);
+      
+      // Fetch rooms
+      const { data: roomsData } = await supabase
+        .from('rooms')
+        .select('*')
+        .order('room_number', { ascending: true });
+
+      // Fetch active bookings (Confirmed or Checked In)
+      const { data: bookingsData } = await supabase
+        .from('bookings')
+        .select('*')
+        .in('status', ['Confirmed', 'Checked In']);
+
+      if (roomsData) setRooms(roomsData);
+      if (bookingsData) setBookings(bookingsData);
+      setIsLoading(false);
+    }
+
+    fetchData();
+  }, [supabase]);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.refresh(); // Middleware will redirect
+  };
+
+  // Helper to find booking for a room
+  const getBookingForRoom = (roomId: string) => {
+    return bookings.find(b => b.room_id === roomId);
+  };
+
+  // Status to Color mapping for UI
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'Occupied': return "bg-indigo-500/20 text-indigo-400 border-indigo-500/40";
+      case 'Available': return "bg-emerald-500/20 text-emerald-400 border-emerald-500/40";
+      case 'Dirty': return "bg-amber-500/20 text-amber-400 border-amber-500/40";
+      default: return "";
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#09090b] text-zinc-300 p-6 selection:bg-indigo-500/30">
@@ -58,7 +118,8 @@ export default function Tier3FrontDesk() {
             <input 
               type="text" 
               placeholder="Search Guest or Room..."
-              className="bg-zinc-950 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-xs focus:border-azure-500 outline-none transition-all w-64"
+              disabled
+              className="bg-zinc-950 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-xs opacity-50 cursor-not-allowed w-64"
             />
           </div>
           <button className="bg-azure-600 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-azure-500 transition-all shadow-lg shadow-azure-500/20">
@@ -67,10 +128,7 @@ export default function Tier3FrontDesk() {
           </button>
           <div className="w-[1px] h-6 bg-white/10 mx-1" />
           <button 
-            onClick={() => {
-              document.cookie = "frontdesk_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-              window.location.href = "/front-desk/login";
-            }}
+            onClick={handleLogout}
             className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-rose-500/10 hover:border-rose-500/30 hover:text-rose-400 text-zinc-500 text-[10px] font-bold uppercase tracking-widest transition-all"
           >
             Logout
@@ -93,51 +151,58 @@ export default function Tier3FrontDesk() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  <th className="p-4 text-left text-[10px] font-bold text-zinc-500 uppercase border-b border-r border-white/5 sticky left-0 bg-[#09090b] z-10 w-32">Room</th>
-                  {DAYS.map(day => (
-                    <th key={day} className="p-4 text-center text-[10px] font-bold text-zinc-400 uppercase border-b border-white/5 min-w-[120px]">
-                      {day}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {ROOMS.map(room => (
-                  <tr key={room.id} className="group border-b border-white/5 hover:bg-white/[0.01] transition-colors">
-                    <td className="p-4 border-r border-white/5 sticky left-0 bg-[#09090b] z-10 group-hover:bg-zinc-900 transition-colors">
-                      <p className="text-sm font-bold text-white">{room.id}</p>
-                      <p className="text-[10px] text-zinc-500">{room.type}</p>
-                    </td>
-                    {DAYS.map((day, idx) => (
-                      <td key={idx} className="p-2 border-r border-white/5 relative h-16">
-                        {room.guest && idx === 0 ? (
-                          <motion.div 
-                            initial={{ scale: 0.95, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            className={`absolute inset-y-2 left-2 right-[-240px] rounded-lg border p-2 flex items-center justify-between z-20 shadow-xl ${room.color}`}
-                          >
-                            <div className="flex items-center gap-2 overflow-hidden">
-                              <UserCheck size={14} />
-                              <span className="text-[11px] font-bold truncate">{room.guest}</span>
-                            </div>
-                            <span className="text-[9px] font-black uppercase opacity-60">Confirmed</span>
-                          </motion.div>
-                        ) : null}
-                        {!room.guest && room.status === 'Dirty' ? (
-                          <div className="flex items-center justify-center h-full opacity-20">
-                            <Clock size={14} />
-                          </div>
-                        ) : null}
-                      </td>
+          <div className="overflow-x-auto min-h-[300px] flex items-center justify-center relative">
+            {isLoading ? (
+              <Loader2 className="animate-spin text-indigo-500" size={32} />
+            ) : (
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    <th className="p-4 text-left text-[10px] font-bold text-zinc-500 uppercase border-b border-r border-white/5 sticky left-0 bg-[#09090b] z-10 w-32">Room</th>
+                    {DAYS.map((day: string) => (
+                      <th key={day} className="p-4 text-center text-[10px] font-bold text-zinc-400 uppercase border-b border-white/5 min-w-[120px]">
+                        {day}
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {rooms.map((room: Room) => {
+                    const booking = getBookingForRoom(room.id);
+                    return (
+                      <tr key={room.id} className="group border-b border-white/5 hover:bg-white/[0.01] transition-colors">
+                        <td className="p-4 border-r border-white/5 sticky left-0 bg-[#09090b] z-10 group-hover:bg-zinc-900 transition-colors">
+                          <p className="text-sm font-bold text-white">{room.room_number}</p>
+                          <p className="text-[10px] text-zinc-500">{room.type}</p>
+                        </td>
+                        {DAYS.map((day: string, idx: number) => (
+                          <td key={idx} className="p-2 border-r border-white/5 relative h-16">
+                            {booking && idx === 0 ? (
+                              <motion.div 
+                                initial={{ scale: 0.95, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                className={`absolute inset-y-2 left-2 right-[-240px] rounded-lg border p-2 flex items-center justify-between z-20 shadow-xl ${getStatusColor(room.status)}`}
+                              >
+                                <div className="flex items-center gap-2 overflow-hidden">
+                                  <UserCheck size={14} />
+                                  <span className="text-[11px] font-bold truncate">{booking.guest_name}</span>
+                                </div>
+                                <span className="text-[9px] font-black uppercase opacity-60">{booking.status}</span>
+                              </motion.div>
+                            ) : null}
+                            {!booking && room.status === 'Dirty' ? (
+                              <div className="flex items-center justify-center h-full opacity-20">
+                                <Clock size={14} />
+                              </div>
+                            ) : null}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
 

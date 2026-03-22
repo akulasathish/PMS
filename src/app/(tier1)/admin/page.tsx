@@ -5,17 +5,11 @@ import { motion } from 'framer-motion';
 import { 
   Building2, Users, Activity, Plus, Download, Terminal, 
   ShieldCheck, Zap, MoreVertical, Bell, TrendingUp, Search, 
-  ShieldAlert, ArrowUpRight, LogOut 
+  ShieldAlert, ArrowUpRight, LogOut, Loader2 
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 
-// --- MOCK DATA ---
-const PROPERTIES = [
-  { id: 1, name: "Grand Hyatt Regency", tier: "Enterprise", occupancy: 88, status: "Healthy", revenue: "$42,000" },
-  { id: 2, name: "Ocean View Resort", tier: "Pro", occupancy: 45, status: "Warning", revenue: "$18,500" },
-  { id: 3, name: "The Delhi Boutique", tier: "Starter", occupancy: 92, status: "Healthy", revenue: "$8,200" },
-  { id: 4, name: "Swiss Alps Lodge", tier: "Enterprise", occupancy: 12, status: "Healthy", revenue: "$65,000" },
-];
 
 // --- PREMIUM UI COMPONENTS ---
 const GlassCard = ({ children, className = "" }: { children: React.ReactNode, className?: string }) => (
@@ -24,7 +18,7 @@ const GlassCard = ({ children, className = "" }: { children: React.ReactNode, cl
   </div>
 );
 
-const StatCard = ({ title, value, icon: Icon, trend, color = "indigo" }: any) => (
+const StatCard = ({ title, value, icon: Icon, trend, color = "indigo" }: { title: string, value: string, icon: any, trend: string, color?: string }) => (
   <motion.div
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
@@ -45,15 +39,44 @@ const StatCard = ({ title, value, icon: Icon, trend, color = "indigo" }: any) =>
   </motion.div>
 );
 
+interface Property {
+  id: string;
+  name: string;
+  tier: string;
+  created_at?: string;
+}
+
 export default function Tier1Admin() {
   const [showBroadcast, setShowBroadcast] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [properties, setProperties] = useState<Property[]>([]);
+  const supabase = createClient();
   const router = useRouter();
 
-  const handleLogout = () => {
-    // Clear the session cookie
-    document.cookie = "admin_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-    router.push('/admin/login');
+  React.useEffect(() => {
+    async function fetchProperties() {
+      setIsLoading(true);
+      const { data } = await supabase
+        .from('properties')
+        .select('*')
+        .order('name', { ascending: true });
+      
+      if (data) setProperties(data);
+      setIsLoading(false);
+    }
+    fetchProperties();
+  }, [supabase]);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.refresh();
   };
+
+  // Aggregates
+  const totalProperties = properties.length;
+  // In a real app, revenue would be summed from all property bookings. 
+  // For demo, we'll use a placeholder or derived value.
+  const totalRevenue = properties.length * 15000; 
 
   return (
     <div className="min-h-screen bg-[#09090b] text-zinc-300 p-8 font-sans selection:bg-indigo-500/30">
@@ -100,9 +123,9 @@ export default function Tier1Admin() {
           
           {/* BENTO STATS GRID */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <StatCard title="Total Properties" value="12" icon={Building2} trend="+2 new" />
-            <StatCard title="Processed" value="$1.24M" icon={Zap} trend="+14.2%" />
-            <StatCard title="Live Guests" value="842" icon={Users} trend="Active" />
+            <StatCard title="Total Properties" value={totalProperties.toString()} icon={Building2} trend="+0 new" />
+            <StatCard title="Total MRR" value={`$${(totalRevenue/1000).toFixed(1)}k`} icon={Zap} trend="+0.0%" />
+            <StatCard title="Live Network" value="Active" icon={Users} trend="Online" />
             <StatCard title="System" value="99.9%" icon={ShieldCheck} trend="Stable" />
           </div>
 
@@ -127,7 +150,9 @@ export default function Tier1Admin() {
                 </tr>
               </thead>
               <tbody className="text-sm">
-                {PROPERTIES.map((prop, i) => (
+                {isLoading ? (
+                  <tr><td colSpan={5} className="py-20 text-center"><Loader2 className="animate-spin inline text-indigo-500" /></td></tr>
+                ) : properties.map((prop: Property, i: number) => (
                   <motion.tr 
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -150,15 +175,15 @@ export default function Tier1Admin() {
                         <div className="flex-1 max-w-[100px] h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                           <motion.div 
                             initial={{ width: 0 }}
-                            animate={{ width: `${prop.occupancy}%` }}
+                            animate={{ width: `75%` }}
                             transition={{ duration: 1, delay: 0.5 + i * 0.1 }}
-                            className={`h-full rounded-full ${prop.occupancy > 80 ? 'bg-emerald-500' : 'bg-amber-500'}`} 
+                            className={`h-full rounded-full bg-emerald-500`} 
                           />
                         </div>
-                        <span className="text-xs font-bold text-zinc-400">{prop.occupancy}%</span>
+                        <span className="text-xs font-bold text-zinc-400">75%</span>
                       </div>
                     </td>
-                    <td className="py-4 text-zinc-300 font-bold">{prop.revenue}</td>
+                    <td className="py-4 text-zinc-300 font-bold">${(totalRevenue/totalProperties/1000).toFixed(1)}k</td>
                     <td className="py-4 text-right">
                       <button className="text-zinc-600 hover:text-white transition-colors p-1 hover:bg-white/5 rounded">
                         <MoreVertical size={16} />
