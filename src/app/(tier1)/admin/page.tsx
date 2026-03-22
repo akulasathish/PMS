@@ -5,8 +5,9 @@ import { motion } from 'framer-motion';
 import { 
   Building2, Users, Activity, Plus, Download, Terminal, 
   ShieldCheck, Zap, MoreVertical, Bell, TrendingUp, Search, 
-  ShieldAlert, ArrowUpRight 
+  ShieldAlert, ArrowUpRight, LogOut 
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 // --- MOCK DATA ---
 const PROPERTIES = [
@@ -46,6 +47,13 @@ const StatCard = ({ title, value, icon: Icon, trend, color = "indigo" }: any) =>
 
 export default function Tier1Admin() {
   const [showBroadcast, setShowBroadcast] = useState(false);
+  const router = useRouter();
+
+  const handleLogout = () => {
+    // Clear the session cookie
+    document.cookie = "admin_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    router.push('/admin/login');
+  };
 
   return (
     <div className="min-h-screen bg-[#09090b] text-zinc-300 p-8 font-sans selection:bg-indigo-500/30">
@@ -67,8 +75,15 @@ export default function Tier1Admin() {
             <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-[#09090b]"></span>
           </button>
 
-          <button className="p-2 hover:bg-zinc-800 rounded-lg border border-white/5 transition-colors text-zinc-500 hover:text-white">
-            <Terminal size={20} />
+          <button 
+            onClick={handleLogout}
+            className="p-2 hover:bg-rose-500/10 rounded-lg border border-white/5 transition-colors text-zinc-500 hover:text-rose-400 group relative"
+            title="Terminate Session"
+          >
+            <LogOut size={20} />
+            <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-zinc-900 border border-white/10 text-[10px] text-zinc-400 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+              Terminate Session
+            </span>
           </button>
           
           <button className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg font-medium transition-all shadow-[0_0_20px_rgba(79,70,229,0.3)]">
