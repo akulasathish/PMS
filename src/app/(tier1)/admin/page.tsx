@@ -3,15 +3,9 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { 
-  Building2, 
-  Users, 
-  Activity, 
-  Plus, 
-  Download, 
-  Terminal, 
-  ShieldCheck, 
-  Zap,
-  MoreVertical
+  Building2, Users, Activity, Plus, Download, Terminal, 
+  ShieldCheck, Zap, MoreVertical, Bell, TrendingUp, Search, 
+  ShieldAlert, ArrowUpRight 
 } from 'lucide-react';
 
 // --- MOCK DATA ---
@@ -42,8 +36,9 @@ const StatCard = ({ title, value, icon: Icon, trend }: any) => (
   </GlassCard>
 );
 
-// --- THE MAIN EXPORT (THIS FIXES YOUR ERROR) ---
 export default function Tier1Admin() {
+  const [showBroadcast, setShowBroadcast] = useState(false);
+
   return (
     <div className="min-h-screen bg-[#09090b] text-zinc-300 p-8 font-sans selection:bg-indigo-500/30">
       
@@ -55,9 +50,19 @@ export default function Tier1Admin() {
         </motion.div>
         
         <div className="flex gap-3">
+          {/* NOTIFICATION BELL */}
+          <button 
+            onClick={() => setShowBroadcast(true)}
+            className="p-2 relative hover:bg-zinc-800 rounded-lg border border-white/5 transition-colors text-zinc-400 hover:text-indigo-400"
+          >
+            <Bell size={20} />
+            <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-[#09090b]"></span>
+          </button>
+
           <button className="p-2 hover:bg-zinc-800 rounded-lg border border-white/5 transition-colors text-zinc-500 hover:text-white">
             <Terminal size={20} />
           </button>
+          
           <button className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg font-medium transition-all shadow-[0_0_20px_rgba(79,70,229,0.3)]">
             <Plus size={18} />
             Register Property
@@ -128,9 +133,29 @@ export default function Tier1Admin() {
           </GlassCard>
         </div>
 
-        {/* RIGHT COLUMN: SYSTEM SENTINEL */}
-        <div className="col-span-12 lg:col-span-3">
-          <GlassCard className="h-full">
+        {/* RIGHT COLUMN: SYSTEM SENTINEL & ATTENTION */}
+        <div className="col-span-12 lg:col-span-3 space-y-6">
+          
+          {/* ATTENTION REQUIRED CARD */}
+          <GlassCard className="border-rose-500/20 bg-rose-500/5">
+            <h2 className="text-xs font-bold text-rose-500 uppercase tracking-widest flex items-center gap-2 mb-4">
+              <ShieldAlert size={14} />
+              Attention Required
+            </h2>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center group cursor-pointer">
+                <span className="text-xs text-zinc-300 group-hover:text-white">Ocean View: Payment Failed</span>
+                <ArrowUpRight size={12} className="text-zinc-600" />
+              </div>
+              <div className="flex justify-between items-center group cursor-pointer">
+                <span className="text-xs text-zinc-300 group-hover:text-white">Grand Hyatt: n8n Timeout</span>
+                <ArrowUpRight size={12} className="text-zinc-600" />
+              </div>
+            </div>
+          </GlassCard>
+
+          {/* SYSTEM SENTINEL */}
+          <GlassCard>
             <h2 className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2 mb-6">
               <Activity size={14} className="text-indigo-500" />
               System Sentinel
