@@ -58,12 +58,22 @@ export default function Tier3FrontDesk() {
             <input 
               type="text" 
               placeholder="Search Guest or Room..."
-              className="bg-zinc-950 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-xs focus:border-indigo-500 outline-none transition-all w-64"
+              className="bg-zinc-950 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-xs focus:border-azure-500 outline-none transition-all w-64"
             />
           </div>
-          <button className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-500/20">
+          <button className="bg-azure-600 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-azure-500 transition-all shadow-lg shadow-azure-500/20">
             <Plus size={16} />
             New Booking
+          </button>
+          <div className="w-[1px] h-6 bg-white/10 mx-1" />
+          <button 
+            onClick={() => {
+              document.cookie = "frontdesk_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+              window.location.href = "/front-desk/login";
+            }}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-rose-500/10 hover:border-rose-500/30 hover:text-rose-400 text-zinc-500 text-[10px] font-bold uppercase tracking-widest transition-all"
+          >
+            Logout
           </button>
         </div>
       </div>

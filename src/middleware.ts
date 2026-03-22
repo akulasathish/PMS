@@ -22,9 +22,18 @@ export function middleware(request: NextRequest) {
     }
   }
 
+  // Protect /front-desk routes (Tier 3)
+  if (pathname.startsWith('/front-desk')) {
+    if (pathname === '/front-desk/login') return NextResponse.next();
+    const session = request.cookies.get('frontdesk_session');
+    if (!session || session.value !== 'fd_secure_entry_2026') {
+      return NextResponse.redirect(new URL('/front-desk/login', request.url));
+    }
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/dashboard/:path*'],
+  matcher: ['/admin/:path*', '/dashboard/:path*', '/front-desk/:path*'],
 };
