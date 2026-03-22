@@ -18,22 +18,30 @@ const PROPERTIES = [
 
 // --- PREMIUM UI COMPONENTS ---
 const GlassCard = ({ children, className = "" }: { children: React.ReactNode, className?: string }) => (
-  <div className={`bg-zinc-900/50 backdrop-blur-md border border-white/10 rounded-xl p-6 ${className}`}>
+  <div className={`bg-zinc-900/60 backdrop-blur-xl border border-white/[0.06] rounded-2xl p-6 hover:border-white/[0.12] transition-all duration-500 ${className}`}>
     {children}
   </div>
 );
 
-const StatCard = ({ title, value, icon: Icon, trend }: any) => (
-  <GlassCard className="flex flex-col gap-2">
-    <div className="flex justify-between items-start text-zinc-400">
-      <Icon size={20} />
-      <span className="text-xs font-medium text-emerald-500">{trend}</span>
+const StatCard = ({ title, value, icon: Icon, trend, color = "indigo" }: any) => (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="relative overflow-hidden bg-zinc-900/60 backdrop-blur-xl border border-white/[0.06] rounded-2xl p-6 hover:border-white/[0.12] transition-all duration-500 group shadow-[0_0_15px_rgba(99,102,241,0.05)]"
+  >
+    <div className="flex justify-between items-start mb-4">
+      <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 group-hover:scale-110 transition-transform">
+        <Icon size={18} />
+      </div>
+      <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">{trend}</span>
     </div>
-    <div className="mt-2">
-      <p className="text-sm text-zinc-500 uppercase tracking-wider">{title}</p>
-      <h3 className="text-2xl font-bold text-white mt-1">{value}</h3>
+    <div>
+      <p className="text-[11px] text-zinc-500 font-bold uppercase tracking-[0.15em] mb-1">{title}</p>
+      <h3 className="text-3xl font-bold text-white tracking-tight">{value}</h3>
     </div>
-  </GlassCard>
+    {/* Subtle gradient accent */}
+    <div className="absolute -bottom-8 -right-8 w-24 h-24 rounded-full blur-3xl opacity-10 bg-indigo-500 group-hover:opacity-20 transition-opacity duration-700" />
+  </motion.div>
 );
 
 export default function Tier1Admin() {
@@ -104,29 +112,44 @@ export default function Tier1Admin() {
                 </tr>
               </thead>
               <tbody className="text-sm">
-                {PROPERTIES.map((prop) => (
-                  <tr key={prop.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors group">
-                    <td className="py-4 font-medium text-white">{prop.name}</td>
+                {PROPERTIES.map((prop, i) => (
+                  <motion.tr 
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.2 + i * 0.05 }}
+                    key={prop.id} 
+                    className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors group cursor-pointer"
+                  >
+                    <td className="py-4 font-semibold text-zinc-200 group-hover:text-white transition-colors">{prop.name}</td>
                     <td className="py-4">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
-                        prop.tier === 'Enterprise' ? 'border-indigo-500/50 text-indigo-400' : 'border-zinc-700 text-zinc-500'
+                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase border tracking-wider ${
+                        prop.tier === 'Enterprise' 
+                          ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.1)]' 
+                          : 'bg-zinc-800/50 border-white/10 text-zinc-500'
                       }`}>
                         {prop.tier}
                       </span>
                     </td>
                     <td className="py-4">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${prop.occupancy > 80 ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'bg-amber-500'}`} />
-                        {prop.occupancy}%
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 max-w-[100px] h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                          <motion.div 
+                            initial={{ width: 0 }}
+                            animate={{ width: `${prop.occupancy}%` }}
+                            transition={{ duration: 1, delay: 0.5 + i * 0.1 }}
+                            className={`h-full rounded-full ${prop.occupancy > 80 ? 'bg-emerald-500' : 'bg-amber-500'}`} 
+                          />
+                        </div>
+                        <span className="text-xs font-bold text-zinc-400">{prop.occupancy}%</span>
                       </div>
                     </td>
-                    <td className="py-4 text-zinc-400">{prop.revenue}</td>
+                    <td className="py-4 text-zinc-300 font-bold">{prop.revenue}</td>
                     <td className="py-4 text-right">
-                      <button className="text-zinc-600 hover:text-white transition-colors">
-                        <MoreVertical size={18} />
+                      <button className="text-zinc-600 hover:text-white transition-colors p-1 hover:bg-white/5 rounded">
+                        <MoreVertical size={16} />
                       </button>
                     </td>
-                  </tr>
+                  </motion.tr>
                 ))}
               </tbody>
             </table>
