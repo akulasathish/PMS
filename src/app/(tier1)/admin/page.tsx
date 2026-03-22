@@ -3,8 +3,8 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { 
-  Building2, Users, Activity, Plus, Download, Terminal, 
-  ShieldCheck, Zap, MoreVertical, Bell, TrendingUp, Search, 
+  Building2, Users, Activity, Plus,
+  ShieldCheck, Zap, MoreVertical, Bell,
   ShieldAlert, ArrowUpRight, LogOut, Loader2 
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -18,7 +18,7 @@ const GlassCard = ({ children, className = "" }: { children: React.ReactNode, cl
   </div>
 );
 
-const StatCard = ({ title, value, icon: Icon, trend, color = "indigo" }: { title: string, value: string, icon: any, trend: string, color?: string }) => (
+const StatCard = ({ title, value, icon: Icon, trend, color = "indigo" }: { title: string, value: string, icon: React.ElementType, trend: string, color?: string }) => (
   <motion.div
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
