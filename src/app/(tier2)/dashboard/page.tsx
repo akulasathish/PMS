@@ -30,15 +30,16 @@ import {
   Building2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 
 const NAV_ITEMS = [
-  { icon: LayoutDashboard, label: "Dashboard", active: true },
-  { icon: BookOpen, label: "Bookings", active: false },
-  { icon: DoorOpen, label: "Rooms", active: false },
-  { icon: DollarSign, label: "Finance", active: false },
-  { icon: Users, label: "Staff", active: false },
-  { icon: Settings, label: "Settings", active: false },
+  { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", active: true },
+  { icon: DoorOpen, label: "Inventory", href: "/dashboard/inventory", active: false },
+  { icon: BookOpen, label: "Bookings", href: "#", active: false },
+  { icon: DollarSign, label: "Finance", href: "#", active: false },
+  { icon: Users, label: "Staff", href: "#", active: false },
+  { icon: Settings, label: "Settings", href: "#", active: false },
 ];
 
 interface Property {
@@ -353,20 +354,22 @@ export default function Tier2Dashboard() {
         {/* Navigation */}
         <nav className="flex-1 px-3 space-y-1">
           <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-[0.2em] px-3 mb-3">Navigation</p>
-          {NAV_ITEMS.map((item: { icon: React.ElementType, label: string, active: boolean }) => (
-            <button
+          {NAV_ITEMS.map((item) => (
+            <Link
               key={item.label}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-300 ${item.active
+              href={item.href}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-300 ${
+                item.active
                   ? 'bg-white/[0.06] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
                   : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.02]'
-                }`}
+              }`}
             >
               <item.icon size={17} className={item.active ? 'text-indigo-400' : ''} />
               {item.label}
               {item.label === 'Bookings' && (
                 <span className="ml-auto bg-indigo-500/20 text-indigo-400 text-[10px] font-bold px-2 py-0.5 rounded-full">12</span>
               )}
-            </button>
+            </Link>
           ))}
         </nav>
 

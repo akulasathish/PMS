@@ -42,27 +42,54 @@ export default function Tier3FrontDesk() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [property, setProperty] = useState<{name: string} | null>(null);
   const supabase = createClient();
   const router = useRouter();
 
   React.useEffect(() => {
     async function fetchData() {
       setIsLoading(true);
-      
-      // Fetch rooms
-      const { data: roomsData } = await supabase
-        .from('rooms')
-        .select('*')
-        .order('room_number', { ascending: true });
+      const { data: authData } = await supabase.auth.getUser();
+      const user = authData?.user;
 
-      // Fetch active bookings (Confirmed or Checked In)
-      const { data: bookingsData } = await supabase
-        .from('bookings')
-        .select('*')
-        .in('status', ['Confirmed', 'Checked In']);
+      if (!user) {
+        setIsLoading(false);
+        return;
+      }
 
-      if (roomsData) setRooms(roomsData);
-      if (bookingsData) setBookings(bookingsData);
+      // 1. Get the staff's property_id from their profile
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('property_id')
+        .eq('id', user.id)
+        .single();
+
+      if (profile?.property_id) {
+        // 2. Fetch property details for the header
+        const { data: propData } = await supabase
+          .from('properties')
+          .select('name')
+          .eq('id', profile.property_id)
+          .single();
+        if (propData) setProperty(propData);
+
+        // 3. Fetch rooms ONLY for this property
+        const { data: roomsData } = await supabase
+          .from('rooms')
+          .select('*')
+          .eq('property_id', profile.property_id)
+          .order('room_number', { ascending: true }); 
+
+        // 4. Fetch active bookings (Confirmed or Checked In) ONLY for this property
+        const { data: bookingsData } = await supabase
+          .from('bookings')
+          .select('*')
+          .eq('property_id', profile.property_id)
+          .in('status', ['Confirmed', 'Checked In']);
+
+        if (roomsData) setRooms(roomsData);
+        if (bookingsData) setBookings(bookingsData);
+      }
       setIsLoading(false);
     }
 
@@ -97,7 +124,7 @@ export default function Tier3FrontDesk() {
         <div className="flex items-center gap-6">
           <div>
             <h1 className="text-xl font-bold text-white tracking-tight">Front Desk</h1>
-            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Grand Hyatt Regency • Day Shift</p>
+            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{property?.name || 'Loading Architecture...'} • Day Shift</p>
           </div>
           <div className="h-8 w-[1px] bg-white/10" />
           <div className="flex gap-4">
@@ -243,11 +270,11 @@ export default function Tier3FrontDesk() {
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-zinc-950/50 p-3 rounded-xl border border-white/5">
                 <p className="text-[9px] font-bold text-zinc-500 uppercase">Total Rooms</p>
-                <p className="text-xl font-bold text-white">45</p>
+                <p className="text-xl font-bold text-white">{rooms.length}</p>
               </div>
               <div className="bg-zinc-950/50 p-3 rounded-xl border border-white/5">
                 <p className="text-[9px] font-bold text-zinc-500 uppercase">Available</p>
-                <p className="text-xl font-bold text-emerald-500">18</p>
+                <p className="text-xl font-bold text-emerald-500">{rooms.filter(r => r.status === 'Available' || r.status === 'clean').length}</p>
               </div>
             </div>
           </div>
