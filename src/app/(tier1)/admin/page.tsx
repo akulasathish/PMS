@@ -5,10 +5,12 @@ import { motion } from 'framer-motion';
 import { 
   Building2, Users, Activity, Plus,
   ShieldCheck, Zap, MoreVertical, Bell,
-  ShieldAlert, ArrowUpRight, LogOut, Loader2 
+  ShieldAlert, ArrowUpRight, LogOut, Loader2,
+  X 
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { registerProperty } from '@/app/actions/property';
 
 
 // --- PREMIUM UI COMPONENTS ---
@@ -48,6 +50,11 @@ interface Property {
 
 export default function Tier1Admin() {
   const [showBroadcast, setShowBroadcast] = useState(false);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [registerLoading, setRegisterLoading] = useState(false);
+  const [registerError, setRegisterError] = useState('');
+  const [generatedCredentials, setGeneratedCredentials] = useState<{email: string, password: string} | null>(null);
+  
   const [isLoading, setIsLoading] = useState(true);
   const [properties, setProperties] = useState<Property[]>([]);
   const supabase = createClient();
@@ -70,6 +77,29 @@ export default function Tier1Admin() {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.refresh();
+  };
+
+  const handleRegister = async (formData: FormData) => {
+    setRegisterLoading(true);
+    setRegisterError('');
+    setGeneratedCredentials(null);
+
+    const email = formData.get('ownerEmail') as string;
+
+    const result = await registerProperty(formData);
+    
+    if (result?.error) {
+      setRegisterError(result.error);
+    } else if (result?.dummyPassword) {
+      setGeneratedCredentials({
+        email: email,
+        password: result.dummyPassword
+      });
+      // Refresh the property list locally to show it immediately without full reload
+      const { data } = await supabase.from('properties').select('*').order('name', { ascending: true });
+      if (data) setProperties(data);
+    }
+    setRegisterLoading(false);
   };
 
   // Aggregates
@@ -109,7 +139,9 @@ export default function Tier1Admin() {
             </span>
           </button>
           
-          <button className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg font-medium transition-all shadow-[0_0_20px_rgba(79,70,229,0.3)]">
+          <button 
+            onClick={() => setShowRegisterModal(true)}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg font-medium transition-all shadow-[0_0_20px_rgba(79,70,229,0.3)]">
             <Plus size={18} />
             Register Property
           </button>
@@ -263,6 +295,109 @@ export default function Tier1Admin() {
           </GlassCard>
         </div>
       </div>
+
+      {/* REGISTRATION MODAL */}
+      {showRegisterModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-md bg-[#09090b] border border-white/10 rounded-2xl overflow-hidden shadow-2xl"
+          >
+            <div className="flex justify-between items-center p-6 border-b border-white/5">
+              <h2 className="text-xl font-bold text-white">Register New Property</h2>
+              <button onClick={() => { setShowRegisterModal(false); setGeneratedCredentials(null); setRegisterError(''); }} className="text-zinc-500 hover:text-white transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {generatedCredentials ? (
+                <div className="space-y-6">
+                  <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-center">
+                    <ShieldCheck size={32} className="text-emerald-400 mx-auto mb-3" />
+                    <h3 className="text-lg font-bold text-emerald-400 mb-1">Property Live in Fleet</h3>
+                    <p className="text-xs text-emerald-500/80">Owner profile generated successfully. Please securely transmit these credentials to the owner.</p>
+                  </div>
+                  
+                  <div className="bg-black/50 border border-white/5 rounded-xl p-4 space-y-4">
+                    <div>
+                      <label className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Owner Email</label>
+                      <p className="text-sm text-white font-mono mt-1">{generatedCredentials.email}</p>
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Temporary Access Key</label>
+                      <div className="flex items-center justify-between bg-zinc-900 border border-white/10 rounded-lg px-3 py-2 mt-1">
+                        <p className="text-sm font-bold text-emerald-400 font-mono tracking-widest">{generatedCredentials.password}</p>
+                      </div>
+                      <p className="text-[10px] text-zinc-500 mt-2 italic">The owner will be forced to change this key upon their first login.</p>
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={() => { setShowRegisterModal(false); setGeneratedCredentials(null); }}
+                    className="w-full bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl py-3 text-sm font-bold transition-all"
+                  >
+                    Done
+                  </button>
+                </div>
+              ) : (
+                <form action={handleRegister} className="space-y-5">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Property Name</label>
+                    <input 
+                      name="propertyName"
+                      type="text" 
+                      required
+                      placeholder="e.g. The Grand Hotel"
+                      className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/50"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Owner Email</label>
+                    <input 
+                      name="ownerEmail"
+                      type="email" 
+                      required
+                      placeholder="owner@hotel.com"
+                      className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/50"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Tier Level</label>
+                    <select 
+                      name="tier"
+                      className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500/50 appearance-none"
+                    >
+                      <option value="Starter">Starter</option>
+                      <option value="Pro">Pro</option>
+                      <option value="Enterprise">Enterprise</option>
+                    </select>
+                  </div>
+
+                  {registerError && (
+                    <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-lg text-rose-400 text-xs flex items-center gap-2">
+                      <ShieldAlert size={14} />
+                      {registerError}
+                    </div>
+                  )}
+
+                  <button 
+                    type="submit"
+                    disabled={registerLoading}
+                    className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-600/50 text-white rounded-xl py-3 text-sm font-bold flex items-center justify-center gap-2 transition-all"
+                  >
+                    {registerLoading ? <Loader2 size={16} className="animate-spin" /> : 'Launch Property into Fleet'}
+                  </button>
+                </form>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -21,11 +21,12 @@ import {
   Bell,
   Search,
   LogOut,
-  Building2,
   ChevronDown,
   Loader2,
   Activity,
-  Clock
+  Clock,
+  KeyRound,
+  ShieldAlert
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
@@ -132,6 +133,10 @@ const StatCard = ({ title, value, subtitle, icon: Icon, color = "indigo", trend,
 
 export default function Tier2Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
+  const [isResetLoading, setIsResetLoading] = useState(false);
+  const [resetError, setResetError] = useState('');
+  const [requiresPasswordReset, setRequiresPasswordReset] = useState(false);
+  
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [property, setProperty] = useState<Property | null>(null);
@@ -142,37 +147,98 @@ export default function Tier2Dashboard() {
     async function fetchData() {
       setIsLoading(true);
       
-      // Fetch property details (assuming we are managing the first one for now)
-      const { data: propData } = await supabase
-        .from('properties')
-        .select('*')
-        .limit(1)
-        .single();
+      const { data: authData } = await supabase.auth.getUser();
+      const user = authData?.user;
       
-      if (propData) {
-        setProperty(propData);
-        
-        // Fetch rooms for this property
-        const { data: roomsData } = await supabase
-          .from('rooms')
-          .select('*')
-          .eq('property_id', propData.id);
-        
-        // Fetch bookings for this property
-        const { data: bookingsData } = await supabase
-          .from('bookings')
-          .select('*')
-          .eq('property_id', propData.id)
-          .order('check_in', { ascending: false });
+      if (!user) {
+        setIsLoading(false);
+        return;
+      }
 
-        if (roomsData) setRooms(roomsData);
-        if (bookingsData) setBookings(bookingsData);
+      // Check for forced password reset
+      if (user.user_metadata?.requires_password_change === true) {
+        setRequiresPasswordReset(true);
+        setIsLoading(false);
+        return; // Don't load dashboard data until they reset
+      }
+
+      // Fetch the owner's profile to get their specific property_id
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('property_id')
+        .eq('id', user.id)
+        .single();
+        
+      if (profile?.property_id) {
+        // Fetch property details
+        const { data: propData } = await supabase
+          .from('properties')
+          .select('*')
+          .eq('id', profile.property_id)
+          .single();
+        
+        if (propData) {
+          setProperty(propData);
+          
+          // Fetch rooms for THIS property
+          const { data: roomsData } = await supabase
+            .from('rooms')
+            .select('*')
+            .eq('property_id', propData.id);
+          
+          // Fetch bookings for THIS property
+          const { data: bookingsData } = await supabase
+            .from('bookings')
+            .select('*')
+            .eq('property_id', propData.id)
+            .order('check_in', { ascending: false });
+
+          if (roomsData) setRooms(roomsData);
+          if (bookingsData) setBookings(bookingsData);
+        }
       }
       setIsLoading(false);
     }
 
     fetchData();
   }, [supabase]);
+
+  const handlePasswordReset = async (formData: FormData) => {
+    setIsResetLoading(true);
+    setResetError('');
+    
+    const newPassword = formData.get('newPassword') as string;
+    const confirmPassword = formData.get('confirmPassword') as string;
+
+    if (newPassword !== confirmPassword) {
+      setResetError('Passwords do not match.');
+      setIsResetLoading(false);
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setResetError('Password must be at least 8 characters long.');
+      setIsResetLoading(false);
+      return;
+    }
+
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+      data: { requires_password_change: false }
+    });
+
+    if (error) {
+      setResetError(error.message);
+      setIsResetLoading(false);
+      return;
+    }
+
+    // Success! Hide modal and trigger standard data load
+    setRequiresPasswordReset(false);
+    
+    // Quick reload strategy
+    window.location.reload();
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -186,6 +252,84 @@ export default function Tier2Dashboard() {
   const totalRoomsCount = rooms.length || 1;
   const occupancyRate = ((occupiedRooms / totalRoomsCount) * 100).toFixed(1);
   const avgDailyRate = bookings.length > 0 ? (totalRevenue / bookings.length).toFixed(0) : "0";
+
+  if (requiresPasswordReset) {
+    return (
+      <div className="fixed inset-0 bg-[#060608] flex items-center justify-center p-6 z-50 font-sans selection:bg-emerald-500/30 overflow-hidden">
+        {/* Background Decor */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-[20%] left-[15%] w-[300px] h-[300px] bg-amber-500/5 rounded-full blur-[100px]" />
+        </div>
+
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="w-[360px] relative z-10 flex flex-col items-center"
+        >
+          {/* Logo Area */}
+          <div className="flex flex-col items-center mb-6">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mb-3 shadow-[0_0_20px_rgba(245,158,11,0.1)]">
+              <KeyRound size={20} />
+            </div>
+            <h1 className="text-xl font-bold text-white tracking-tight">Security Update</h1>
+            <p className="text-zinc-500 text-[10px] text-center mt-2 font-medium">Please verify your identity by replacing the system-generated key with your own permanent password.</p>
+          </div>
+
+          <div className="w-full bg-zinc-900/60 backdrop-blur-3xl border border-white/[0.08] rounded-[2rem] p-7 shadow-2xl shadow-black">
+            <form action={handlePasswordReset} className="space-y-4">
+              
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest ml-1">New Password</label>
+                <div className="relative group">
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-amber-400 transition-colors">
+                    <KeyRound size={14} />
+                  </div>
+                  <input 
+                    name="newPassword"
+                    type="password"
+                    required
+                    placeholder="••••••••"
+                    className="w-full bg-black/60 border border-white/[0.05] rounded-xl py-2.5 pl-10 pr-4 text-white text-sm placeholder:text-zinc-800 focus:outline-none focus:border-amber-500/40 transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest ml-1">Confirm Password</label>
+                <div className="relative group">
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-amber-400 transition-colors">
+                    <KeyRound size={14} />
+                  </div>
+                  <input 
+                    name="confirmPassword"
+                    type="password"
+                    required
+                    placeholder="••••••••"
+                    className="w-full bg-black/60 border border-white/[0.05] rounded-xl py-2.5 pl-10 pr-4 text-white text-sm placeholder:text-zinc-800 focus:outline-none focus:border-amber-500/40 transition-all"
+                  />
+                </div>
+              </div>
+
+              {resetError && (
+                <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-lg text-rose-400 text-xs flex items-center gap-2 mt-2">
+                  <ShieldAlert size={14} />
+                  {resetError}
+                </div>
+              )}
+
+              <button 
+                type="submit"
+                disabled={isResetLoading}
+                className="w-full bg-amber-600 hover:bg-amber-500 disabled:bg-amber-600/50 text-white rounded-xl py-3 font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-lg shadow-amber-500/10 mt-3"
+              >
+                {isResetLoading ? <Loader2 size={14} className="animate-spin" /> : 'Lock Credentials & Enter'}
+              </button>
+            </form>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-[#08080a]">
