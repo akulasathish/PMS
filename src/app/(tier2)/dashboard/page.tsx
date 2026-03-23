@@ -26,7 +26,8 @@ import {
   Activity,
   Clock,
   KeyRound,
-  ShieldAlert
+  ShieldAlert,
+  Building2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
