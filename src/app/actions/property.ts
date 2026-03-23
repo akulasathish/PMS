@@ -68,6 +68,7 @@ export async function registerProperty(formData: FormData) {
     .from('profiles')
     .insert([{
       id: authData.user.id,
+      email: ownerEmail,
       role: 'owner',
       property_id: propertyData.id,
       full_name: 'Property Owner'

@@ -32,13 +32,14 @@ import {
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { addStaff } from '@/app/actions/staff';
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", active: true },
   { icon: DoorOpen, label: "Inventory", href: "/dashboard/inventory", active: false },
   { icon: BookOpen, label: "Bookings", href: "#", active: false },
   { icon: DollarSign, label: "Finance", href: "#", active: false },
-  { icon: Users, label: "Staff", href: "#", active: false },
+  { icon: Users, label: "Staff", href: "/dashboard/staff", active: false },
   { icon: Settings, label: "Settings", href: "#", active: false },
 ];
 
@@ -136,12 +137,12 @@ const StatCard = ({ title, value, subtitle, icon: Icon, color = "indigo", trend,
 export default function Tier2Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [isResetLoading, setIsResetLoading] = useState(false);
-  const [resetError, setResetError] = useState('');
   const [requiresPasswordReset, setRequiresPasswordReset] = useState(false);
   
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [property, setProperty] = useState<Property | null>(null);
+  const [staffList, setStaffList] = useState<any[]>([]);
   const supabase = createClient();
   const router = useRouter();
 
@@ -182,7 +183,15 @@ export default function Tier2Dashboard() {
         if (propData) {
           setProperty(propData);
           
-          // Fetch rooms for THIS property
+          // 4. Fetch Staff for this property
+          const { data: staffData } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('property_id', profile.property_id)
+            .eq('role', 'staff');
+          if (staffData) setStaffList(staffData);
+
+          // 5. Fetch bookings for THIS property
           const { data: roomsData } = await supabase
             .from('rooms')
             .select('*')
@@ -552,7 +561,7 @@ export default function Tier2Dashboard() {
             {/* ===== RIGHT COLUMN ===== */}
             <div className="col-span-12 xl:col-span-4 space-y-6">
 
-              {/* TEAM CTA */}
+              {/* TEAM MANAGEMENT CTA */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -560,34 +569,59 @@ export default function Tier2Dashboard() {
                 className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 p-7 shadow-[0_20px_60px_-15px_rgba(79,70,229,0.4)]"
               >
                 <div className="relative z-10">
-                  <div className="flex items-center gap-2 mb-3">
-                    <UserPlus size={16} className="text-indigo-200" />
-                    <span className="text-[10px] font-bold text-indigo-200 uppercase tracking-[0.2em]">Team Building</span>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <Users size={16} className="text-indigo-200" />
+                      <span className="text-[10px] font-bold text-indigo-200 uppercase tracking-[0.2em]">Team Hub</span>
+                    </div>
                   </div>
-                  <h3 className="text-xl font-bold text-white tracking-tight mb-2">Grow Your Team</h3>
-                  <p className="text-[12px] text-indigo-200/70 leading-relaxed mb-6">Onboard staff members and assign roles to streamline your operations.</p>
-                  <button className="w-full bg-white text-indigo-700 py-3 rounded-xl text-[12px] font-bold flex items-center justify-center gap-2 hover:bg-indigo-50 transition-all active:scale-[0.97] shadow-[0_4px_15px_rgba(0,0,0,0.2)]">
+                  <h3 className="text-xl font-bold text-white tracking-tight mb-2">Manage Your Staff</h3>
+                  <p className="text-[11px] text-indigo-200/90 leading-relaxed mb-6">Onboard team members and control terminal access for your property.</p>
+                  
+                  <Link 
+                    href="/dashboard/staff"
+                    className="w-full bg-white text-indigo-700 py-3 rounded-xl text-[12px] font-bold flex items-center justify-center gap-2 hover:bg-indigo-50 transition-all active:scale-[0.97] shadow-[0_4px_15px_rgba(0,0,0,0.2)]"
+                  >
                     <UserPlus size={15} />
-                    Invite Staff Member
-                  </button>
+                    Open Staff Manager
+                  </Link>
                 </div>
-                {/* Decorative orbs */}
-                <div className="absolute -top-12 -right-12 w-40 h-40 bg-white/[0.08] rounded-full blur-3xl" />
-                <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-violet-500/20 rounded-full blur-3xl" />
+                <div className="absolute -top-12 -right-12 w-40 h-40 bg-white/[0.08] rounded-full blur-3xl pointer-events-none" />
+                <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-violet-500/20 rounded-full blur-3xl pointer-events-none" />
               </motion.div>
 
-              {/* STAFF MONITOR (Placeholder) */}
+              {/* STAFF OVERVIEW */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 }}
                 className="bg-zinc-900/40 backdrop-blur-md border border-white/[0.06] rounded-2xl p-7"
               >
-                <div className="flex items-center gap-2.5">
-                  <Activity size={14} className="text-indigo-400" />
-                  <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-[0.15em]">Staff Activity</h3>
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-2.5">
+                    <Activity size={14} className="text-indigo-400" />
+                    <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-[0.15em]">Recent Staff</h3>
+                  </div>
+                  <Link href="/dashboard/staff" className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors uppercase tracking-wider">View All</Link>
                 </div>
-                <p className="text-[11px] text-zinc-600 italic text-center py-4">Live staff tracking coming soon.</p>
+                
+                {staffList.length === 0 ? (
+                  <p className="text-[11px] text-zinc-600 italic text-center py-4">No staff provisioned yet.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {staffList.slice(0, 3).map((st) => (
+                      <div key={st.id} className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-white/5 flex items-center justify-center text-[10px] font-mono text-zinc-400 uppercase">
+                          {st.email.substring(0, 2)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[12px] font-medium text-white truncate">{st.email}</p>
+                        </div>
+                        <div className="w-1 h-1 rounded-full bg-emerald-500" />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </motion.div>
 
               {/* QUICK MANAGEMENT */}

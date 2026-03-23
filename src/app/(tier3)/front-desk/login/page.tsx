@@ -42,9 +42,9 @@ export default function FrontDeskLogin() {
       return;
     }
 
-    // Role check - ensure this user is 'front-desk'
+    // Role check - ensure this user is 'front-desk' or 'staff'
     const role = data.user?.user_metadata?.role;
-    if (role !== 'front-desk') {
+    if (role !== 'front-desk' && role !== 'staff') {
       await supabase.auth.signOut();
       setError('Access denied. You do not have front-desk permissions.');
       setIsLoading(false);
