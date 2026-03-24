@@ -137,6 +137,7 @@ const StatCard = ({ title, value, subtitle, icon: Icon, color = "indigo", trend,
 export default function Tier2Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [isResetLoading, setIsResetLoading] = useState(false);
+  const [resetError, setResetError] = useState('');
   const [requiresPasswordReset, setRequiresPasswordReset] = useState(false);
   
   const [bookings, setBookings] = useState<Booking[]>([]);
