@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
+import BookingModal from './BookingModal';
 
 const DAYS = ["22 Mar", "23 Mar", "24 Mar", "25 Mar", "26 Mar", "27 Mar", "28 Mar"];
 
@@ -48,6 +49,8 @@ export default function Tier3FrontDesk() {
   const [resetError, setResetError] = useState('');
   const [requiresPasswordReset, setRequiresPasswordReset] = useState(false);
   const [property, setProperty] = useState<{name: string} | null>(null);
+  const [propertyId, setPropertyId] = useState<string | null>(null);
+  const [showBookingModal, setShowBookingModal] = useState(false);
   const supabase = createClient();
   const router = useRouter();
 
@@ -77,6 +80,8 @@ export default function Tier3FrontDesk() {
         .single();
 
       if (profile?.property_id) {
+        setPropertyId(profile.property_id);
+        
         // 2. Fetch property details for the header
         const { data: propData } = await supabase
           .from('properties')
@@ -271,7 +276,10 @@ export default function Tier3FrontDesk() {
               className="bg-zinc-950 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-xs opacity-50 cursor-not-allowed w-64"
             />
           </div>
-          <button className="bg-azure-600 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-azure-500 transition-all shadow-lg shadow-azure-500/20">
+          <button 
+            onClick={() => setShowBookingModal(true)}
+            className="bg-azure-600 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-azure-500 transition-all shadow-lg shadow-azure-500/20"
+          >
             <Plus size={16} />
             New Booking
           </button>
@@ -403,6 +411,16 @@ export default function Tier3FrontDesk() {
         </div>
 
       </div>
+
+      {/* MODALS */}
+      {propertyId && (
+        <BookingModal 
+          isOpen={showBookingModal} 
+          onClose={() => setShowBookingModal(false)} 
+          propertyId={propertyId} 
+          rooms={rooms.filter(r => r.status === 'Available')} 
+        />
+      )}
     </div>
   );
 }
