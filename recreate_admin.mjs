@@ -23,7 +23,7 @@ async function reset() {
   
   const { data, error } = await supabase.auth.admin.createUser({
     email: 'admin@pms.com',
-    password: '8686113435',
+    password: 'password123',
     email_confirm: true,
     user_metadata: { role: 'admin' }
   })
