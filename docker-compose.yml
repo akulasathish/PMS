@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: n8n
+    restart: always
+    ports:
+      - "5678:5678"
+    environment:
+      # Use an environment variable to set up the n8n timezone
+      - GENERIC_TIMEZONE=UTC
+      # Provide a default webhook URL for local testing
+      - WEBHOOK_URL=http://localhost:5678/
+      # (Optional) You can pass your Resend API Key directly as an env var to n8n if preferred
+      # - RESEND_API_KEY=${RESEND_API_KEY}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      # Attach n8n to the existing Supabase CLI docker network
+      - supabase_network_pms
+
+volumes:
+  n8n_data:
+
+networks:
+  # Reference the external network created by `npx supabase start`
+  supabase_network_pms:
+    external: true

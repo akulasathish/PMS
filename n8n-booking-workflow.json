@@ -1,0 +1,91 @@
+{
+  "name": "Send Welcome Email via Resend",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "booking-notification",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "e0b96ed5-3c1a-4d7a-8f54-d8e23f0ab78f",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "booking-notification"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "from",
+              "value": "Acme <onboarding@resend.dev>"
+            },
+            {
+              "name": "to",
+              "value": "={{ $json.body.guest_email }}"
+            },
+            {
+              "name": "subject",
+              "value": "Welcome to Your Stay!"
+            },
+            {
+              "name": "html",
+              "value": "=<p>Hi {{ $json.body.guest_name }},</p><p>We are excited to welcome you! Your check-in date is {{ $json.body.check_in }}.</p><p>Best regards,</p><p>The Hotel Team</p>"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3b2c1d5e-4f5b-4c5d-8a6e-7f8a9b0c1d2e",
+      "name": "Resend API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        450,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "1",
+          "name": "Resend API Key"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Resend API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {}
+}
