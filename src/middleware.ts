@@ -82,6 +82,17 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // Check property suspension for non-admin users
+  if (user && user.user_metadata?.role !== 'admin' && !pathname.endsWith('/login')) {
+    const { data: profile } = await supabase.from('profiles').select('property_id').eq('id', user.id).single()
+    if (profile?.property_id) {
+      const { data: property } = await supabase.from('properties').select('status').eq('id', profile.property_id).single()
+      if (property?.status === 'Suspended') {
+        return NextResponse.redirect(new URL('/payment-required', request.url))
+      }
+    }
+  }
+
   return response
 }
 

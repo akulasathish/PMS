@@ -11,6 +11,7 @@ import {
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { registerProperty } from '@/app/actions/property';
+import PropertyStatusToggle from './PropertyStatusToggle';
 
 
 // --- PREMIUM UI COMPONENTS ---
@@ -45,6 +46,7 @@ interface Property {
   id: string;
   name: string;
   tier: string;
+  status?: string;
   created_at?: string;
 }
 
@@ -176,6 +178,7 @@ export default function Tier1Admin() {
                 <tr className="text-zinc-500 text-xs uppercase tracking-widest border-b border-white/5">
                   <th className="pb-4 font-medium">Property</th>
                   <th className="pb-4 font-medium">Tier</th>
+                  <th className="pb-4 font-medium">Status</th>
                   <th className="pb-4 font-medium">Occupancy</th>
                   <th className="pb-4 font-medium">MRR</th>
                   <th className="pb-4 font-medium text-right">Settings</th>
@@ -183,7 +186,7 @@ export default function Tier1Admin() {
               </thead>
               <tbody className="text-sm">
                 {isLoading ? (
-                  <tr><td colSpan={5} className="py-20 text-center"><Loader2 className="animate-spin inline text-indigo-500" /></td></tr>
+                  <tr><td colSpan={6} className="py-20 text-center"><Loader2 className="animate-spin inline text-indigo-500" /></td></tr>
                 ) : properties.map((prop: Property, i: number) => (
                   <motion.tr 
                     initial={{ opacity: 0, x: -10 }}
@@ -201,6 +204,9 @@ export default function Tier1Admin() {
                       }`}>
                         {prop.tier}
                       </span>
+                    </td>
+                    <td className="py-4">
+                      <PropertyStatusToggle propertyId={prop.id} initialStatus={prop.status || 'Active'} />
                     </td>
                     <td className="py-4">
                       <div className="flex items-center gap-3">

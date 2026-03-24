@@ -100,3 +100,32 @@ export async function registerProperty(formData: FormData) {
     propertyId: propertyData.id
   };
 }
+
+/**
+ * Toggle property status between Active and Suspended
+ */
+export async function togglePropertyStatus(propertyId: string, currentStatus: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  if (!user || user.user_metadata?.role !== 'admin') {
+    return { error: 'Unauthorized. Only admins can toggle property status.' };
+  }
+
+  const newStatus = currentStatus === 'Active' ? 'Suspended' : 'Active';
+
+  const { error } = await supabaseAdmin
+    .from('properties')
+    .update({ status: newStatus })
+    .eq('id', propertyId);
+
+  if (error) {
+    console.error("Failed to toggle property status:", error);
+    return { error: 'Failed to toggle property status.' };
+  }
+
+  revalidatePath('/admin');
+  revalidatePath('/(tier1)/admin', 'page');
+  
+  return { success: true, newStatus };
+}
