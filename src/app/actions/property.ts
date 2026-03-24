@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@supabase/supabase-js';
+import { createClient as createSSRClient } from '@/lib/supabase/server';
 
 // Revalidate path is needed to refresh the admin dashboard
 import { revalidatePath } from 'next/cache';
@@ -21,6 +22,13 @@ const supabaseAdmin = createClient(
  * Register a new property and owner
  */
 export async function registerProperty(formData: FormData) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  if (!user || user.user_metadata?.role !== 'admin') {
+    return { error: 'Unauthorized. Only admins can register properties.' };
+  }
+
   const propertyName = formData.get('propertyName') as string;
   const ownerEmail = formData.get('ownerEmail') as string;
   // Let the user pick a tier or default to "Starter"
