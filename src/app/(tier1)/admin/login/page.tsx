@@ -47,8 +47,8 @@ export default function AdminLogin() {
       return;
     }
 
-    router.push('/admin');
     router.refresh();
+    router.push('/admin');
   };
 
   return (

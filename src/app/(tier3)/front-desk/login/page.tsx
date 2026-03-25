@@ -51,8 +51,8 @@ export default function FrontDeskLogin() {
       return;
     }
 
-    router.push('/front-desk');
     router.refresh();
+    router.push('/front-desk');
   };
 
   return (

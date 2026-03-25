@@ -53,8 +53,8 @@ export default function OwnerLogin() {
       return;
     }
 
-    router.push('/dashboard');
     router.refresh(); // Crucial for middleware to see the new session
+    router.push('/dashboard');
   };
 
   return (
