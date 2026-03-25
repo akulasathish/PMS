@@ -20,6 +20,8 @@ import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import BookingModal from './BookingModal';
 
+import { checkInGuest } from '@/app/actions/booking';
+
 const DAYS = ["22 Mar", "23 Mar", "24 Mar", "25 Mar", "26 Mar", "27 Mar", "28 Mar"];
 
 interface Room {
@@ -338,13 +340,33 @@ export default function Tier3FrontDesk() {
                               <motion.div 
                                 initial={{ scale: 0.95, opacity: 0 }}
                                 animate={{ scale: 1, opacity: 1 }}
-                                className={`absolute inset-y-2 left-2 right-[-240px] rounded-lg border p-2 flex items-center justify-between z-20 shadow-xl ${getStatusColor(room.status)}`}
+                                className={`absolute inset-y-2 left-2 right-[-240px] rounded-lg border p-2 flex items-center justify-between z-20 shadow-xl ${
+                                  booking.status === 'Confirmed' ? 'bg-amber-500/10 border-amber-500/30' : 
+                                  booking.status === 'Checked In' ? 'bg-emerald-500/10 border-emerald-500/30' : ''
+                                }`}
                               >
-                                <div className="flex items-center gap-2 overflow-hidden">
-                                  <UserCheck size={14} />
-                                  <span className="text-[11px] font-bold truncate">{booking.guest_name}</span>
+                                <div className="flex flex-col gap-0.5 overflow-hidden w-full">
+                                  <div className="flex items-center gap-2">
+                                    <UserCheck size={14} className={booking.status === 'Confirmed' ? 'text-amber-400' : 'text-emerald-400'} />
+                                    <span className="text-[11px] font-bold truncate text-white">{booking.guest_name}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between mt-1">
+                                    <span className={`text-[9px] font-black uppercase ${booking.status === 'Confirmed' ? 'text-amber-500' : 'text-emerald-500'}`}>
+                                      {booking.status}
+                                    </span>
+                                    {booking.status === 'Confirmed' && (
+                                      <button 
+                                        onClick={async () => {
+                                          const res = await checkInGuest(booking.id);
+                                          if (res.error) alert(res.error);
+                                        }}
+                                        className="bg-emerald-600 hover:bg-emerald-500 text-white text-[9px] font-bold px-2 py-1 rounded-md transition-colors"
+                                      >
+                                        Check In Guest
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
-                                <span className="text-[9px] font-black uppercase opacity-60">{booking.status}</span>
                               </motion.div>
                             ) : null}
                             {!booking && room.status === 'Dirty' ? (

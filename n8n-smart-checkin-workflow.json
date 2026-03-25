@@ -1,0 +1,91 @@
+{
+  "name": "Smart Check-In (WiFi & Welcome)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "smart-checkin",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+      "name": "Webhook (Checked In)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "smart-checkin"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "from",
+              "value": "Acme <onboarding@resend.dev>"
+            },
+            {
+              "name": "to",
+              "value": "={{ $json.body.guest_email }}"
+            },
+            {
+              "name": "subject",
+              "value": "Welcome to Room {{ $json.body.room_number }}! Here is your WiFi."
+            },
+            {
+              "name": "html",
+              "value": "=<div style=\"font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #eaeaea; border-radius: 10px; padding: 30px;\">\n  <h2 style=\"color: #111;\">Welcome to {{ $json.body.property_name }}!</h2>\n  <p style=\"color: #444; font-size: 16px;\">Hi {{ $json.body.guest_name }},</p>\n  <p style=\"color: #444; font-size: 16px;\">We are thrilled to have you with us. You are successfully checked into <strong>Room {{ $json.body.room_number }}</strong>.</p>\n  \n  <div style=\"background: #f4f4f5; padding: 20px; border-radius: 8px; margin: 25px 0;\">\n    <p style=\"margin: 0 0 10px 0; font-size: 14px; color: #666; text-transform: uppercase; letter-spacing: 1px;\">Secure WiFi Access</p>\n    <p style=\"margin: 5px 0; font-size: 16px;\"><strong>Network:</strong> {{ $json.body.wifi_network }}</p>\n    <p style=\"margin: 5px 0; font-size: 16px;\"><strong>Password:</strong> {{ $json.body.wifi_password }}</p>\n  </div>\n\n  <p style=\"color: #444; font-size: 16px;\">If you need anything, please visit the front desk or reply to this email.</p>\n  <p style=\"color: #888; font-size: 14px; margin-top: 30px;\">Enjoy your stay,<br>The Front Desk Team</p>\n</div>"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f5e4d3c2-b1a0-9f8e-7d6c-5b4a3c2d1e0f",
+      "name": "Resend API (Smart Check-In)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        450,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "1",
+          "name": "Resend API Key"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook (Checked In)": {
+      "main": [
+        [
+          {
+            "node": "Resend API (Smart Check-In)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {}
+}

@@ -68,3 +68,33 @@ export async function createBooking(formData: FormData) {
   
   return { success: true, bookingId: bookingData.id };
 }
+
+/**
+ * Check-In a Guest (Updates status and triggers n8n Smart Check-In)
+ */
+export async function checkInGuest(bookingId: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // Validate session and role
+  if (!user || !['staff', 'front-desk', 'owner'].includes(user.user_metadata?.role)) {
+    return { error: 'Unauthorized. Only authorized personnel can check-in guests.' };
+  }
+
+  // Update the booking status to 'Checked In'
+  const { error } = await supabaseAdmin
+    .from('bookings')
+    .update({ status: 'Checked In' })
+    .eq('id', bookingId);
+
+  if (error) {
+    console.error("Failed to check-in guest:", error);
+    return { error: `Database Error: ${error.message}` };
+  }
+
+  // Revalidate the tape chart so the status changes instantly
+  revalidatePath('/front-desk');
+  revalidatePath('/(tier3)/front-desk', 'page');
+
+  return { success: true };
+}
