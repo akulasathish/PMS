@@ -25,7 +25,11 @@ export async function registerProperty(formData: FormData) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
   
+  console.log("SERVER ACTION `registerProperty` CALLED");
+  console.log("1. Authenticated User:", user?.id, "Role:", user?.user_metadata?.role);
+
   if (!user || user.user_metadata?.role !== 'admin') {
+    console.log("-> FAILED: Unauthorized.");
     return { error: 'Unauthorized. Only admins can register properties.' };
   }
 
@@ -34,7 +38,10 @@ export async function registerProperty(formData: FormData) {
   // Let the user pick a tier or default to "Starter"
   const tier = (formData.get('tier') as string) || 'Starter';
 
+  console.log("2. Form Data:", { propertyName, ownerEmail, tier });
+
   if (!propertyName || !ownerEmail) {
+    console.log("-> FAILED: Missing fields.");
     return { error: 'Property Name and Owner Email are required.' };
   }
 
@@ -42,6 +49,7 @@ export async function registerProperty(formData: FormData) {
   const dummyPassword = Math.random().toString(36).slice(-8);
 
   // 2. Insert the Property
+  console.log("3. Inserting Property...");
   const { data: propertyData, error: propertyError } = await supabaseAdmin
     .from('properties')
     .insert([{ name: propertyName, tier: tier }])
@@ -49,11 +57,13 @@ export async function registerProperty(formData: FormData) {
     .single();
 
   if (propertyError || !propertyData) {
-    console.error("Failed to create property:", propertyError);
+    console.error("-> FAILED to create property:", propertyError);
     return { error: 'Failed to create property in the database.' };
   }
+  console.log("-> Property Inserted:", propertyData.id);
 
   // 3. Create the User via Supabase Admin Auth
+  console.log("4. Creating Auth User...");
   const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
     email: ownerEmail,
     password: dummyPassword,
@@ -65,13 +75,15 @@ export async function registerProperty(formData: FormData) {
   });
 
   if (authError || !authData.user) {
-    console.error("Failed to create owner user:", authError);
+    console.error("-> FAILED to create owner user:", authError);
     // Rollback property creation if user creation fails
     await supabaseAdmin.from('properties').delete().eq('id', propertyData.id);
     return { error: `Failed to create owner user: ${authError?.message}` };
   }
+  console.log("-> Auth User Created:", authData.user.id);
 
   // 4. Create the Profile linking the Owner to the Property
+  console.log("5. Creating Profile...");
   const { error: profileError } = await supabaseAdmin
     .from('profiles')
     .insert([{
@@ -83,16 +95,19 @@ export async function registerProperty(formData: FormData) {
     }]);
 
   if (profileError) {
-    console.error("Failed to create owner profile:", profileError);
+    console.error("-> FAILED to create owner profile:", profileError);
     // Cleanup
     await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
     await supabaseAdmin.from('properties').delete().eq('id', propertyData.id);
     return { error: 'Failed to link owner to property.' };
   }
+  console.log("-> Profile Created!");
 
   // Revalidate the admin page so the new property shows up in the "Fleet Manager"
   revalidatePath('/admin');
   revalidatePath('/(tier1)/admin', 'page');
+  
+  console.log("-> SUCCESS: Property Registration Complete");
   
   return { 
     success: true, 

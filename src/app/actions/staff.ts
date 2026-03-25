@@ -35,6 +35,9 @@ export async function addStaff(formData: FormData) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
 
+  console.log("SERVER ACTION `addStaff` CALLED");
+  console.log("1. Authenticated User:", user?.id, "Role:", user?.user_metadata?.role);
+
   if (!user || user.user_metadata?.role !== 'owner') {
     return { error: 'Unauthorized. Only owners can add staff.' };
   }
@@ -43,11 +46,14 @@ export async function addStaff(formData: FormData) {
   const role = formData.get('role') as string;
   const propertyId = formData.get('propertyId') as string;
 
+  console.log("2. Form Data:", { email, role, propertyId });
+
   if (!email || !role || !propertyId) {
     return { error: 'Email, Role, and Property ID are required.' };
   }
 
   const dummyPassword = generateDummyPassword();
+  console.log("3. Creating staff user via Admin API...");
 
   // 1. Create the user in Supabase Auth via Admin API
   const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
@@ -61,10 +67,12 @@ export async function addStaff(formData: FormData) {
   });
 
   if (authError || !authData.user) {
-    console.error("Failed to create auth user:", authError);
+    console.error("-> FAILED to create auth user:", authError);
     return { error: `Auth Error: ${authError?.message || 'Unknown error'}` };
   }
+  console.log("-> Staff User Created:", authData.user.id);
 
+  console.log("4. Linking staff profile to property...");
   // 2. Insert into public.profiles to link them to the property and set their role
   const { error: profileError } = await supabaseAdmin
     .from('profiles')
@@ -78,9 +86,11 @@ export async function addStaff(formData: FormData) {
   if (profileError) {
     // Rollback auth user creation if profile fails
     await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
-    console.error("Failed to insert profile:", profileError);
+    console.error("-> FAILED to insert profile:", profileError);
     return { error: `Profile Error: ${profileError.message}` };
   }
+  
+  console.log("-> SUCCESS: Staff Provisioning Complete");
 
   // Revalidate the tier 2 dashboard so new staff might appear natively
   revalidatePath('/(tier2)/dashboard', 'page');
