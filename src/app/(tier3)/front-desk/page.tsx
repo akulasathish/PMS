@@ -20,7 +20,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import BookingModal from './BookingModal';
 
-import { checkInGuest } from '@/app/actions/booking';
+import { checkInGuest, checkOutGuest } from '@/app/actions/booking';
 
 const DAYS = ["22 Mar", "23 Mar", "24 Mar", "25 Mar", "26 Mar", "27 Mar", "28 Mar"];
 
@@ -363,6 +363,17 @@ export default function Tier3FrontDesk() {
                                         className="bg-emerald-600 hover:bg-emerald-500 text-white text-[9px] font-bold px-2 py-1 rounded-md transition-colors"
                                       >
                                         Check In Guest
+                                      </button>
+                                    )}
+                                    {booking.status === 'Checked In' && (
+                                      <button 
+                                        onClick={async () => {
+                                          const res = await checkOutGuest(booking.id, room.id);
+                                          if (res.error) alert(res.error);
+                                        }}
+                                        className="bg-rose-600 hover:bg-rose-500 text-white text-[9px] font-bold px-2 py-1 rounded-md transition-colors"
+                                      >
+                                        Check Out
                                       </button>
                                     )}
                                   </div>

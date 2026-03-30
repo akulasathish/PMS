@@ -1,0 +1,91 @@
+{
+  "name": "Guest Check-Out (Thank You & Review)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "guest-checkout",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e",
+      "name": "Webhook (Checked Out)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "guest-checkout"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "from",
+              "value": "Hotel Team <onboarding@resend.dev>"
+            },
+            {
+              "name": "to",
+              "value": "={{ $json.body.guest_email }}"
+            },
+            {
+              "name": "subject",
+              "value": "Thank you for staying at {{ $json.body.property_name }}!"
+            },
+            {
+              "name": "html",
+              "value": "=<div style=\"font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #eaeaea; border-radius: 10px; padding: 30px;\">\n  <h2 style=\"color: #111;\">Thank you for your stay!</h2>\n  <p style=\"color: #444; font-size: 16px;\">Hi {{ $json.body.guest_name }},</p>\n  <p style=\"color: #444; font-size: 16px;\">We hope you had a wonderful time at <strong>{{ $json.body.property_name }}</strong>. This is a confirmation that you have successfully checked out of <strong>Room {{ $json.body.room_number }}</strong>.</p>\n  \n  <div style=\"background: #f9fafb; padding: 20px; border-radius: 8px; margin: 25px 0; border: 1px dashed #ddd;\">\n    <p style=\"margin: 0; font-size: 14px; color: #666;\">Total Amount Paid: <strong>${{ $json.body.amount }}</strong></p>\n  </div>\n\n  <p style=\"color: #444; font-size: 16px;\">We would love to hear about your experience. Could you spare a minute to leave us a review?</p>\n  <a href=\"#\" style=\"display: inline-block; background: #6366f1; color: white; padding: 12px 25px; border-radius: 8px; text-decoration: none; font-weight: bold; margin-top: 10px;\">Leave a Review</a>\n\n  <p style=\"color: #888; font-size: 14px; margin-top: 30px;\">Safe travels,<br>The {{ $json.body.property_name }} Team</p>\n</div>"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e4d3c2b1-a0f9-8e7d-6c5b-4a3c2d1e0f9b",
+      "name": "Resend API (Check-Out)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        450,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "1",
+          "name": "Resend API Key"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook (Checked Out)": {
+      "main": [
+        [
+          {
+            "node": "Resend API (Check-Out)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {}
+}

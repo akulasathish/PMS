@@ -98,3 +98,44 @@ export async function checkInGuest(bookingId: string) {
 
   return { success: true };
 }
+
+/**
+ * Check-Out a Guest (Updates booking to 'Checked Out' and room to 'Dirty')
+ */
+export async function checkOutGuest(bookingId: string, roomId: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user || !['staff', 'front-desk', 'owner'].includes(user.user_metadata?.role)) {
+    return { error: 'Unauthorized. Only authorized personnel can check-out guests.' };
+  }
+
+  // 1. Update the booking status
+  const { error: bookingError } = await supabaseAdmin
+    .from('bookings')
+    .update({ status: 'Checked Out' })
+    .eq('id', bookingId);
+
+  if (bookingError) {
+    console.error("Failed to check-out booking:", bookingError);
+    return { error: `Booking Update Error: ${bookingError.message}` };
+  }
+
+  // 2. Mark the room as Dirty for housekeeping
+  const { error: roomError } = await supabaseAdmin
+    .from('rooms')
+    .update({ status: 'Dirty' })
+    .eq('id', roomId);
+
+  if (roomError) {
+    console.error("Failed to update room status during check-out:", roomError);
+    // Note: The booking is already checked out, but room remains occupied. 
+    // This is an inconsistency we'd ideally handle in a transaction.
+    return { error: `Room Update Error: ${roomError.message}` };
+  }
+
+  revalidatePath('/front-desk');
+  revalidatePath('/(tier3)/front-desk', 'page');
+
+  return { success: true };
+}
