@@ -77,18 +77,41 @@ export default function Tier2Inventory() {
       }
 
       // Fetch the owner's profile to get their specific property_id
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('property_id')
-        .eq('id', user.id)
-        .single();
+      const { data: accessibleProperties } = await supabase
+        .from('property_access')
+        .select(`
+          property_id,
+          properties ( id, name )
+        `)
+        .eq('user_id', user.id);
+
+      let activePropertyId = null;
+      
+      if (accessibleProperties && accessibleProperties.length > 0) {
+        const parsedPropsList = accessibleProperties.map((p: any) => p.properties);
         
-      if (profile?.property_id) {
+        // Try to get saved property from localStorage
+        const savedId = localStorage.getItem('pms_active_property');
+        if (savedId && parsedPropsList.some(p => p.id === savedId)) {
+          activePropertyId = savedId;
+        } else {
+          activePropertyId = parsedPropsList[0].id;
+        }
+      } else {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('property_id')
+          .eq('id', user.id)
+          .single();
+        if (profile?.property_id) activePropertyId = profile.property_id;
+      }
+        
+      if (activePropertyId) {
         // Fetch property details
         const { data: propData } = await supabase
           .from('properties')
           .select('*')
-          .eq('id', profile.property_id)
+          .eq('id', activePropertyId)
           .single();
         
         if (propData) {

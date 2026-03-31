@@ -10,7 +10,7 @@ import {
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { provisionOwner, getOwnersList } from '@/app/actions/owner';
+import { provisionOwner, getOwnersList, getAdminProperties } from '@/app/actions/owner';
 
 interface Property {
   id: string;
@@ -36,8 +36,8 @@ export default function AdminOwners() {
       const ownersList = await getOwnersList();
       setOwners(ownersList);
 
-      // Fetch properties for multi-select
-      const { data: props } = await supabase.from('properties').select('id, name').order('name');
+      // Fetch properties for multi-select via server action
+      const props = await getAdminProperties();
       if (props) setProperties(props);
       
       setIsLoading(false);

@@ -110,6 +110,8 @@ export async function getOwnersList() {
       email,
       full_name,
       role,
+      property_id,
+      legacy_property:properties ( name ),
       property_access (
         property_id,
         properties ( name )
@@ -119,6 +121,45 @@ export async function getOwnersList() {
 
   if (error) {
     console.error("Failed to fetch owners:", error);
+    return [];
+  }
+
+  // Normalize the data so the frontend just sees a flat array of properties per owner
+  return data.map(owner => {
+    const assignedProps = [];
+    
+    // Legacy single-property assignment
+    if (owner.legacy_property && owner.legacy_property.name) {
+      assignedProps.push({
+        property_id: owner.property_id,
+        properties: { name: owner.legacy_property.name }
+      });
+    }
+
+    // New multi-property assignments
+    if (owner.property_access && Array.isArray(owner.property_access)) {
+      assignedProps.push(...owner.property_access);
+    }
+
+    // Return flattened structure
+    return {
+      ...owner,
+      property_access: assignedProps
+    };
+  });
+}
+
+/**
+ * Fetch all properties for the Admin dropdown
+ */
+export async function getAdminProperties() {
+  const { data, error } = await supabaseAdmin
+    .from('properties')
+    .select('*')
+    .order('name');
+
+  if (error) {
+    console.error("Failed to fetch properties for dropdown:", error);
     return [];
   }
 

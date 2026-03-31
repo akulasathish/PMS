@@ -27,12 +27,12 @@ import {
   Clock,
   KeyRound,
   ShieldAlert,
-  Building2
+  Building2,
+  ChevronUpDown
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { addStaff } from '@/app/actions/staff';
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", active: true },
@@ -143,7 +143,11 @@ export default function Tier2Dashboard() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [property, setProperty] = useState<Property | null>(null);
+  const [accessiblePropsList, setAccessiblePropsList] = useState<{id: string, name: string}[]>([]);
+  const [showPropertyDropdown, setShowPropertyDropdown] = useState(false);
   const [staffList, setStaffList] = useState<any[]>([]);
+  const [userProfile, setUserProfile] = useState<any>(null);
+  
   const supabase = createClient();
   const router = useRouter();
 
@@ -163,22 +167,59 @@ export default function Tier2Dashboard() {
       if (user.user_metadata?.requires_password_change === true) {
         setRequiresPasswordReset(true);
         setIsLoading(false);
-        return; // Don't load dashboard data until they reset
+        return;
       }
 
-      // Fetch the owner's profile to get their specific property_id
+      // Fetch the owner's accessible properties using the new multi-tenant architecture
+      const { data: accessibleProperties } = await supabase
+        .from('property_access')
+        .select(`
+          property_id,
+          properties ( id, name )
+        `)
+        .eq('user_id', user.id);
+
+      // Fetch user's core profile
       const { data: profile } = await supabase
         .from('profiles')
-        .select('property_id')
+        .select('*')
         .eq('id', user.id)
         .single();
+      
+      if (profile) setUserProfile(profile);
+
+      let activePropertyId = null;
+      let parsedPropsList: {id: string, name: string}[] = [];
+      
+      if (accessibleProperties && accessibleProperties.length > 0) {
+        parsedPropsList = accessibleProperties.map((p: any) => p.properties);
+        setAccessiblePropsList(parsedPropsList);
         
-      if (profile?.property_id) {
+        // Try to get saved property from localStorage
+        const savedId = localStorage.getItem('pms_active_property');
+        if (savedId && parsedPropsList.some(p => p.id === savedId)) {
+          activePropertyId = savedId;
+        } else {
+          activePropertyId = parsedPropsList[0].id;
+          localStorage.setItem('pms_active_property', activePropertyId);
+        }
+      } else if (profile?.property_id) {
+        // Fallback to legacy single-property assignment
+        activePropertyId = profile.property_id;
+        
+        // Fetch its name for the list
+        const { data: fallbackProp } = await supabase.from('properties').select('id, name').eq('id', activePropertyId).single();
+        if (fallbackProp) {
+          setAccessiblePropsList([fallbackProp]);
+        }
+      }
+        
+      if (activePropertyId) {
         // Fetch property details
         const { data: propData } = await supabase
           .from('properties')
           .select('*')
-          .eq('id', profile.property_id)
+          .eq('id', activePropertyId)
           .single();
         
         if (propData) {
@@ -188,11 +229,11 @@ export default function Tier2Dashboard() {
           const { data: staffData } = await supabase
             .from('profiles')
             .select('*')
-            .eq('property_id', profile.property_id)
+            .eq('property_id', activePropertyId)
             .eq('role', 'staff');
           if (staffData) setStaffList(staffData);
 
-          // 5. Fetch bookings for THIS property
+          // 5. Fetch rooms for THIS property
           const { data: roomsData } = await supabase
             .from('rooms')
             .select('*')
@@ -214,6 +255,12 @@ export default function Tier2Dashboard() {
 
     fetchData();
   }, [supabase]);
+
+  const switchProperty = (propId: string) => {
+    localStorage.setItem('pms_active_property', propId);
+    setShowPropertyDropdown(false);
+    window.location.reload();
+  };
 
   const handlePasswordReset = async (formData: FormData) => {
     setIsResetLoading(true);
@@ -348,17 +395,47 @@ export default function Tier2Dashboard() {
 
       {/* ===== SIDEBAR ===== */}
       <aside className="hidden lg:flex flex-col w-[260px] border-r border-white/[0.06] bg-[#0a0a0c]/80 backdrop-blur-xl">
-        {/* Logo / Brand */}
-        <div className="p-6 pb-4">
-          <div className="flex items-center gap-3 mb-1">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.3)]">
-              <Building2 size={18} className="text-white" />
+        {/* Logo / Brand / Property Switcher */}
+        <div className="p-6 pb-4 relative">
+          <button 
+            onClick={() => setShowPropertyDropdown(!showPropertyDropdown)}
+            className="w-full flex items-center justify-between gap-3 p-2 -ml-2 rounded-xl hover:bg-white/5 transition-colors group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.3)]">
+                <Building2 size={18} className="text-white" />
+              </div>
+              <div className="text-left">
+                <h1 className="text-[13px] font-bold text-white tracking-tight truncate max-w-[130px]">{property?.name || 'Loading...'}</h1>
+                <p className="text-[10px] text-zinc-600 font-medium">Owner Dashboard</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-[13px] font-bold text-white tracking-tight">{property?.name || 'Grand Hyatt'}</h1>
-              <p className="text-[10px] text-zinc-600 font-medium">Owner Dashboard</p>
+            <ChevronUpDown size={14} className="text-zinc-600 group-hover:text-white transition-colors" />
+          </button>
+
+          {/* Dropdown Menu */}
+          {showPropertyDropdown && accessiblePropsList.length > 1 && (
+            <div className="absolute top-full left-4 right-4 mt-2 bg-[#121214] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden">
+              <div className="px-3 py-2 border-b border-white/5">
+                <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Switch Property</span>
+              </div>
+              <div className="max-h-48 overflow-y-auto">
+                {accessiblePropsList.map(prop => (
+                  <button
+                    key={prop.id}
+                    onClick={() => switchProperty(prop.id)}
+                    className={`w-full text-left px-3 py-2.5 text-xs font-medium transition-colors ${
+                      prop.id === property?.id 
+                        ? 'bg-indigo-500/10 text-indigo-400' 
+                        : 'text-zinc-400 hover:bg-white/5 hover:text-white'
+                    }`}
+                  >
+                    {prop.name}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Navigation */}

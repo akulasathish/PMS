@@ -12,6 +12,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { registerProperty, deleteProperty } from '@/app/actions/property';
+import { getAdminProperties } from '@/app/actions/owner';
 import PropertyStatusToggle from './PropertyStatusToggle';
 
 
@@ -69,16 +70,12 @@ export default function Tier1Admin() {
   React.useEffect(() => {
     async function fetchProperties() {
       setIsLoading(true);
-      const { data } = await supabase
-        .from('properties')
-        .select('*')
-        .order('name', { ascending: true });
-      
-      if (data) setProperties(data);
+      const props = await getAdminProperties();
+      if (props) setProperties(props as any[]);
       setIsLoading(false);
     }
     fetchProperties();
-  }, [supabase]);
+  }, []);
 
   // Close dropdown if clicking outside
   React.useEffect(() => {
@@ -127,9 +124,9 @@ export default function Tier1Admin() {
         email: email,
         password: result.dummyPassword
       });
-      // Refresh the property list locally to show it immediately without full reload
-      const { data } = await supabase.from('properties').select('*').order('name', { ascending: true });
-      if (data) setProperties(data);
+      // Refresh the property list natively
+      const props = await getAdminProperties();
+      if (props) setProperties(props as any[]);
     }
     setRegisterLoading(false);
   };
