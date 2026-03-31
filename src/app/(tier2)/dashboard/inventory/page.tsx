@@ -16,7 +16,8 @@ import {
   BarChart3,
   Plus,
   Loader2,
-  ShieldAlert
+  ShieldAlert,
+  ChevronsUpDown
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -61,6 +62,9 @@ export default function Tier2Inventory() {
   
   const [rooms, setRooms] = useState<Room[]>([]);
   const [property, setProperty] = useState<Property | null>(null);
+  const [propertyId, setPropertyId] = useState<string | null>(null);
+  const [accessiblePropsList, setAccessiblePropsList] = useState<{id: string, name: string}[]>([]);
+  const [showPropertyDropdown, setShowPropertyDropdown] = useState(false);
   const supabase = createClient();
   const router = useRouter();
 
@@ -86,9 +90,11 @@ export default function Tier2Inventory() {
         .eq('user_id', user.id);
 
       let activePropertyId = null;
+      let parsedPropsList: {id: string, name: string}[] = [];
       
       if (accessibleProperties && accessibleProperties.length > 0) {
-        const parsedPropsList = accessibleProperties.map((p: any) => p.properties);
+        parsedPropsList = accessibleProperties.map((p: any) => p.properties);
+        setAccessiblePropsList(parsedPropsList);
         
         // Try to get saved property from localStorage
         const savedId = localStorage.getItem('pms_active_property');
@@ -104,9 +110,18 @@ export default function Tier2Inventory() {
           .eq('id', user.id)
           .single();
         if (profile?.property_id) activePropertyId = profile.property_id;
+
+        if (activePropertyId) {
+          const { data: fallbackProp } = await supabase.from('properties').select('id, name').eq('id', activePropertyId).single();
+          if (fallbackProp) {
+            setAccessiblePropsList([fallbackProp]);
+          }
+        }
       }
         
       if (activePropertyId) {
+        setPropertyId(activePropertyId);
+        
         // Fetch property details
         const { data: propData } = await supabase
           .from('properties')
@@ -132,6 +147,12 @@ export default function Tier2Inventory() {
 
     fetchData();
   }, [supabase]);
+
+  const switchProperty = (propId: string) => {
+    localStorage.setItem('pms_active_property', propId);
+    setShowPropertyDropdown(false);
+    window.location.reload();
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -167,18 +188,48 @@ export default function Tier2Inventory() {
 
   return (
     <div className="flex min-h-screen bg-[#08080a]">
-      {/* ===== SIDEBAR ===== */}
+      {/* SIDEBAR */}
       <aside className="hidden lg:flex flex-col w-[260px] border-r border-white/[0.06] bg-[#0a0a0c]/80 backdrop-blur-xl">
-        <div className="p-6 pb-4">
-          <div className="flex items-center gap-3 mb-1">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.3)]">
-              <Building2 size={18} className="text-white" />
+        <div className="p-6 pb-4 relative">
+          <button 
+            onClick={() => setShowPropertyDropdown(!showPropertyDropdown)}
+            className="w-full flex items-center justify-between gap-3 p-2 -ml-2 rounded-xl hover:bg-white/5 transition-colors group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.3)]">
+                <Building2 size={18} className="text-white" />
+              </div>
+              <div className="text-left">
+                <h1 className="text-[13px] font-bold text-white tracking-tight truncate max-w-[130px]">{property?.name || 'Loading...'}</h1>
+                <p className="text-[10px] text-zinc-600 font-medium">Owner Dashboard</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-[13px] font-bold text-white tracking-tight">{property?.name || 'Loading...'}</h1>
-              <p className="text-[10px] text-zinc-600 font-medium">Owner Dashboard</p>
+            <ChevronsUpDown size={14} className="text-zinc-600 group-hover:text-white transition-colors" />
+          </button>
+
+          {/* Dropdown Menu */}
+          {showPropertyDropdown && accessiblePropsList.length > 1 && (
+            <div className="absolute top-full left-4 right-4 mt-2 bg-[#121214] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden">
+              <div className="px-3 py-2 border-b border-white/5">
+                <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Switch Property</span>
+              </div>
+              <div className="max-h-48 overflow-y-auto">
+                {accessiblePropsList.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => switchProperty(p.id)}
+                    className={`w-full text-left px-3 py-2.5 text-xs font-medium transition-colors ${
+                      p.id === property?.id 
+                        ? 'bg-indigo-500/10 text-indigo-400' 
+                        : 'text-zinc-400 hover:bg-white/5 hover:text-white'
+                    }`}
+                  >
+                    {p.name}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <nav className="flex-1 px-3 space-y-1">

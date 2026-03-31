@@ -28,7 +28,7 @@ import {
   KeyRound,
   ShieldAlert,
   Building2,
-  ChevronUpDown
+  ChevronsUpDown
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -410,7 +410,7 @@ export default function Tier2Dashboard() {
                 <p className="text-[10px] text-zinc-600 font-medium">Owner Dashboard</p>
               </div>
             </div>
-            <ChevronUpDown size={14} className="text-zinc-600 group-hover:text-white transition-colors" />
+            <ChevronsUpDown size={14} className="text-zinc-600 group-hover:text-white transition-colors" />
           </button>
 
           {/* Dropdown Menu */}
