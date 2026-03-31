@@ -33,6 +33,7 @@ import {
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { getRevenueData } from '@/app/actions/analytics';
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", active: true },
@@ -147,6 +148,7 @@ export default function Tier2Dashboard() {
   const [showPropertyDropdown, setShowPropertyDropdown] = useState(false);
   const [staffList, setStaffList] = useState<any[]>([]);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [revenueData, setRevenueData] = useState<{date: string, revenue: number}[]>([]);
   
   const supabase = createClient();
   const router = useRouter();
@@ -248,6 +250,12 @@ export default function Tier2Dashboard() {
 
           if (roomsData) setRooms(roomsData);
           if (bookingsData) setBookings(bookingsData);
+
+          // Fetch analytics data
+          const analyticsRes = await getRevenueData(propData.id);
+          if (analyticsRes.success && analyticsRes.data) {
+            setRevenueData(analyticsRes.data);
+          }
         }
       }
       setIsLoading(false);
@@ -562,9 +570,51 @@ export default function Tier2Dashboard() {
                   </div>
                 </div>
 
-                {/* Bar Chart (Placeholder) */}
-                <div className="flex items-end justify-center h-[180px] border border-white/5 rounded-xl bg-white/[0.01]">
-                   <p className="text-[11px] text-zinc-700">Analytics processing...</p>
+                {/* Dynamic SVG Bar Chart */}
+                <div className="flex items-end justify-between h-[180px] mt-6 pt-4 border-b border-white/[0.04] relative">
+                  {isLoading ? (
+                    <div className="absolute inset-0 flex items-center justify-center"><Loader2 className="animate-spin text-indigo-500/50" size={20} /></div>
+                  ) : revenueData.length === 0 ? (
+                    <div className="absolute inset-0 flex items-center justify-center"><p className="text-[11px] text-zinc-600">No revenue data available.</p></div>
+                  ) : (
+                    <>
+                      {/* Y-axis guidelines */}
+                      <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+                        {[4, 3, 2, 1, 0].map((i) => (
+                          <div key={i} className="w-full border-t border-white/[0.02] h-0 relative">
+                            <span className="absolute -top-2.5 -left-8 text-[9px] text-zinc-600">${Math.round((Math.max(...revenueData.map(d => d.revenue)) * (i/4)) / 100) * 100}</span>
+                          </div>
+                        ))}
+                      </div>
+                      
+                      {/* Bars */}
+                      <div className="w-full h-full flex items-end justify-between gap-1 z-10 pl-2">
+                        {revenueData.slice(-14).map((day, i) => {
+                          const maxRev = Math.max(...revenueData.map(d => d.revenue)) || 1;
+                          const heightPct = Math.max((day.revenue / maxRev) * 100, 2); // min 2% height
+                          return (
+                            <div key={i} className="relative group flex-1 flex flex-col items-center justify-end h-full">
+                              <motion.div 
+                                initial={{ height: 0 }}
+                                animate={{ height: `${heightPct}%` }}
+                                transition={{ delay: 0.1 + (i * 0.05), duration: 0.8, type: "spring" }}
+                                className="w-full max-w-[12px] bg-gradient-to-t from-indigo-900/50 to-indigo-500/80 rounded-t-sm group-hover:from-indigo-700 group-hover:to-indigo-400 transition-colors cursor-pointer"
+                              />
+                              {/* Tooltip */}
+                              <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-800 text-white text-[10px] py-1 px-2 rounded pointer-events-none whitespace-nowrap z-20 shadow-xl border border-white/10">
+                                ${day.revenue} <br/>
+                                <span className="text-zinc-400 text-[8px] uppercase">{new Date(day.date).toLocaleDateString(undefined, {month:'short', day:'numeric'})}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
+                <div className="flex justify-between px-2 mt-3 text-[9px] text-zinc-600 font-medium uppercase tracking-wider">
+                  <span>{revenueData.length > 0 ? new Date(revenueData[Math.max(0, revenueData.length - 14)].date).toLocaleDateString(undefined, {month:'short', day:'numeric'}) : ''}</span>
+                  <span>{revenueData.length > 0 ? new Date(revenueData[revenueData.length - 1].date).toLocaleDateString(undefined, {month:'short', day:'numeric'}) : ''}</span>
                 </div>
               </motion.div>
 
