@@ -6,7 +6,7 @@ const supabaseKey = 'sb_secret_N7UND0UgjKTVK-Uodkm0Hg_xSvEMPvz'
 const supabase = createClient(supabaseUrl, supabaseKey)
 
 async function reset() {
-  const { data: listData, error: listErr } = await supabase.auth.admin.listUsers()
+  const { data: listData, error: listErr } = await supabase.auth.admin.listUsers({ perPage: 1000 })
   if (listErr) {
     console.error("listErr", listErr)
     return
@@ -14,10 +14,10 @@ async function reset() {
   
   const adminUser = listData.users.find(u => u.email === 'admin@pms.com')
   if (adminUser) {
-    await supabase.auth.admin.deleteUser(adminUser.id)
-    console.log("Deleted old admin user:", adminUser.id)
+    const { error: delErr } = await supabase.auth.admin.deleteUser(adminUser.id)
+    if(delErr) console.error("Error deleting old admin user:", delErr)
+    else console.log("Deleted old admin user:", adminUser.id)
   } else {
-    // Delete via old SQL hack if it doesn't show up here
     console.log("No old user found in listUsers")
   }
   
