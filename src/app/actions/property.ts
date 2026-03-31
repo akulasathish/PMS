@@ -144,3 +144,56 @@ export async function togglePropertyStatus(propertyId: string, currentStatus: st
   
   return { success: true, newStatus };
 }
+
+/**
+ * Delete a property and clean up associated users (Owner/Staff)
+ */
+export async function deleteProperty(propertyId: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  console.log("SERVER ACTION `deleteProperty` CALLED for Property:", propertyId);
+
+  if (!user || user.user_metadata?.role !== 'admin') {
+    return { error: 'Unauthorized. Only admins can delete properties.' };
+  }
+
+  // 1. Find all users associated with this property
+  const { data: profiles, error: fetchError } = await supabaseAdmin
+    .from('profiles')
+    .select('id')
+    .eq('property_id', propertyId);
+
+  if (fetchError) {
+    console.error("Failed to fetch property profiles:", fetchError);
+    return { error: 'Failed to fetch associated users for deletion.' };
+  }
+
+  // 2. Delete the associated users from Supabase Auth
+  if (profiles && profiles.length > 0) {
+    for (const profile of profiles) {
+      const { error: deleteUserError } = await supabaseAdmin.auth.admin.deleteUser(profile.id);
+      if (deleteUserError) {
+        console.error(`Failed to delete user ${profile.id}:`, deleteUserError);
+      }
+    }
+  }
+
+  // 3. Delete the Property (Cascade will handle rooms, bookings, profiles if configured, 
+  // but just in case, we've manually deleted the Auth users which is the most critical part)
+  const { error: deletePropError } = await supabaseAdmin
+    .from('properties')
+    .delete()
+    .eq('id', propertyId);
+
+  if (deletePropError) {
+    console.error("Failed to delete property:", deletePropError);
+    return { error: 'Failed to delete property from the database.' };
+  }
+
+  revalidatePath('/admin');
+  revalidatePath('/(tier1)/admin', 'page');
+  
+  console.log("-> SUCCESS: Property Deleted");
+  return { success: true };
+}

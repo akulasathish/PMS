@@ -6,11 +6,11 @@ import {
   Building2, Users, Activity, Plus,
   ShieldCheck, Zap, MoreVertical, Bell,
   ShieldAlert, ArrowUpRight, LogOut, Loader2,
-  X 
+  X, Trash2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { registerProperty } from '@/app/actions/property';
+import { registerProperty, deleteProperty } from '@/app/actions/property';
 import PropertyStatusToggle from './PropertyStatusToggle';
 
 
@@ -59,6 +59,9 @@ export default function Tier1Admin() {
   
   const [isLoading, setIsLoading] = useState(true);
   const [properties, setProperties] = useState<Property[]>([]);
+  const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const [propertyToDelete, setPropertyToDelete] = useState<Property | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const supabase = createClient();
   const router = useRouter();
 
@@ -76,9 +79,35 @@ export default function Tier1Admin() {
     fetchProperties();
   }, [supabase]);
 
+  // Close dropdown if clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      // Small delay prevents instant closing on the initial toggle click
+      setTimeout(() => setActiveMenu(null), 10);
+    };
+    if (activeMenu) {
+      document.addEventListener('click', handleClickOutside);
+    }
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [activeMenu]);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.refresh();
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!propertyToDelete) return;
+    setDeleteLoading(true);
+    
+    const res = await deleteProperty(propertyToDelete.id);
+    if (res.error) {
+      alert(res.error);
+    } else {
+      setProperties(properties.filter(p => p.id !== propertyToDelete.id));
+      setPropertyToDelete(null);
+    }
+    setDeleteLoading(false);
   };
 
   const handleRegister = async (formData: FormData) => {
@@ -222,10 +251,32 @@ export default function Tier1Admin() {
                       </div>
                     </td>
                     <td className="py-4 text-zinc-300 font-bold">${(totalRevenue/totalProperties/1000).toFixed(1)}k</td>
-                    <td className="py-4 text-right">
-                      <button className="text-zinc-600 hover:text-white transition-colors p-1 hover:bg-white/5 rounded">
+                    <td className="py-4 text-right relative">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveMenu(activeMenu === prop.id ? null : prop.id);
+                        }}
+                        className="text-zinc-600 hover:text-white transition-colors p-1 hover:bg-white/5 rounded"
+                      >
                         <MoreVertical size={16} />
                       </button>
+                      
+                      {activeMenu === prop.id && (
+                        <div className="absolute right-0 top-full mt-1 w-40 bg-[#0a0a0c] border border-white/10 rounded-xl shadow-xl overflow-hidden z-20">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveMenu(null);
+                              setPropertyToDelete(prop);
+                            }}
+                            className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-rose-500 hover:bg-rose-500/10 transition-colors text-left"
+                          >
+                            <Trash2 size={14} />
+                            Delete Property
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </motion.tr>
                 ))}
@@ -399,6 +450,45 @@ export default function Tier1Admin() {
                   </button>
                 </form>
               )}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {propertyToDelete && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-sm bg-[#09090b] border border-rose-500/20 rounded-2xl overflow-hidden shadow-2xl"
+          >
+            <div className="p-6 flex flex-col items-center text-center">
+              <div className="w-12 h-12 bg-rose-500/10 text-rose-500 rounded-full flex items-center justify-center mb-4 border border-rose-500/20">
+                <ShieldAlert size={24} />
+              </div>
+              <h2 className="text-lg font-bold text-white mb-2">Delete Property?</h2>
+              <p className="text-xs text-zinc-400 mb-6 leading-relaxed">
+                You are about to permanently delete <strong className="text-white">{propertyToDelete.name}</strong>. 
+                This action is irreversible and will securely terminate all associated owner and staff accounts.
+              </p>
+              
+              <div className="flex gap-3 w-full">
+                <button 
+                  onClick={() => setPropertyToDelete(null)}
+                  disabled={deleteLoading}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-white/10 text-zinc-300 font-bold text-xs hover:bg-white/5 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleDeleteConfirm}
+                  disabled={deleteLoading}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-rose-600 text-white font-bold text-xs hover:bg-rose-500 transition-colors flex items-center justify-center gap-2 disabled:bg-rose-600/50"
+                >
+                  {deleteLoading ? <Loader2 size={14} className="animate-spin" /> : 'Confirm Deletion'}
+                </button>
+              </div>
             </div>
           </motion.div>
         </div>

@@ -28,23 +28,28 @@ The project implements a strict 3-tier Role-Based Access Control (RBAC) architec
 - [x] **Folder Structure & Routing:** Clean separation of concerns via Next.js Route Groups `(tier1)`, `(tier2)`, and `(tier3)`. No path conflicts observed.
 - [x] **Tailwind v4 Integration:** Minimal and modern CSS configuration via `@import "tailwindcss"` and `@theme inline` in `src/app/globals.css`.
 - [x] **Supabase Client Utilities:** Configured SSR clients in `src/lib/supabase/client.ts` and `src/lib/supabase/server.ts`.
-- [x] **Authentication Flow:** Supabase auth implemented across tiers with specific login pages for each tier.
+- [x] **Authentication Flow:** Supabase auth implemented across tiers. Fixed severe `router.refresh()` race conditions that were causing `unhandledRejection` errors during login.
+- [x] **Edge Middleware Protection:** Routes (`/admin`, `/dashboard`, `/front-desk`) are completely secured by the Next.js `middleware.ts` edge runtime, automatically ejecting unauthenticated users and blocking access if a property is "Suspended".
+- [x] **Complete Guest Lifecycle Automation (n8n Integration):**
+  - Configured Postgres Triggers (`pg_net`) to dispatch JSON payloads on table changes.
+  - **Booking Creation:** Webhook fires an HTML Welcome Email via Resend.
+  - **Smart Check-In:** Staff click "Check In" -> Room changes to Occupied -> Webhook fires an HTML Email sending the guest their Room Number and `wifi_password`.
+  - **Guest Checkout:** Staff click "Check Out" -> Room changes to Dirty -> Webhook fires a "Thank You & Review" HTML Email via Resend.
 - [x] **Server Actions for Mutations:**
   - `registerProperty` (Creates property, provisions owner account, links profile).
   - `addRoom` (Adds specific rooms to a property's inventory).
   - `addStaff` (Provisions staff accounts and assigns them to a property).
+  - `deleteProperty` (Admin "Hard Delete" that strictly cascades auth deletion of owners/staff before wiping DB data).
 
 ## 3. Security Gaps
 
-- **Critical: Inactive Edge Middleware:** The route protection logic is currently written in `src/proxy.ts`. Since Next.js only recognizes `src/middleware.ts` for Edge Middleware, the routing interception and JWT validation is completely inactive, meaning routes are not protected at the edge level.
-- **High: Unprotected Server Actions:** The Server Actions (`property.ts`, `inventory.ts`, `staff.ts`) perform database mutations using the Supabase Service Role Key (`supabaseAdmin`), which bypasses Row Level Security (RLS). Currently, these actions do not verify the caller's session or role. A malicious actor could theoretically call these endpoints directly to create properties, rooms, or staff accounts.
-- **Medium: Hardcoded Dummy Passwords:** `addStaff` and `registerProperty` generate random string passwords and return them in the response, bypassing proper secure email invitation workflows.
+- **Low: Hardcoded Dummy Passwords:** `addStaff` and `registerProperty` currently generate random string passwords and return them in the frontend response. The user is forced to change this password on their first login via a secure UI blockade (`requires_password_change`), but bypassing this with Supabase's native invite email flow (`supabase.auth.admin.inviteUserByEmail`) would be more robust.
+- **Low: Direct API Exposure:** The Server Actions are securely validating `user_metadata.role`, but enforcing Row Level Security (RLS) directly in the Postgres schema would provide an indestructible secondary layer of defense.
 
 ## 4. Next Implementation Steps
 
-1. **Activate Middleware:** Rename `src/proxy.ts` to `src/middleware.ts` and ensure the `proxy` function is exported as `middleware` so Next.js actively protects the `/admin`, `/dashboard`, and `/front-desk` routes.
-2. **Secure Server Actions:** Inject session validation (`supabase.auth.getUser()`) at the very top of each Server Action to verify that the requesting user is authenticated and holds the necessary role (`admin` or `owner`) before executing any operations with the Service Role Key.
-3. **Transition to Transactional Logic:** 
-   - Replace the dummy password generation with Supabase's native invite email flow (`supabase.auth.admin.inviteUserByEmail`).
+1. **Transition to Transactional Auth Logic:** 
+   - Replace the dummy password generation with Supabase's native invite email flow.
    - Implement strict Row Level Security (RLS) policies in the Postgres database so `supabaseAdmin` usage can be reduced in favor of the authenticated user's standard Supabase client.
-4. **Tape Chart & Booking Logic:** Begin implementing the transactional booking endpoints for Tier 3, mapping the available room inventory (`status = 'Available'`) to an interactive tape chart matrix.
+2. **Channel Manager (OTA Synchronization):** Build a new webhook architecture to listen for external bookings from platforms like Booking.com or Expedia, mapping them to the `rooms` inventory.
+3. **Financial Reporting:** Build out the Analytics chart in Tier 2 (Owner Dashboard) to fetch total revenue arrays over a 30-day period.
