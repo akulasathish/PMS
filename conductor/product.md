@@ -18,6 +18,7 @@ To provide a cohesive intelligence layer for multi-tier property management. Onb
 
 ## Key Features (MVP Priority)
 - **Fleet Command (T1):** Global property registration and an administrative "Kill Switch" for suspending/activating properties.
+- **Owner Dashboard (T2):** Real-time financial reporting and revenue analytics for property managers.
 - **Operational Terminal (T3):** An interactive Availability Matrix (Tape Chart) for managing bookings and walk-ins.
 - **Automated Workflows:** Postgres-triggered webhooks for dispatching transactional guest emails via n8n and Resend.
 
