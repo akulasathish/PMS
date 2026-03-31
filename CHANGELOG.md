@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased] - 2026-03-24
 
 ### Added
+- **Tier 1 Owner Provisioning & Access Control:**
+  - **Admin UI:** Created a new `/admin/owners` dashboard where Admins can provision new executives and link them to multiple properties simultaneously.
+  - **Multi-Property Architecture:** Introduced the `property_access` join table, allowing a single Owner account to securely manage an unlimited fleet of properties.
+  - **Owner Onboarding Automation:** Added an `on_owner_provisioned` Postgres trigger. When an Admin links an Owner to properties, an n8n webhook instantly fires an HTML "Welcome to the Fleet" email with their login portal and temporary security key.
+- **Advanced Row Level Security (RLS):**
+  - Completely revamped Supabase Postgres RLS policies. Replaced permissive "allow all" defaults with strict, non-recursive, role-based isolation.
+  - Owners and Staff are now programmatically locked down at the database layer; they can only query or mutate rows (Properties, Rooms, Bookings, Profiles) where they have explicitly granted access in `property_access`.
 - **Complete Guest Lifecycle Automation (n8n & Resend):**
   - **Smart Check-In:** Staff can now transition a Confirmed booking to "Checked In". A new Postgres trigger automatically sends the guest an email containing their Room Number and the property's WiFi credentials (new `wifi_network` and `wifi_password` columns added to properties).
   - **Guest Checkout:** Staff can now click "Check Out". The system automatically flags the physical room as "Dirty" for housekeeping and triggers an n8n webhook to send the guest a "Thank You" email with a review link.

@@ -9,6 +9,7 @@ import {
   X, Trash2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { registerProperty, deleteProperty } from '@/app/actions/property';
 import PropertyStatusToggle from './PropertyStatusToggle';
@@ -176,6 +177,14 @@ export default function Tier1Admin() {
             <Plus size={18} />
             Register Property
           </button>
+
+          <Link 
+            href="/admin/owners"
+            className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg font-medium border border-white/5 transition-all"
+          >
+            <Users size={18} />
+            Owners
+          </Link>
         </div>
       </header>
 

@@ -23,27 +23,32 @@ graph TD
         Auth["GoTrue Authentication"]:::backend
         DB[("PostgreSQL Database (Properties, Rooms, Bookings)")]:::backend
         
-        T1 -->|Provisions Properties & Owners| DB
+        T1 -->|Provisions Properties, Owners & Access| DB
         T2 -->|Adds Rooms & Analyzes Occupancy| DB
         T3 -->|Assigns Rooms & Updates Booking Status| DB
         
         Trigger1["PG Trigger: AFTER INSERT (Booking Created)"]:::backend
         Trigger2["PG Trigger: AFTER UPDATE (Status = Checked In)"]:::backend
+        Trigger3["PG Trigger: AFTER INSERT (Property Access Linked)"]:::backend
         
         DB -.->|Status = Confirmed| Trigger1
         DB -.->|Status = Checked In| Trigger2
+        DB -.->|Owner Assigned| Trigger3
     end
 
     subgraph n8n Automation [n8n Automation Engine]
         WH1("Webhook: /webhook/booking-notification"):::automation
         WH2("Webhook: /webhook/smart-checkin"):::automation
+        WH3("Webhook: /webhook/owner-invite"):::automation
         ResendHTTP("HTTP Request: Resend Email API"):::automation
         
         Trigger1 ==>|POST JSON Payload (Guest details)| WH1
         Trigger2 ==>|POST JSON Payload (WiFi & Room data)| WH2
+        Trigger3 ==>|POST JSON Payload (Owner credentials)| WH3
         
         WH1 -->|Formats HTML Welcome Email| ResendHTTP
         WH2 -->|Formats HTML WiFi Check-In Email| ResendHTTP
+        WH3 -->|Formats HTML Owner Onboarding Email| ResendHTTP
     end
 
     subgraph External [External Services]

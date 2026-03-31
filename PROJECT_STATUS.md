@@ -35,21 +35,27 @@ The project implements a strict 3-tier Role-Based Access Control (RBAC) architec
   - **Booking Creation:** Webhook fires an HTML Welcome Email via Resend.
   - **Smart Check-In:** Staff click "Check In" -> Room changes to Occupied -> Webhook fires an HTML Email sending the guest their Room Number and `wifi_password`.
   - **Guest Checkout:** Staff click "Check Out" -> Room changes to Dirty -> Webhook fires a "Thank You & Review" HTML Email via Resend.
+- [x] **Tier 1 Owner Provisioning & Access Control:**
+  - Configured `/admin/owners` dashboard for provisioning new executives.
+  - Implemented the `property_access` join table for many-to-many property assignments.
+  - Added an `on_owner_provisioned` Postgres trigger to send n8n "Welcome to the Fleet" emails.
+- [x] **Advanced Row Level Security (RLS):**
+  - Secured `properties`, `rooms`, `bookings`, and `profiles` tables.
+  - Owners and Staff are now programmatically isolated at the database layer to only view/mutate data associated with their assigned properties.
 - [x] **Server Actions for Mutations:**
   - `registerProperty` (Creates property, provisions owner account, links profile).
+  - `provisionOwner` (Creates new executives and assigns them to multiple properties).
   - `addRoom` (Adds specific rooms to a property's inventory).
   - `addStaff` (Provisions staff accounts and assigns them to a property).
   - `deleteProperty` (Admin "Hard Delete" that strictly cascades auth deletion of owners/staff before wiping DB data).
 
 ## 3. Security Gaps
 
-- **Low: Hardcoded Dummy Passwords:** `addStaff` and `registerProperty` currently generate random string passwords and return them in the frontend response. The user is forced to change this password on their first login via a secure UI blockade (`requires_password_change`), but bypassing this with Supabase's native invite email flow (`supabase.auth.admin.inviteUserByEmail`) would be more robust.
-- **Low: Direct API Exposure:** The Server Actions are securely validating `user_metadata.role`, but enforcing Row Level Security (RLS) directly in the Postgres schema would provide an indestructible secondary layer of defense.
+- **Low: Hardcoded Dummy Passwords:** `addStaff`, `provisionOwner`, and `registerProperty` currently generate random string passwords and return them in the frontend response. The user is forced to change this password on their first login via a secure UI blockade (`requires_password_change`), but bypassing this with Supabase's native invite email flow (`supabase.auth.admin.inviteUserByEmail`) would be more robust.
 
 ## 4. Next Implementation Steps
 
 1. **Transition to Transactional Auth Logic:** 
    - Replace the dummy password generation with Supabase's native invite email flow.
-   - Implement strict Row Level Security (RLS) policies in the Postgres database so `supabaseAdmin` usage can be reduced in favor of the authenticated user's standard Supabase client.
 2. **Channel Manager (OTA Synchronization):** Build a new webhook architecture to listen for external bookings from platforms like Booking.com or Expedia, mapping them to the `rooms` inventory.
 3. **Financial Reporting:** Build out the Analytics chart in Tier 2 (Owner Dashboard) to fetch total revenue arrays over a 30-day period.

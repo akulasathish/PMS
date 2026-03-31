@@ -40,8 +40,8 @@ We have pre-configured the exact node structure needed for the PMS.
 1. In the left-hand sidebar of n8n, click on **Workflows**.
 2. Click the **Add Workflow** button in the top right corner.
 3. In the new workflow screen, click the **Settings/Menu** icon (or use the dropdown) and select **Import from File**.
-4. Browse to your project's root folder and select the `n8n-booking-workflow.json` file.
-5. You should now see two nodes appear: a **Webhook** node and a **Resend API** (HTTP Request) node.
+4. Browse to your project's root folder and select the `n8n-booking-workflow.json` or `n8n-smart-checkin-workflow.json` or `n8n-owner-invite-workflow.json` file.
+5. You should now see the workflow nodes appear.
 
 ### Step 4: Configure the Resend API Key
 To allow n8n to send emails on your behalf, you must securely add your Resend API key.
@@ -57,11 +57,22 @@ To allow n8n to send emails on your behalf, you must securely add your Resend AP
 
 ### Step 5: Attach Credentials and Activate
 1. Go back to your imported **Workflows**.
-2. Double-click the **Resend API** node to open its settings.
+2. Double-click the **Resend API** node (HTTP Request) to open its settings.
 3. In the left panel under **Authentication**, ensure it is set to **Header Auth**.
 4. In the dropdown directly below that, select the `Resend API Key` credential you just created.
 5. Close the node settings.
 6. In the top-right corner of the workflow editor, toggle the switch from Inactive to **Active**.
+
+## Available Workflows
+
+### 1. Booking Confirmation (`n8n-booking-workflow.json`)
+Fires when a new booking is created. Sends a generic welcome email.
+
+### 2. Smart Check-In (`n8n-smart-checkin-workflow.json`)
+Fires when status changes to "Checked In". Sends Room Number and WiFi credentials.
+
+### 3. Owner Onboarding (`n8n-owner-invite-workflow.json`)
+Fires when an Admin provisions a new Owner in Tier 1. Sends login portal link and assigned properties list.
 
 ### Step 6: Test the Integration
 To verify everything is working:
