@@ -2,6 +2,11 @@
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { createClient } from '@/lib/supabase/client';
+import { getRevenueData } from '@/app/actions/analytics';
+
 import {
   TrendingUp,
   DollarSign,
@@ -28,21 +33,18 @@ import {
   KeyRound,
   ShieldAlert,
   Building2,
-  ChevronsUpDown
+  ChevronsUpDown,
+  Lock,
+  Brush
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { createClient } from '@/lib/supabase/client';
-import { getRevenueData } from '@/app/actions/analytics';
 
 const NAV_ITEMS = [
-  { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", active: true },
-  { icon: Activity, label: "Front Desk", href: "/dashboard/front-desk", active: false },
-  { icon: DoorOpen, label: "Inventory", href: "/dashboard/inventory", active: false },
-  { icon: BookOpen, label: "Bookings", href: "#", active: false },
-  { icon: DollarSign, label: "Finance", href: "#", active: false },
-  { icon: Users, label: "Staff", href: "/dashboard/staff", active: false },
-  { icon: Settings, label: "Settings", href: "#", active: false },
+  { icon: LayoutDashboard, label: "Overview", href: "/dashboard", active: true, module: 'analytics' },
+  { icon: Activity, label: "Front Office", href: "/dashboard/front-office", active: false, module: 'front_office' },
+  { icon: Brush, label: "Housekeeping", href: "/dashboard/housekeeping", active: false, module: 'housekeeping' },
+  { icon: DoorOpen, label: "Inventory", href: "/dashboard/inventory", active: false, module: 'inventory' },
+  { icon: Users, label: "Staff", href: "/dashboard/staff", active: false, module: 'staff_management' },
+  { icon: Settings, label: "Settings", href: "#", active: false, module: 'settings' },
 ];
 
 interface Property {
@@ -321,6 +323,15 @@ export default function Tier2Dashboard() {
   const occupancyRate = ((occupiedRooms / totalRoomsCount) * 100).toFixed(1);
   const avgDailyRate = bookings.length > 0 ? (totalRevenue / bookings.length).toFixed(0) : "0";
 
+  // --- ACCESS CONTROL HELPER ---
+  const hasAccess = (moduleName: string) => {
+    if (!userProfile) return true; // Loading state
+    if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
+    
+    const perms = userProfile.permissions || {};
+    return perms[moduleName] !== 'none';
+  };
+
   if (requiresPasswordReset) {
     return (
       <div className="fixed inset-0 bg-[#060608] flex items-center justify-center p-6 z-50 font-sans selection:bg-emerald-500/30 overflow-hidden">
@@ -450,23 +461,32 @@ export default function Tier2Dashboard() {
         {/* Navigation */}
         <nav className="flex-1 px-3 space-y-1">
           <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-[0.2em] px-3 mb-3">Navigation</p>
-          {NAV_ITEMS.map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-300 ${
-                item.active
-                  ? 'bg-white/[0.06] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
-                  : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.02]'
-              }`}
-            >
-              <item.icon size={17} className={item.active ? 'text-indigo-400' : ''} />
-              {item.label}
-              {item.label === 'Bookings' && (
-                <span className="ml-auto bg-indigo-500/20 text-indigo-400 text-[10px] font-bold px-2 py-0.5 rounded-full">12</span>
-              )}
-            </Link>
-          ))}
+          {NAV_ITEMS.map((item) => {
+            const locked = !hasAccess(item.module);
+            return (
+              <Link
+                key={item.label}
+                href={locked ? "#" : item.href}
+                onClick={(e) => {
+                  if (locked) {
+                    e.preventDefault();
+                    alert(`Access Restricted: The ${item.label} module requires higher authorization.`);
+                  }
+                }}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-300 ${
+                  item.active
+                    ? 'bg-white/[0.06] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
+                    : locked 
+                      ? 'text-zinc-700 cursor-not-allowed'
+                      : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.02]'
+                }`}
+              >
+                <item.icon size={17} className={item.active ? 'text-indigo-400' : ''} />
+                <span className="flex-1">{item.label}</span>
+                {locked && <Lock size={12} className="text-zinc-800" />}
+              </Link>
+            );
+          })}
         </nav>
 
         {/* Sidebar Footer - User */}

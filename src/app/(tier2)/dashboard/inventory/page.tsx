@@ -17,68 +17,77 @@ import {
   Plus,
   Loader2,
   ShieldAlert,
-  ChevronsUpDown
-} from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { createClient } from '@/lib/supabase/client';
-import { addRoom } from '@/app/actions/inventory';
+  ChevronsUpDown,
+  Activity,
+  Brush,
+  Lock
+  } from 'lucide-react';
+  import { useRouter } from 'next/navigation';
+  import Link from 'next/link';
+  import { createClient } from '@/lib/supabase/client';
+  import { addRoom } from '@/app/actions/inventory';
 
-const NAV_ITEMS = [
-  { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", active: false },
-  { icon: DoorOpen, label: "Inventory", href: "/dashboard/inventory", active: true },
-  { icon: BookOpen, label: "Bookings", href: "#", active: false },
-  { icon: DollarSign, label: "Finance", href: "#", active: false },
-  { icon: Users, label: "Staff", href: "#", active: false },
-  { icon: Settings, label: "Settings", href: "#", active: false },
-];
+  const NAV_ITEMS = [
+  { icon: LayoutDashboard, label: "Overview", href: "/dashboard", active: false, module: 'analytics' },
+  { icon: Activity, label: "Front Office", href: "/dashboard/front-office", active: false, module: 'front_office' },
+  { icon: Brush, label: "Housekeeping", href: "/dashboard/housekeeping", active: false, module: 'housekeeping' },
+  { icon: DoorOpen, label: "Inventory", href: "/dashboard/inventory", active: true, module: 'inventory' },
+  { icon: Users, label: "Staff", href: "/dashboard/staff", active: false, module: 'staff_management' },
+  { icon: Settings, label: "Settings", href: "#", active: false, module: 'settings' },
+  ];
 
-interface Property {
+  interface Property {
   id: string;
   name: string;
   tier: string;
   location?: string;
-}
+  }
 
-interface Room {
+  interface Room {
   id: string;
   property_id: string;
   room_number: string;
   type: string;
   status: string;
-}
+  }
 
-// --- PREMIUM UI COMPONENTS ---
-const GlassCard = ({ children, className = "" }: { children: React.ReactNode, className?: string }) => (
+  // --- PREMIUM UI COMPONENTS ---
+  const GlassCard = ({ children, className = "" }: { children: React.ReactNode, className?: string }) => (
   <div className={`bg-zinc-900/60 backdrop-blur-xl border border-white/[0.06] rounded-2xl p-6 hover:border-white/[0.12] transition-all duration-500 ${className}`}>
     {children}
   </div>
-);
+  );
 
-export default function Tier2Inventory() {
+  export default function Tier2Inventory() {
   const [isLoading, setIsLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState('');
-  
+
   const [rooms, setRooms] = useState<Room[]>([]);
   const [property, setProperty] = useState<Property | null>(null);
   const [propertyId, setPropertyId] = useState<string | null>(null);
   const [accessiblePropsList, setAccessiblePropsList] = useState<{id: string, name: string}[]>([]);
   const [showPropertyDropdown, setShowPropertyDropdown] = useState(false);
+  const [userProfile, setUserProfile] = useState<any>(null);
+
   const supabase = createClient();
   const router = useRouter();
 
   React.useEffect(() => {
     async function fetchData() {
       setIsLoading(true);
-      
+
       const { data: authData } = await supabase.auth.getUser();
       const user = authData?.user;
-      
+
       if (!user) {
         setIsLoading(false);
         return;
       }
+
+      // Fetch user profile for RBAC
+      const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      setUserProfile(prof);
 
       // Fetch the owner's profile to get their specific property_id
       const { data: accessibleProperties } = await supabase
@@ -159,6 +168,14 @@ export default function Tier2Inventory() {
     router.refresh();
   };
 
+  // --- ACCESS CONTROL HELPER ---
+  const hasAccess = (moduleName: string) => {
+    if (!userProfile) return true; // Loading state
+    if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
+    const perms = userProfile.permissions || {};
+    return perms[moduleName] !== 'none';
+  };
+
   const handleAddRoom = async (formData: FormData) => {
     setActionLoading(true);
     setActionError('');
@@ -234,23 +251,32 @@ export default function Tier2Inventory() {
 
         <nav className="flex-1 px-3 space-y-1">
           <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-[0.2em] px-3 mb-3">Navigation</p>
-          {NAV_ITEMS.map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-300 ${
-                item.active
-                  ? 'bg-white/[0.06] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
-                  : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.02]'
-              }`}
-            >
-              <item.icon size={17} className={item.active ? 'text-indigo-400' : ''} />
-              {item.label}
-              {item.label === 'Bookings' && (
-                <span className="ml-auto bg-indigo-500/20 text-indigo-400 text-[10px] font-bold px-2 py-0.5 rounded-full">12</span>
-              )}
-            </Link>
-          ))}
+          {NAV_ITEMS.map((item) => {
+            const locked = !hasAccess(item.module);
+            return (
+              <Link
+                key={item.label}
+                href={locked ? "#" : item.href}
+                onClick={(e) => {
+                  if (locked) {
+                    e.preventDefault();
+                    alert(`Access Restricted: The ${item.label} module requires higher authorization.`);
+                  }
+                }}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-300 ${
+                  item.active
+                    ? 'bg-white/[0.06] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
+                    : locked 
+                      ? 'text-zinc-700 cursor-not-allowed'
+                      : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.02]'
+                }`}
+              >
+                <item.icon size={17} className={item.active ? 'text-indigo-400' : ''} />
+                <span className="flex-1">{item.label}</span>
+                {locked && <Lock size={12} className="text-zinc-800" />}
+              </Link>
+            );
+          })}
         </nav>
 
         <div className="p-4 border-t border-white/[0.06]">

@@ -49,6 +49,7 @@ export default function StaffManagement() {
   
   const [staffList, setStaffList] = useState<any[]>([]);
   const [property, setProperty] = useState<any | null>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
   const [accessiblePropsList, setAccessiblePropsList] = useState<{id: string, name: string}[]>([]);
   const [showPropertyDropdown, setShowPropertyDropdown] = useState(false);
   const supabase = createClient();
@@ -64,6 +65,10 @@ export default function StaffManagement() {
         setIsLoading(false);
         return;
       }
+
+      // Fetch user profile for RBAC permissions
+      const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      setUserProfile(prof);
 
       const { data: accessibleProperties } = await supabase
         .from('property_access')
@@ -161,6 +166,14 @@ export default function StaffManagement() {
     router.refresh();
   };
 
+  // --- ACCESS CONTROL HELPER ---
+  const hasAccess = (moduleName: string) => {
+    if (!userProfile) return true; 
+    if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
+    const perms = userProfile.permissions || {};
+    return perms[moduleName] !== 'none';
+  };
+
   return (
     <div className="flex min-h-screen bg-[#08080a]">
       {/* SIDEBAR */}
@@ -209,20 +222,32 @@ export default function StaffManagement() {
 
         <nav className="flex-1 px-3 space-y-1">
           <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-[0.2em] px-3 mb-3">Navigation</p>
-          {NAV_ITEMS.map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-300 ${
-                item.active
-                  ? 'bg-white/[0.06] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
-                  : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.02]'
-              }`}
-            >
-              <item.icon size={17} className={item.active ? 'text-indigo-400' : ''} />
-              {item.label}
-            </Link>
-          ))}
+          {NAV_ITEMS.map((item) => {
+            const locked = !hasAccess(item.module);
+            return (
+              <Link
+                key={item.label}
+                href={locked ? "#" : item.href}
+                onClick={(e) => {
+                  if (locked) {
+                    e.preventDefault();
+                    alert(`Access Restricted: The ${item.label} module requires higher authorization.`);
+                  }
+                }}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-300 ${
+                  item.active
+                    ? 'bg-white/[0.06] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
+                    : locked 
+                      ? 'text-zinc-700 cursor-not-allowed'
+                      : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.02]'
+                }`}
+              >
+                <item.icon size={17} className={item.active ? 'text-indigo-400' : ''} />
+                <span className="flex-1">{item.label}</span>
+                {locked && <Lock size={12} className="text-zinc-800" />}
+              </Link>
+            );
+          })}
         </nav>
 
         <div className="p-4 border-t border-white/[0.06]">
