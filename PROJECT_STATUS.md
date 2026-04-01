@@ -56,17 +56,20 @@ The project implements a strict 3-tier Role-Based Access Control (RBAC) architec
 ## 4. Next Implementation Steps
 
 1. **Staff Architect (Enterprise IAM):**
-   - Implement the granular Action-Level Permission Matrix.
-   - Build reusable role templates for owners.
-2. **Transition to Transactional Auth Logic:** 
+   - Implement the granular **Action-Level Matrix** (e.g. Check-in vs Check-out).
+   - Build **Reusable Role Templates** for Owners to save custom configurations.
+2. **Housekeeping Evolution:**
+   - Add the **"Inspect"** button for supervisors to move rooms from Clean ➡️ Ready.
+   - Implement **Minibar Posting** and cleaning timers in the mobile view.
+3. **Front Office Suite:**
+   - Implement **Room Upgrades** (Live room swapping) and **Refund Folios**.
+   - Build **Room Blocking** logic for maintenance/marriages/meetings.
+   - Implement **Guest Notes** per booking.
+4. **Transition to Transactional Auth Logic:** 
    - Replace the dummy password generation with Supabase's native invite email flow.
-3. **Housekeeping Web Dashboard:** 
-   - Create the mobile-friendly terminal for room recovery.
-4. **Guest Compliance (Indian Market):**
-   - Build the Digital RegCard with ID/Aadhar upload capabilities.
-5. **Indian Financial Suite:**
-   - Implement GST-compliant invoicing and Razorpay UPI integration.
-6. **Channel Manager (OTA Synchronization):** 
-   - Build a new webhook architecture to listen for external bookings.
+5. **Guest Compliance (Indian Market):**
+   - Build the Digital RegCard with **Aadhar/ID upload** and e-signatures.
+6. **Indian Financial Suite:**
+   - Implement **GST-compliant invoicing** and **Razorpay UPI** dynamic QR codes.
 7. **Financial Analytics:** 
-   - Build out the Recharts visualization suite in the Owner Dashboard.
+   - Build out the Recharts visualization suite for revenue and occupancy trends.

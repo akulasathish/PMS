@@ -42,7 +42,7 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ## Housekeeping & Room Recovery Module
 - **ID:** `housekeeping_mgmt_20260331`
-- **Goal:** Interface to manage 'Dirty' rooms and return them to 'Available' status.
+- **Goal:** Mobile task list with "Inspect" buttons, Minibar posting, and cleaning timers.
 - **Link:** [Track Details](./tracks/housekeeping_mgmt_20260331/index.md)
 
 ## Guest Folio & PDF Invoicing
@@ -57,7 +57,7 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ## Staff Architect (Enterprise IAM)
 - **ID:** `staff_architect_20260331`
-- **Goal:** Granular action-level permissions and reusable role templates.
+- **Goal:** Granular action-level permission matrix (Check-in vs Check-out) and reusable role templates.
 - **Link:** [Track Details](./tracks/staff_architect_20260331/index.md)
 
 ## Guest Compliance (Digital RegCard)

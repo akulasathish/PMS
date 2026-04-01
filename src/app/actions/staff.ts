@@ -31,6 +31,23 @@ function generateDummyPassword() {
 /**
  * Provision a new staff account
  */
+export async function getRoleTemplates(propertyId: string | null) {
+  let query = supabaseAdmin.from('role_templates').select('*');
+  
+  if (propertyId) {
+    query = query.or(`property_id.is.null,property_id.eq.${propertyId}`);
+  } else {
+    query = query.is('property_id', null);
+  }
+  
+  const { data, error } = await query.order('name');
+  if (error) {
+    console.error("Failed to fetch role templates:", error);
+    return [];
+  }
+  return data;
+}
+
 export async function addStaff(formData: FormData) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -45,11 +62,22 @@ export async function addStaff(formData: FormData) {
   const email = formData.get('email') as string;
   const role = formData.get('role') as string;
   const propertyId = formData.get('propertyId') as string;
+  const permissionsStr = formData.get('permissions') as string;
 
-  console.log("2. Form Data:", { email, role, propertyId });
+  console.log("2. Form Data:", { email, role, propertyId, permissionsStr });
 
   if (!email || !role || !propertyId) {
     return { error: 'Email, Role, and Property ID are required.' };
+  }
+
+  // Parse custom permissions if provided, else rely on defaults
+  let permissions = null;
+  if (permissionsStr) {
+    try {
+      permissions = JSON.parse(permissionsStr);
+    } catch (e) {
+      console.warn("Invalid permissions JSON provided, ignoring.", e);
+    }
   }
 
   const dummyPassword = generateDummyPassword();
@@ -61,7 +89,7 @@ export async function addStaff(formData: FormData) {
     password: dummyPassword,
     email_confirm: true,
     user_metadata: {
-      role: 'staff',
+      role: role,
       requires_password_change: true
     }
   });
@@ -73,15 +101,23 @@ export async function addStaff(formData: FormData) {
   console.log("-> Staff User Created:", authData.user.id);
 
   console.log("4. Linking staff profile to property...");
-  // 2. Insert into public.profiles to link them to the property and set their role
+  
+  // 2. Prepare Profile Data
+  const profileData: any = {
+    id: authData.user.id,
+    email: email,
+    role: role,
+    property_id: propertyId
+  };
+  
+  if (permissions) {
+    profileData.permissions = permissions;
+  }
+
+  // 3. Insert into public.profiles
   const { error: profileError } = await supabaseAdmin
     .from('profiles')
-    .insert([{
-      id: authData.user.id,
-      email: email,
-      role: 'staff',
-      property_id: propertyId
-    }]);
+    .insert([profileData]);
 
   if (profileError) {
     // Rollback auth user creation if profile fails

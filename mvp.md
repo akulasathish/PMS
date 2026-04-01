@@ -16,10 +16,17 @@ This document defines the Minimum Viable Product (MVP) requirements for the comm
 - [x] **Unified Dashboard:** "Single Pane of Glass" where everyone logs into `/dashboard`.
 - [x] **Visual Padlock Logic:** Sidebar links show 🔒 based on user role.
 - [ ] **Staff Architect (Enterprise IAM):** 
-    *   **Granular Permissions:** Move from "Role-based" to "Feature-based" (e.g., can perform Check-Out but NOT Check-In).
-    *   **Action Matrix:** Collapsible UI in the "Invite Staff" modal to toggle specific capabilities per module.
-    *   **Custom Role Templates:** Allow Owners to save a specific matrix configuration (e.g., "Junior Desk") as a reusable template.
-- [ ] **Housekeeping Web Terminal:** Mobile-optimized interface for cleaners to reset "Dirty" rooms.
+    *   **Action-Level Matrix:** Toggle specific sub-features (e.g., allow Check-Out but block Check-In).
+    *   **Feature Grouping:** Front Office (Tape Chart, Upgrades, Refunds), Housekeeping (Cleaning, Inspection, Minibar), Finance (Audit, Reports).
+    *   **Custom Role Templates:** Save hybrid configurations as reusable templates for specific shift needs.
+- [ ] **Front Office Suite:**
+    *   **Transactional Actions:** Room Upgrades (live move), Refund Folios, Guest Notes.
+    *   **Room Blocking:** Administrative lock on rooms for maintenance, meetings, or group events (Marriages/Meetings).
+    *   **Night Audit:** "End of Day" logic to lock revenue and generate daily reports.
+- [ ] **Housekeeping Web Terminal:** 
+    *   **Cleaner View:** Mobile task list with "Start/Finish" timers and Minibar posting.
+    *   **Supervisor View:** Dedicated "Inspect" button to move rooms from Clean ➡️ Ready/Inspected.
+    *   **Ops Management:** Assigning "Boards" or room sections to specific staff members.
 
 ## Pillar 3: Guest Journey & Automation
 - [x] **Smart Communications:** Automated n8n emails for Confirmation and Smart Check-In.

@@ -24,7 +24,7 @@ import {
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { addStaff } from '@/app/actions/staff';
+import { addStaff, getRoleTemplates } from '@/app/actions/staff';
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", active: false },
@@ -52,6 +52,14 @@ export default function StaffManagement() {
   const [userProfile, setUserProfile] = useState<any>(null);
   const [accessiblePropsList, setAccessiblePropsList] = useState<{id: string, name: string}[]>([]);
   const [showPropertyDropdown, setShowPropertyDropdown] = useState(false);
+
+  // IAM Architect State
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
+  const [permissionsMatrix, setPermissionsMatrix] = useState<any>({
+    front_office: 'none', housekeeping: 'none', analytics: 'none', inventory: 'none', staff_management: 'none'
+  });
+
   const supabase = createClient();
   const router = useRouter();
 
@@ -114,20 +122,32 @@ export default function StaffManagement() {
           .select('*')
           .eq('id', activePropertyId)
           .single();
-        
+
         if (propData) {
           setProperty(propData);
-          
+
           const { data: staffData } = await supabase
             .from('profiles')
             .select('*')
             .eq('property_id', activePropertyId)
             .eq('role', 'staff');
+            
           if (staffData) setStaffList(staffData);
+
+          // Fetch Role Templates for IAM Architect
+          const fetchedTemplates = await getRoleTemplates(activePropertyId);
+          setTemplates(fetchedTemplates);
+
+          // Pre-select the first template
+          if (fetchedTemplates && fetchedTemplates.length > 0) {
+            setSelectedTemplate(fetchedTemplates[0]);
+            setPermissionsMatrix(fetchedTemplates[0].permissions);
+          }
         }
       }
       setIsLoading(false);
     }
+    
     fetchData();
   }, [supabase]);
 
@@ -136,30 +156,38 @@ export default function StaffManagement() {
     setShowPropertyDropdown(false);
     window.location.reload();
   };
+const handleAddStaff = async (formData: FormData) => {
+  setActionLoading(true);
+  setActionError('');
+  setStaffCredentials(null);
 
-  const handleAddStaff = async (formData: FormData) => {
-    setActionLoading(true);
-    setActionError('');
-    setStaffCredentials(null);
+  if (!property?.id) return;
 
-    if (!property?.id) return;
-    formData.append('propertyId', property.id);
+  formData.append('propertyId', property.id);
+  formData.append('role', selectedTemplate ? selectedTemplate.name : 'Custom');
+  formData.append('permissions', JSON.stringify(permissionsMatrix));
 
-    const result = await addStaff(formData);
-    if (result.error) {
-      setActionError(result.error);
-    } else if (result.success && result.credentials) {
-      setStaffCredentials(result.credentials);
-      // Refresh list
-      const { data: newStaff } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('property_id', property.id)
-        .eq('role', 'staff');
-      if (newStaff) setStaffList(newStaff);
-    }
-    setActionLoading(false);
-  };
+  const result = await addStaff(formData);
+  if (result.error) {
+    setActionError(result.error);
+  } else if (result.credentials) {
+    setStaffCredentials(result.credentials);
+
+    const { data: staffData } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('property_id', property.id)
+      .eq('role', 'staff');
+    if (staffData) setStaffList(staffData);
+  }
+
+  setActionLoading(false);
+};
+
+const handlePermissionChange = (module: string, level: string) => {
+  setPermissionsMatrix((prev: any) => ({ ...prev, [module]: level }));
+  setSelectedTemplate(null); // Detach from template if customized
+};
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -380,13 +408,66 @@ export default function StaffManagement() {
                       />
                     </div>
                     <div>
-                      <select 
-                        name="role"
-                        required
-                        className="w-full bg-black/30 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-white/30 transition-all appearance-none"
-                      >
-                        <option value="staff" className="bg-zinc-900">Tier 3: Front Desk Staff</option>
-                      </select>
+                      <div className="relative">
+                        <select 
+                          className="w-full bg-black/30 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-white/30 transition-all appearance-none font-bold"
+                          value={selectedTemplate ? selectedTemplate.id : 'custom'}
+                          onChange={(e) => {
+                            if (e.target.value === 'custom') {
+                              setSelectedTemplate(null);
+                            } else {
+                              const tmpl = templates.find(t => t.id === e.target.value);
+                              if (tmpl) {
+                                setSelectedTemplate(tmpl);
+                                setPermissionsMatrix(tmpl.permissions);
+                              }
+                            }
+                          }}
+                        >
+                          <option value="custom" className="bg-zinc-900 text-white font-normal">Custom Configuration</option>
+                          {templates.map(t => (
+                            <option key={t.id} value={t.id} className="bg-zinc-900 text-white font-normal">{t.name}</option>
+                          ))}
+                        </select>
+                        <ChevronsUpDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
+                      </div>
+                    </div>
+
+                    {/* Capability Matrix */}
+                    <div className="bg-black/20 rounded-xl p-3 border border-white/5 space-y-2 mt-2">
+                      <p className="text-[10px] font-bold text-indigo-200 uppercase tracking-widest mb-2 opacity-80">Access Matrix</p>
+                      {[
+                        { key: 'front_office', label: 'Front Office' },
+                        { key: 'housekeeping', label: 'Housekeeping' },
+                        { key: 'inventory', label: 'Inventory' },
+                        { key: 'analytics', label: 'Reports' },
+                        { key: 'staff_management', label: 'Admin' }
+                      ].map((mod) => (
+                        <div key={mod.key} className="flex items-center justify-between">
+                          <span className="text-[11px] text-white/80 font-medium">{mod.label}</span>
+                          <div className="flex bg-black/40 rounded-md p-0.5 border border-white/5">
+                            {['full', 'read', 'none'].map((level) => {
+                              const isActive = permissionsMatrix[mod.key] === level;
+                              return (
+                                <button
+                                  key={level}
+                                  type="button"
+                                  onClick={() => handlePermissionChange(mod.key, level)}
+                                  className={`text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-all ${
+                                    isActive 
+                                      ? level === 'full' ? 'bg-emerald-500 text-white shadow-sm' 
+                                      : level === 'read' ? 'bg-amber-500 text-white shadow-sm'
+                                      : 'bg-rose-500/80 text-white shadow-sm'
+                                      : 'text-white/40 hover:text-white/70 hover:bg-white/5'
+                                  }`}
+                                >
+                                  {level.charAt(0)}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
                     </div>
 
                     {actionError && (
