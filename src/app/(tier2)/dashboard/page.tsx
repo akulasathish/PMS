@@ -230,15 +230,17 @@ export default function Tier2Dashboard() {
         if (propData) {
           setProperty(propData);
           
-          // 4. Fetch Staff for this property
-          const { data: staffData } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('property_id', activePropertyId)
-            .eq('role', 'staff');
-          if (staffData) setStaffList(staffData);
+          // Only fetch staff data if the user is an owner/admin or has staff management rights
+          if (profile && (profile.role === 'owner' || profile.role === 'admin' || (profile.permissions && profile.permissions.staff_management !== 'none'))) {
+            const { data: staffData } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('property_id', activePropertyId)
+              .eq('role', 'staff');
+            if (staffData) setStaffList(staffData);
+          }
 
-          // 5. Fetch rooms for THIS property
+          // Fetch rooms for THIS property
           const { data: roomsData } = await supabase
             .from('rooms')
             .select('*')
@@ -254,10 +256,16 @@ export default function Tier2Dashboard() {
           if (roomsData) setRooms(roomsData);
           if (bookingsData) setBookings(bookingsData);
 
-          // Fetch analytics data
-          const analyticsRes = await getRevenueData(propData.id);
-          if (analyticsRes.success && analyticsRes.data) {
-            setRevenueData(analyticsRes.data);
+          // Only fetch analytics data if the user is an owner/admin or has analytics rights
+          if (profile && (profile.role === 'owner' || profile.role === 'admin' || (profile.permissions && profile.permissions.analytics !== 'none'))) {
+            try {
+              const analyticsRes = await getRevenueData(propData.id);
+              if (analyticsRes.success && analyticsRes.data) {
+                setRevenueData(analyticsRes.data);
+              }
+            } catch (e) {
+              console.warn("Analytics fetch failed:", e);
+            }
           }
         }
       }
@@ -329,10 +337,25 @@ export default function Tier2Dashboard() {
     if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
     
     const perms = userProfile.permissions || {};
+    const modPerms = perms[moduleName];
+    
+    if (!modPerms || Object.values(modPerms).every(v => v === 'none')) {
+      return false;
+    }
     return perms[moduleName] !== 'none';
-  };
+    };
 
-  if (requiresPasswordReset) {
+    // 1. Loading State
+    if (isLoading) {
+    return (
+      <div className="flex min-h-screen bg-[#08080a] items-center justify-center">
+        <Loader2 size={32} className="animate-spin text-indigo-500" />
+      </div>
+    );
+    }
+
+    // 2. Password Reset State
+    if (requiresPasswordReset) {
     return (
       <div className="fixed inset-0 bg-[#060608] flex items-center justify-center p-6 z-50 font-sans selection:bg-emerald-500/30 overflow-hidden">
         {/* Background Decor */}

@@ -78,8 +78,17 @@ export default function HousekeepingTerminal() {
   const hasAccess = (moduleName: string) => {
     if (!userProfile) return true;
     if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
-    return (userProfile.permissions || {})[moduleName] !== 'none';
+    
+    const perms = userProfile.permissions || {};
+    const modPerms = perms[moduleName];
+    
+    if (!modPerms || Object.values(modPerms).every(v => v === 'none')) {
+      return false;
+    }
+    return true;
   };
+
+  if (isLoading) return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
 
   return (
     <div className="flex min-h-screen bg-[#08080a] font-sans selection:bg-indigo-500/30">
@@ -101,7 +110,9 @@ export default function HousekeepingTerminal() {
         <nav className="flex-1 px-3 space-y-1 mt-4">
           {NAV_ITEMS.map((item) => {
             const locked = !hasAccess(item.module);
-            return (
+            if (isLoading) return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
+
+  return (
               <Link
                 key={item.label}
                 href={locked ? "#" : item.href}

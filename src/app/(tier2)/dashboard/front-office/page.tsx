@@ -81,14 +81,25 @@ export default function FrontOfficeTerminal() {
   const hasAccess = (moduleName: string) => {
     if (!userProfile) return true;
     if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
-    return (userProfile.permissions || {})[moduleName] !== 'none';
+    
+    const perms = userProfile.permissions || {};
+    const modPerms = perms[moduleName];
+    
+    if (!modPerms || Object.values(modPerms).every(v => v === 'none')) {
+      return false;
+    }
+    return true;
   };
 
   const isReadOnly = () => {
     if (!userProfile) return false;
     if (userProfile.role === 'owner' || userProfile.role === 'admin') return false;
-    return (userProfile.permissions || {}).front_office === 'read';
+    if (isLoading) return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
+
+  return (userProfile.permissions || {}).front_office === 'read';
   };
+
+  if (isLoading) return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
 
   return (
     <div className="flex min-h-screen bg-[#08080a] font-sans selection:bg-indigo-500/30 overflow-hidden">
@@ -110,7 +121,9 @@ export default function FrontOfficeTerminal() {
         <nav className="flex-1 px-3 space-y-1 mt-4">
           {NAV_ITEMS.map((item) => {
             const locked = !hasAccess(item.module);
-            return (
+            if (isLoading) return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
+
+  return (
               <Link
                 key={item.label}
                 href={locked ? "#" : item.href}
@@ -165,7 +178,9 @@ export default function FrontOfficeTerminal() {
                   <tr><td colSpan={8} className="py-20 text-center"><Loader2 className="animate-spin inline text-indigo-500" /></td></tr>
                 ) : rooms.map((room) => {
                   const booking = getBookingForRoom(room.id);
-                  return (
+                  if (isLoading) return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
+
+  return (
                     <tr key={room.id} className="border-b border-white/5 hover:bg-white/[0.01]">
                       <td className="p-4 border-r border-white/5 sticky left-0 bg-[#09090b] z-10">
                         <p className="text-sm font-bold text-white">{room.room_number}</p>

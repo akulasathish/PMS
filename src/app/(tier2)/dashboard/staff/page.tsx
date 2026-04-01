@@ -128,13 +128,15 @@ export default function StaffManagement() {
         if (propData) {
           setProperty(propData);
 
-          const { data: staffData } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('property_id', activePropertyId)
-            .eq('role', 'staff');
-            
-          if (staffData) setStaffList(staffData);
+          if (prof && (prof.role === 'owner' || prof.role === 'admin' || (prof.permissions && prof.permissions.staff_management !== 'none'))) {
+            const { data: staffData } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('property_id', activePropertyId)
+              .eq('role', 'staff');
+              
+            if (staffData) setStaffList(staffData);
+          }
 
           // Fetch Role Templates for IAM Architect
           const fetchedTemplates = await getRoleTemplates(activePropertyId);
@@ -279,6 +281,8 @@ const handleSaveTemplate = async () => {
     return true;
   };
 
+  if (isLoading) return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
+
   return (
     <div className="flex min-h-screen bg-[#08080a]">
       {/* SIDEBAR */}
@@ -329,7 +333,9 @@ const handleSaveTemplate = async () => {
           <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-[0.2em] px-3 mb-3">Navigation</p>
           {NAV_ITEMS.map((item) => {
             const locked = !hasAccess(item.module);
-            return (
+            if (isLoading) return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
+
+  return (
               <Link
                 key={item.label}
                 href={locked ? "#" : item.href}
@@ -520,13 +526,17 @@ const handleSaveTemplate = async () => {
                           <div className="space-y-1.5 pl-3 border-l-2 border-white/5">
                             {modData.features.map(feat => {
                               const currentLevel = (permissionsMatrix[modKey] && permissionsMatrix[modKey][feat.key]) || 'none';
-                              return (
+                              if (isLoading) return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
+
+  return (
                                 <div key={feat.key} className="flex items-center justify-between bg-zinc-900/30 p-2 rounded-lg">
                                   <span className="text-[10px] text-white/70 font-medium">{feat.label}</span>
                                   <div className="flex bg-black/50 rounded-md p-0.5 border border-white/5">
                                     {['full', 'read', 'none'].map((level) => {
                                       const isActive = currentLevel === level;
-                                      return (
+                                      if (isLoading) return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
+
+  return (
                                         <button
                                           key={level}
                                           type="button"
