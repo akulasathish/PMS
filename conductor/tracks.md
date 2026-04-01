@@ -54,3 +54,23 @@ This file tracks all major tracks for the project. Each track has its own detail
 - **ID:** `financial_analytics_20260331`
 - **Goal:** Real-time revenue charts and occupancy trends for the Owner Dashboard.
 - **Link:** [Track Details](./tracks/financial_analytics_20260331/index.md)
+
+## Staff Architect (Enterprise IAM)
+- **ID:** `staff_architect_20260331`
+- **Goal:** Granular action-level permissions and reusable role templates.
+- **Link:** [Track Details](./tracks/staff_architect_20260331/index.md)
+
+## Guest Compliance (Digital RegCard)
+- **ID:** `guest_compliance_20260331`
+- **Goal:** Digital registration card with Aadhar/ID capture and e-signatures.
+- **Link:** [Track Details](./tracks/guest_compliance_20260331/index.md)
+
+## Integrated Indian Payments (Razorpay)
+- **ID:** `integrated_payments_20260331`
+- **Goal:** UPI QR codes and dynamic checkout for the Indian market.
+- **Link:** [Track Details](./tracks/integrated_payments_20260331/index.md)
+
+## SaaS Subscription Billing (Tier 1)
+- **ID:** `saas_billing_20260331`
+- **Goal:** Stripe integration to manage monthly recurring revenue from owners.
+- **Link:** [Track Details](./tracks/saas_billing_20260331/index.md)

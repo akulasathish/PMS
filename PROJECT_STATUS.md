@@ -55,7 +55,18 @@ The project implements a strict 3-tier Role-Based Access Control (RBAC) architec
 
 ## 4. Next Implementation Steps
 
-1. **Transition to Transactional Auth Logic:** 
+1. **Staff Architect (Enterprise IAM):**
+   - Implement the granular Action-Level Permission Matrix.
+   - Build reusable role templates for owners.
+2. **Transition to Transactional Auth Logic:** 
    - Replace the dummy password generation with Supabase's native invite email flow.
-2. **Channel Manager (OTA Synchronization):** Build a new webhook architecture to listen for external bookings from platforms like Booking.com or Expedia, mapping them to the `rooms` inventory.
-3. **Financial Reporting:** Build out the Analytics chart in Tier 2 (Owner Dashboard) to fetch total revenue arrays over a 30-day period.
+3. **Housekeeping Web Dashboard:** 
+   - Create the mobile-friendly terminal for room recovery.
+4. **Guest Compliance (Indian Market):**
+   - Build the Digital RegCard with ID/Aadhar upload capabilities.
+5. **Indian Financial Suite:**
+   - Implement GST-compliant invoicing and Razorpay UPI integration.
+6. **Channel Manager (OTA Synchronization):** 
+   - Build a new webhook architecture to listen for external bookings.
+7. **Financial Analytics:** 
+   - Build out the Recharts visualization suite in the Owner Dashboard.
