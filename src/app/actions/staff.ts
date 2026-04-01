@@ -48,6 +48,28 @@ export async function getRoleTemplates(propertyId: string | null) {
   return data;
 }
 
+export async function saveRoleTemplate(propertyId: string, name: string, permissions: any) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user || user.user_metadata?.role !== 'owner' && user.user_metadata?.role !== 'admin') {
+    return { error: 'Unauthorized.' };
+  }
+
+  const { error } = await supabaseAdmin.from('role_templates').insert([{
+    property_id: propertyId,
+    name,
+    permissions
+  }]);
+
+  if (error) {
+    console.error("Failed to save role template:", error);
+    return { error: "Failed to save template to the database." };
+  }
+  
+  return { success: true };
+}
+
 export async function addStaff(formData: FormData) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();

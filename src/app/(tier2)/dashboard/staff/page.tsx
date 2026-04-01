@@ -19,7 +19,9 @@ import {
   Activity,
   Trash2,
   Mail,
-  ChevronsUpDown
+  ChevronsUpDown,
+  Lock,
+  Brush
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -27,12 +29,12 @@ import { createClient } from '@/lib/supabase/client';
 import { addStaff, getRoleTemplates } from '@/app/actions/staff';
 
 const NAV_ITEMS = [
-  { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", active: false },
-  { icon: DoorOpen, label: "Inventory", href: "/dashboard/inventory", active: false },
-  { icon: BookOpen, label: "Bookings", href: "#", active: false },
-  { icon: DollarSign, label: "Finance", href: "#", active: false },
-  { icon: Users, label: "Staff", href: "/dashboard/staff", active: true },
-  { icon: Settings, label: "Settings", href: "#", active: false },
+  { icon: LayoutDashboard, label: "Overview", href: "/dashboard", active: false, module: 'analytics' },
+  { icon: Activity, label: "Front Office", href: "/dashboard/front-office", active: false, module: 'front_office' },
+  { icon: Brush, label: "Housekeeping", href: "/dashboard/housekeeping", active: false, module: 'housekeeping' },
+  { icon: DoorOpen, label: "Inventory", href: "/dashboard/inventory", active: false, module: 'inventory' },
+  { icon: Users, label: "Staff", href: "/dashboard/staff", active: true, module: 'staff_management' },
+  { icon: Settings, label: "Settings", href: "#", active: false, module: 'settings' },
 ];
 
 const GlassCard = ({ children, className = "" }: { children: React.ReactNode, className?: string }) => (
@@ -184,11 +186,79 @@ const handleAddStaff = async (formData: FormData) => {
   setActionLoading(false);
 };
 
-const handlePermissionChange = (module: string, level: string) => {
-  setPermissionsMatrix((prev: any) => ({ ...prev, [module]: level }));
-  setSelectedTemplate(null); // Detach from template if customized
+const [saveTemplateName, setSaveTemplateName] = useState('');
+const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+
+const FEATURE_MAP = {
+  front_office: {
+    label: 'Front Office',
+    features: [
+      { key: 'tape_chart', label: 'Tape Chart' },
+      { key: 'check_in_out', label: 'Check-In / Out' },
+      { key: 'room_upgrades', label: 'Room Upgrades' },
+      { key: 'refund_folios', label: 'Refund Folios' },
+      { key: 'guest_notes', label: 'Guest Notes' },
+      { key: 'block_rooms', label: 'Block Rooms' }
+    ]
+  },
+  housekeeping: {
+    label: 'Housekeeping',
+    features: [
+      { key: 'task_list', label: 'Cleaning Task List' },
+      { key: 'room_inspection', label: 'Room Inspection' },
+      { key: 'minibar_posting', label: 'Minibar Posting' },
+      { key: 'ops_management', label: 'Ops Management' }
+    ]
+  },
+  finance: {
+    label: 'Financials',
+    features: [
+      { key: 'night_audit', label: 'Night Audit' },
+      { key: 'reports', label: 'Financial Reports' }
+    ]
+  },
+  inventory: {
+    label: 'Inventory',
+    features: [
+      { key: 'manage_rooms', label: 'Manage Rooms' }
+    ]
+  },
+  staff_management: {
+    label: 'Staff Management',
+    features: [
+      { key: 'manage_staff', label: 'Invite / Edit Staff' }
+    ]
+  }
 };
 
+const handlePermissionChange = (module: string, feature: string, level: string) => {
+  setPermissionsMatrix((prev: any) => ({
+    ...prev,
+    [module]: {
+      ...(prev[module] || {}),
+      [feature]: level
+    }
+  }));
+  setSelectedTemplate(null);
+};
+
+const handleSaveTemplate = async () => {
+  if (!saveTemplateName || !property?.id) return;
+  setIsSavingTemplate(true);
+  // Dynamic import to avoid circular dependencies in the top scope if needed, 
+  // but we can just use the action we added.
+  const { saveRoleTemplate } = await import('@/app/actions/staff');
+  const res = await saveRoleTemplate(property.id, saveTemplateName, permissionsMatrix);
+  if (!res.error) {
+    setSaveTemplateName('');
+    const fetchedTemplates = await getRoleTemplates(property.id);
+    setTemplates(fetchedTemplates);
+    alert('Template Saved Successfully!');
+  } else {
+    alert(res.error);
+  }
+  setIsSavingTemplate(false);
+};
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.refresh();
@@ -198,8 +268,15 @@ const handlePermissionChange = (module: string, level: string) => {
   const hasAccess = (moduleName: string) => {
     if (!userProfile) return true; 
     if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
+    
     const perms = userProfile.permissions || {};
-    return perms[moduleName] !== 'none';
+    const modPerms = perms[moduleName];
+    
+    // If the module object is empty or all its sub-features are 'none', lock the sidebar tab
+    if (!modPerms || Object.values(modPerms).every(v => v === 'none')) {
+      return false;
+    }
+    return true;
   };
 
   return (
@@ -434,41 +511,67 @@ const handlePermissionChange = (module: string, level: string) => {
                     </div>
 
                     {/* Capability Matrix */}
-                    <div className="bg-black/20 rounded-xl p-3 border border-white/5 space-y-2 mt-2">
-                      <p className="text-[10px] font-bold text-indigo-200 uppercase tracking-widest mb-2 opacity-80">Access Matrix</p>
-                      {[
-                        { key: 'front_office', label: 'Front Office' },
-                        { key: 'housekeeping', label: 'Housekeeping' },
-                        { key: 'inventory', label: 'Inventory' },
-                        { key: 'analytics', label: 'Reports' },
-                        { key: 'staff_management', label: 'Admin' }
-                      ].map((mod) => (
-                        <div key={mod.key} className="flex items-center justify-between">
-                          <span className="text-[11px] text-white/80 font-medium">{mod.label}</span>
-                          <div className="flex bg-black/40 rounded-md p-0.5 border border-white/5">
-                            {['full', 'read', 'none'].map((level) => {
-                              const isActive = permissionsMatrix[mod.key] === level;
+                    <div className="bg-black/20 rounded-xl p-4 border border-white/5 space-y-4 mt-2 h-[320px] overflow-y-auto custom-scrollbar">
+                      <p className="text-[10px] font-bold text-indigo-200 uppercase tracking-widest opacity-80 sticky top-0 bg-[#0c0c0e] py-1 z-10">Advanced Action Matrix</p>
+                      
+                      {Object.entries(FEATURE_MAP).map(([modKey, modData]) => (
+                        <div key={modKey} className="space-y-2 pb-4 border-b border-white/5 last:border-0 last:pb-0">
+                          <h4 className="text-[12px] text-white font-bold">{modData.label}</h4>
+                          <div className="space-y-1.5 pl-3 border-l-2 border-white/5">
+                            {modData.features.map(feat => {
+                              const currentLevel = (permissionsMatrix[modKey] && permissionsMatrix[modKey][feat.key]) || 'none';
                               return (
-                                <button
-                                  key={level}
-                                  type="button"
-                                  onClick={() => handlePermissionChange(mod.key, level)}
-                                  className={`text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-all ${
-                                    isActive 
-                                      ? level === 'full' ? 'bg-emerald-500 text-white shadow-sm' 
-                                      : level === 'read' ? 'bg-amber-500 text-white shadow-sm'
-                                      : 'bg-rose-500/80 text-white shadow-sm'
-                                      : 'text-white/40 hover:text-white/70 hover:bg-white/5'
-                                  }`}
-                                >
-                                  {level.charAt(0)}
-                                </button>
+                                <div key={feat.key} className="flex items-center justify-between bg-zinc-900/30 p-2 rounded-lg">
+                                  <span className="text-[10px] text-white/70 font-medium">{feat.label}</span>
+                                  <div className="flex bg-black/50 rounded-md p-0.5 border border-white/5">
+                                    {['full', 'read', 'none'].map((level) => {
+                                      const isActive = currentLevel === level;
+                                      return (
+                                        <button
+                                          key={level}
+                                          type="button"
+                                          onClick={() => handlePermissionChange(modKey, feat.key, level)}
+                                          className={`text-[8px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-all ${
+                                            isActive 
+                                              ? level === 'full' ? 'bg-emerald-500 text-white shadow-sm' 
+                                              : level === 'read' ? 'bg-amber-500 text-white shadow-sm'
+                                              : 'bg-rose-500/80 text-white shadow-sm'
+                                              : 'text-white/30 hover:text-white/60 hover:bg-white/5'
+                                          }`}
+                                        >
+                                          {level.charAt(0)}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
                               );
                             })}
                           </div>
                         </div>
                       ))}
                     </div>
+
+                    {/* Custom Template Saver */}
+                    {!selectedTemplate && (
+                      <div className="flex items-center gap-2 mt-2 bg-indigo-500/5 p-2 rounded-xl border border-indigo-500/10">
+                        <input 
+                          type="text"
+                          value={saveTemplateName}
+                          onChange={(e) => setSaveTemplateName(e.target.value)}
+                          placeholder="Name this Template (e.g. Junior FO)"
+                          className="flex-1 bg-transparent text-[11px] text-white focus:outline-none px-2"
+                        />
+                        <button 
+                          type="button"
+                          onClick={handleSaveTemplate}
+                          disabled={isSavingTemplate || !saveTemplateName}
+                          className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all"
+                        >
+                          Save
+                        </button>
+                      </div>
+                    )}
 
                     {actionError && (
                       <div className="p-3 bg-rose-500/20 rounded-xl text-rose-200 text-xs flex items-start gap-2 border border-rose-500/30">

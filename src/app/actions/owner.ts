@@ -129,10 +129,11 @@ export async function getOwnersList() {
     const assignedProps = [];
     
     // Legacy single-property assignment
-    if (owner.legacy_property && owner.legacy_property.name) {
+    const legacyProp = owner.legacy_property as any;
+    if (legacyProp && legacyProp.name) {
       assignedProps.push({
         property_id: owner.property_id,
-        properties: { name: owner.legacy_property.name }
+        properties: { name: legacyProp.name }
       });
     }
 
