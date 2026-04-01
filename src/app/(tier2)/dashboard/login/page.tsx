@@ -44,11 +44,13 @@ export default function OwnerLogin() {
       return;
     }
 
-    // Role check - ensure this user is an 'owner'
+    // Role check - ensure this user is an authorized operator
     const role = data.user?.user_metadata?.role;
-    if (role !== 'owner') {
+    const validRoles = ['owner', 'staff', 'front-desk', 'Guest Journey', 'Night Auditor', 'Room Attendant', 'Supervisor'];
+    
+    if (!role || !validRoles.includes(role)) {
       await supabase.auth.signOut();
-      setError('Access denied. You do not have owner privileges.');
+      setError('Access denied. Insufficient privileges for this terminal.');
       setIsLoading(false);
       return;
     }
