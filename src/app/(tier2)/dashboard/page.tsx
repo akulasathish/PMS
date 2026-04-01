@@ -37,6 +37,7 @@ import { getRevenueData } from '@/app/actions/analytics';
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", active: true },
+  { icon: Activity, label: "Front Desk", href: "/dashboard/front-desk", active: false },
   { icon: DoorOpen, label: "Inventory", href: "/dashboard/inventory", active: false },
   { icon: BookOpen, label: "Bookings", href: "#", active: false },
   { icon: DollarSign, label: "Finance", href: "#", active: false },

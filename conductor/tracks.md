@@ -34,3 +34,23 @@ This file tracks all major tracks for the project. Each track has its own detail
 - **ID:** `rls_hardening_20260331`
 - **Goal:** Strict database isolation for multi-tenancy.
 - **Link:** [Track Details](./tracks/rls_hardening_20260331/index.md)
+
+## Tier 2/3 Feature Parity (Executive Operations)
+- **ID:** `tier_parity_20260331`
+- **Goal:** Enable Tier 2 Owners to access all Tier 3 Front-Desk operational tools (Check-in/Booking).
+- **Link:** [Track Details](./tracks/tier_parity_20260331/index.md)
+
+## Housekeeping & Room Recovery Module
+- **ID:** `housekeeping_mgmt_20260331`
+- **Goal:** Interface to manage 'Dirty' rooms and return them to 'Available' status.
+- **Link:** [Track Details](./tracks/housekeeping_mgmt_20260331/index.md)
+
+## Guest Folio & PDF Invoicing
+- **ID:** `guest_billing_20260331`
+- **Goal:** Automated PDF generation and emailing of invoices upon guest checkout.
+- **Link:** [Track Details](./tracks/guest_billing_20260331/index.md)
+
+## Financial Analytics & Data Visualization
+- **ID:** `financial_analytics_20260331`
+- **Goal:** Real-time revenue charts and occupancy trends for the Owner Dashboard.
+- **Link:** [Track Details](./tracks/financial_analytics_20260331/index.md)
