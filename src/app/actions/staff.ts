@@ -82,14 +82,16 @@ export async function revokeStaffAccess(staffId: string) {
     return { error: 'Unauthorized. Only executives can revoke staff access.' };
   }
 
-  // 1. Verify the target is actually a staff member (prevent deleting other owners)
+  // 1. Verify the target is actually a staff member (prevent deleting other owners/admins)
   const { data: targetProfile } = await supabaseAdmin
     .from('profiles')
     .select('role')
     .eq('id', staffId)
     .single();
 
-  if (!targetProfile || targetProfile.role !== 'staff') {
+  const operationalRoles = ['staff', 'front-desk', 'Guest Journey', 'Night Auditor', 'Room Attendant', 'Supervisor'];
+  
+  if (!targetProfile || !operationalRoles.includes(targetProfile.role)) {
     return { error: 'Invalid operation. Can only revoke operational staff accounts.' };
   }
 

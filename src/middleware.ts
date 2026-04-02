@@ -66,21 +66,27 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Protect /dashboard routes (Tier 2)
+  // Protect /dashboard routes (Tier 2/3 Consolidated)
   if (pathname.startsWith('/dashboard')) {
     if (pathname === '/dashboard/login') return response
-    if (!user || user.user_metadata?.role !== 'owner') {
+    
+    const validDashboardRoles = [
+      'owner', 
+      'staff', 
+      'front-desk', 
+      'Guest Journey', 
+      'Night Auditor', 
+      'Room Attendant', 
+      'Supervisor'
+    ];
+
+    if (!user || !validDashboardRoles.includes(user.user_metadata?.role)) {
       return NextResponse.redirect(new URL('/dashboard/login', request.url))
     }
   }
 
-  // Protect /front-desk routes (Tier 3)
-  if (pathname.startsWith('/front-desk')) {
-    if (pathname === '/front-desk/login') return response
-    if (!user || (user.user_metadata?.role !== 'front-desk' && user.user_metadata?.role !== 'staff')) {
-      return NextResponse.redirect(new URL('/front-desk/login', request.url))
-    }
-  }
+  // Remove the old /front-desk block since we consolidated to /dashboard
+  // (Left empty or deleted)
 
   // Check property suspension for non-admin users
   if (user && user.user_metadata?.role !== 'admin' && !pathname.endsWith('/login')) {
