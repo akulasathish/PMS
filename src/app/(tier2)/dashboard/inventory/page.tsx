@@ -76,87 +76,87 @@ import {
   React.useEffect(() => {
     async function fetchData() {
       setIsLoading(true);
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        const user = authData?.user;
 
-      const { data: authData } = await supabase.auth.getUser();
-      const user = authData?.user;
+        if (!user) return;
 
-      if (!user) {
-        setIsLoading(false);
-        return;
-      }
+        // Fetch user profile for RBAC
+        const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+        setUserProfile(prof);
 
-      // Fetch user profile for RBAC
-      const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-      setUserProfile(prof);
+        // Fetch the owner's profile to get their specific property_id
+        const { data: accessibleProperties } = await supabase
+          .from('property_access')
+          .select(`
+            property_id,
+            properties ( id, name )
+          `)
+          .eq('user_id', user.id);
 
-      // Fetch the owner's profile to get their specific property_id
-      const { data: accessibleProperties } = await supabase
-        .from('property_access')
-        .select(`
-          property_id,
-          properties ( id, name )
-        `)
-        .eq('user_id', user.id);
+        let activePropertyId = null;
+        let parsedPropsList: {id: string, name: string}[] = [];
 
-      let activePropertyId = null;
-      let parsedPropsList: {id: string, name: string}[] = [];
-      
-      if (accessibleProperties && accessibleProperties.length > 0) {
-        parsedPropsList = accessibleProperties.map((p: any) => p.properties);
-        setAccessiblePropsList(parsedPropsList);
-        
-        // Try to get saved property from localStorage
-        const savedId = localStorage.getItem('pms_active_property');
-        if (savedId && parsedPropsList.some(p => p.id === savedId)) {
-          activePropertyId = savedId;
+        if (accessibleProperties && accessibleProperties.length > 0) {
+          parsedPropsList = accessibleProperties.map((p: any) => p.properties);
+          setAccessiblePropsList(parsedPropsList);
+
+          // Try to get saved property from localStorage
+          const savedId = localStorage.getItem('pms_active_property');
+          if (savedId && parsedPropsList.some(p => p.id === savedId)) {
+            activePropertyId = savedId;
+          } else {
+            activePropertyId = parsedPropsList[0].id;
+          }
         } else {
-          activePropertyId = parsedPropsList[0].id;
-        }
-      } else {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('property_id')
-          .eq('id', user.id)
-          .single();
-        if (profile?.property_id) activePropertyId = profile.property_id;
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('property_id')
+            .eq('id', user.id)
+            .single();
+          if (profile?.property_id) activePropertyId = profile.property_id;
 
-        if (activePropertyId) {
-          const { data: fallbackProp } = await supabase.from('properties').select('id, name').eq('id', activePropertyId).single();
-          if (fallbackProp) {
-            setAccessiblePropsList([fallbackProp]);
+          if (activePropertyId) {
+            const { data: fallbackProp } = await supabase.from('properties').select('id, name').eq('id', activePropertyId).single();
+            if (fallbackProp) {
+              setAccessiblePropsList([fallbackProp]);
+            }
           }
         }
-      }
-        
-      if (activePropertyId) {
-        setPropertyId(activePropertyId);
-        
-        // Fetch property details
-        const { data: propData } = await supabase
-          .from('properties')
-          .select('*')
-          .eq('id', activePropertyId)
-          .single();
-        
-        if (propData) {
-          setProperty(propData);
-          
-          // Fetch rooms for THIS property
-          const { data: roomsData } = await supabase
-            .from('rooms')
+
+        if (activePropertyId) {
+          setPropertyId(activePropertyId);
+
+          // Fetch property details
+          const { data: propData } = await supabase
+            .from('properties')
             .select('*')
-            .eq('property_id', propData.id)
-            .order('room_number', { ascending: true });
-          
-          if (roomsData) setRooms(roomsData);
+            .eq('id', activePropertyId)
+            .single();
+
+          if (propData) {
+            setProperty(propData);
+
+            // Fetch rooms for THIS property
+            const { data: roomsData } = await supabase
+              .from('rooms')
+              .select('*')
+              .eq('property_id', propData.id)
+              .order('room_number', { ascending: true });
+
+            if (roomsData) setRooms(roomsData);
+          }
         }
+      } catch (err) {
+        console.error("Dashboard Load Error:", err);
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     }
 
     fetchData();
   }, [supabase]);
-
   const switchProperty = (propId: string) => {
     localStorage.setItem('pms_active_property', propId);
     setShowPropertyDropdown(false);

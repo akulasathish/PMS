@@ -68,88 +68,90 @@ export default function StaffManagement() {
   React.useEffect(() => {
     async function fetchData() {
       setIsLoading(true);
-      const { data: authData } = await supabase.auth.getUser();
-      const user = authData?.user;
-      
-      if (!user) {
-        setIsLoading(false);
-        return;
-      }
-
-      // Fetch user profile for RBAC permissions
-      const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-      setUserProfile(prof);
-
-      const { data: accessibleProperties } = await supabase
-        .from('property_access')
-        .select(`
-          property_id,
-          properties ( id, name )
-        `)
-        .eq('user_id', user.id);
-
-      let activePropertyId = null;
-      let parsedPropsList: {id: string, name: string}[] = [];
-      
-      if (accessibleProperties && accessibleProperties.length > 0) {
-        parsedPropsList = accessibleProperties.map((p: any) => p.properties);
-        setAccessiblePropsList(parsedPropsList);
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        const user = authData?.user;
         
-        // Try to get saved property from localStorage
-        const savedId = localStorage.getItem('pms_active_property');
-        if (savedId && parsedPropsList.some(p => p.id === savedId)) {
-          activePropertyId = savedId;
+        if (!user) return;
+
+        // Fetch user profile for RBAC permissions
+        const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+        setUserProfile(prof);
+
+        const { data: accessibleProperties } = await supabase
+          .from('property_access')
+          .select(`
+            property_id,
+            properties ( id, name )
+          `)
+          .eq('user_id', user.id);
+
+        let activePropertyId = null;
+        let parsedPropsList: {id: string, name: string}[] = [];
+        
+        if (accessibleProperties && accessibleProperties.length > 0) {
+          parsedPropsList = accessibleProperties.map((p: any) => p.properties);
+          setAccessiblePropsList(parsedPropsList);
+          
+          // Try to get saved property from localStorage
+          const savedId = localStorage.getItem('pms_active_property');
+          if (savedId && parsedPropsList.some(p => p.id === savedId)) {
+            activePropertyId = savedId;
+          } else {
+            activePropertyId = parsedPropsList[0].id;
+          }
         } else {
-          activePropertyId = parsedPropsList[0].id;
-        }
-      } else {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('property_id')
-          .eq('id', user.id)
-          .single();
-        if (profile?.property_id) activePropertyId = profile.property_id;
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('property_id')
+            .eq('id', user.id)
+            .single();
+          if (profile?.property_id) activePropertyId = profile.property_id;
 
+          if (activePropertyId) {
+            const { data: fallbackProp } = await supabase.from('properties').select('id, name').eq('id', activePropertyId).single();
+            if (fallbackProp) {
+              setAccessiblePropsList([fallbackProp]);
+            }
+          }
+        }
+          
         if (activePropertyId) {
-          const { data: fallbackProp } = await supabase.from('properties').select('id, name').eq('id', activePropertyId).single();
-          if (fallbackProp) {
-            setAccessiblePropsList([fallbackProp]);
+          const { data: propData } = await supabase
+            .from('properties')
+            .select('*')
+            .eq('id', activePropertyId)
+            .single();
+
+          if (propData) {
+            setProperty(propData);
+
+            if (prof && (prof.role === 'owner' || prof.role === 'admin' || (prof.permissions && prof.permissions.staff_management !== 'none'))) {
+              const { data: staffData } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('property_id', activePropertyId)
+                .in('role', ['staff', 'Guest Journey', 'Night Auditor', 'Room Attendant', 'Supervisor']);
+                
+              if (staffData) setStaffList(staffData);
+            }
+
+            // Fetch Role Templates for IAM Architect
+            const fetchedTemplates = await getRoleTemplates(activePropertyId);
+            setTemplates(fetchedTemplates);
+
+            // Pre-select the first template
+            if (fetchedTemplates && fetchedTemplates.length > 0) {
+              setSelectedTemplate(fetchedTemplates[0]);
+              setPermissionsMatrix(fetchedTemplates[0].permissions);
+            }
           }
         }
+      } catch (err) {
+        console.error("Dashboard Load Error:", err);
+      } finally {
+        setIsLoading(false);
       }
-        
-      if (activePropertyId) {
-        const { data: propData } = await supabase
-          .from('properties')
-          .select('*')
-          .eq('id', activePropertyId)
-          .single();
-
-        if (propData) {
-          setProperty(propData);
-
-          if (prof && (prof.role === 'owner' || prof.role === 'admin' || (prof.permissions && prof.permissions.staff_management !== 'none'))) {
-            const { data: staffData } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('property_id', activePropertyId)
-              .eq('role', 'staff');
-              
-            if (staffData) setStaffList(staffData);
-          }
-
-          // Fetch Role Templates for IAM Architect
-          const fetchedTemplates = await getRoleTemplates(activePropertyId);
-          setTemplates(fetchedTemplates);
-
-          // Pre-select the first template
-          if (fetchedTemplates && fetchedTemplates.length > 0) {
-            setSelectedTemplate(fetchedTemplates[0]);
-            setPermissionsMatrix(fetchedTemplates[0].permissions);
-          }
-        }
-      }
-      setIsLoading(false);
     }
     
     fetchData();

@@ -32,38 +32,43 @@ export default function HousekeepingTerminal() {
   const supabase = createClient();
   const router = useRouter();
 
-  useEffect(() => {
+  React.useEffect(() => {
     async function fetchData() {
       setIsLoading(true);
-      const { data: auth } = await supabase.auth.getUser();
-      if (!auth.user) return;
+      try {
+        const { data: auth } = await supabase.auth.getUser();
+        if (!auth.user) return;
 
-      // Multi-tenant logic
-      const { data: acc } = await supabase.from('property_access').select('property_id, properties(id, name)').eq('user_id', auth.user.id);
-      const { data: prof } = await supabase.from('profiles').select('*').eq('id', auth.user.id).single();
-      setUserProfile(prof);
+        // Multi-tenant logic
+        const { data: acc } = await supabase.from('property_access').select('property_id, properties(id, name)').eq('user_id', auth.user.id);
+        const { data: prof } = await supabase.from('profiles').select('*').eq('id', auth.user.id).single();
+        setUserProfile(prof);
 
-      let activeId = localStorage.getItem('pms_active_property');
-      if (acc && acc.length > 0) {
-        setAccessiblePropsList(acc.map((a: any) => a.properties));
-        if (!activeId || !acc.some((a: any) => a.property_id === activeId)) {
-          activeId = acc[0].property_id;
+        let activeId = localStorage.getItem('pms_active_property');
+        if (acc && acc.length > 0) {
+          setAccessiblePropsList(acc.map((a: any) => a.properties));
+          if (!activeId || !acc.some((a: any) => a.property_id === activeId)) {
+            activeId = acc[0].property_id;
+          }
         }
-      }
 
-      if (activeId) {
-        const { data: prop } = await supabase.from('properties').select('*').eq('id', activeId).single();
-        setProperty(prop);
+        if (activeId) {
+          const { data: prop } = await supabase.from('properties').select('*').eq('id', activeId).single();
+          setProperty(prop);
 
-        const { data: roomsData } = await supabase
-          .from('rooms')
-          .select('*')
-          .eq('property_id', activeId)
-          .eq('status', 'Dirty')
-          .order('room_number');
-        setRooms(roomsData || []);
+          const { data: roomsData } = await supabase
+            .from('rooms')
+            .select('*')
+            .eq('property_id', activeId)
+            .eq('status', 'Dirty')
+            .order('room_number');
+          setRooms(roomsData || []);
+        }
+      } catch (err) {
+        console.error("Dashboard Load Error:", err);
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     }
     fetchData();
   }, []);

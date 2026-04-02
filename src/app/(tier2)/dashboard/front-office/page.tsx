@@ -38,38 +38,43 @@ export default function FrontOfficeTerminal() {
   const supabase = createClient();
   const router = useRouter();
 
-  useEffect(() => {
+  React.useEffect(() => {
     async function fetchData() {
       setIsLoading(true);
-      const { data: auth } = await supabase.auth.getUser();
-      if (!auth.user) return;
+      try {
+        const { data: auth } = await supabase.auth.getUser();
+        if (!auth.user) return;
 
-      const { data: acc } = await supabase.from('property_access').select('property_id, properties(id, name)').eq('user_id', auth.user.id);
-      const { data: prof } = await supabase.from('profiles').select('*').eq('id', auth.user.id).single();
-      setUserProfile(prof);
+        const { data: acc } = await supabase.from('property_access').select('property_id, properties(id, name)').eq('user_id', auth.user.id);
+        const { data: prof } = await supabase.from('profiles').select('*').eq('id', auth.user.id).single();
+        setUserProfile(prof);
 
-      let activeId = localStorage.getItem('pms_active_property');
-      if (acc && acc.length > 0) {
-        setAccessiblePropsList(acc.map((a: any) => a.properties));
-        if (!activeId || !acc.some((a: any) => a.property_id === activeId)) {
-          activeId = acc[0].property_id;
+        let activeId = localStorage.getItem('pms_active_property');
+        if (acc && acc.length > 0) {
+          setAccessiblePropsList(acc.map((a: any) => a.properties));
+          if (!activeId || !acc.some((a: any) => a.property_id === activeId)) {
+            activeId = acc[0].property_id;
+          }
         }
+
+        if (activeId) {
+          const { data: prop } = await supabase.from('properties').select('*').eq('id', activeId).single();
+          setProperty(prop);
+
+          // Fetch rooms and bookings
+          const [roomsRes, bookingsRes] = await Promise.all([
+            supabase.from('rooms').select('*').eq('property_id', activeId).order('room_number'),
+            supabase.from('bookings').select('*').eq('property_id', activeId)
+          ]);
+
+          setRooms(roomsRes.data || []);
+          setBookings(bookingsRes.data || []);
+        }
+      } catch (err) {
+        console.error("Dashboard Load Error:", err);
+      } finally {
+        setIsLoading(false);
       }
-
-      if (activeId) {
-        const { data: prop } = await supabase.from('properties').select('*').eq('id', activeId).single();
-        setProperty(prop);
-
-        // Fetch rooms and bookings
-        const [roomsRes, bookingsRes] = await Promise.all([
-          supabase.from('rooms').select('*').eq('property_id', activeId).order('room_number'),
-          supabase.from('bookings').select('*').eq('property_id', activeId)
-        ]);
-
-        setRooms(roomsRes.data || []);
-        setBookings(bookingsRes.data || []);
-      }
-      setIsLoading(false);
     }
     fetchData();
   }, []);
