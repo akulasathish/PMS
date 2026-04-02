@@ -15,4 +15,6 @@
 - [ ] Task: Create a `hasCapability(capabilityName)` frontend hook.
 - [ ] Task: Wrap "Check In", "Check Out", and "New Walk-In" buttons with the hook.
 - [ ] Task: Implement backend verification in server actions.
+- [ ] Task: Build `revokeStaffAccess` server action for Tier 2 Owners.
+- [ ] Task: Add "Delete Staff" button and confirmation modal to `/dashboard/staff`.
 - [ ] Task: Conductor - User Manual Verification 'Phase 3: Capability Enforcement'

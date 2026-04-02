@@ -19,6 +19,7 @@ This document defines the Minimum Viable Product (MVP) requirements for the comm
     *   **Action-Level Matrix:** Toggle specific sub-features (e.g., allow Check-Out but block Check-In).
     *   **Feature Grouping:** Front Office (Tape Chart, Upgrades, Refunds), Housekeeping (Cleaning, Inspection, Minibar), Finance (Audit, Reports).
     *   **Custom Role Templates:** Save hybrid configurations as reusable templates for specific shift needs.
+    *   **Staff Lifecycle Control:** Exclusively allow **Tier 2 Owners** to permanently delete staff accounts and revoke access for employees within their specific property.
 - [ ] **Front Office Suite:**
     *   **Transactional Actions:** Room Upgrades (live move), Refund Folios, Guest Notes.
     *   **Room Blocking:** Administrative lock on rooms for maintenance, meetings, or group events (Marriages/Meetings).
