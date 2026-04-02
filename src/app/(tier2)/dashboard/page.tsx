@@ -159,119 +159,102 @@ export default function Tier2Dashboard() {
   React.useEffect(() => {
     async function fetchData() {
       setIsLoading(true);
-      
-      const { data: authData } = await supabase.auth.getUser();
-      const user = authData?.user;
-      
-      if (!user) {
-        setIsLoading(false);
-        return;
-      }
-
-      // Check for forced password reset
-      if (user.user_metadata?.requires_password_change === true) {
-        setRequiresPasswordReset(true);
-        setIsLoading(false);
-        return;
-      }
-
-      // Fetch the owner's accessible properties using the new multi-tenant architecture
-      const { data: accessibleProperties } = await supabase
-        .from('property_access')
-        .select(`
-          property_id,
-          properties ( id, name )
-        `)
-        .eq('user_id', user.id);
-
-      // Fetch user's core profile
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-      
-      if (profile) setUserProfile(profile);
-
-      let activePropertyId = null;
-      let parsedPropsList: {id: string, name: string}[] = [];
-      
-      if (accessibleProperties && accessibleProperties.length > 0) {
-        parsedPropsList = accessibleProperties.map((p: any) => p.properties);
-        setAccessiblePropsList(parsedPropsList);
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        const user = authData?.user;
         
-        // Try to get saved property from localStorage
-        const savedId = localStorage.getItem('pms_active_property');
-        if (savedId && parsedPropsList.some(p => p.id === savedId)) {
-          activePropertyId = savedId;
-        } else {
-          activePropertyId = parsedPropsList[0].id;
-          localStorage.setItem('pms_active_property', activePropertyId);
+        if (!user) {
+          setIsLoading(false);
+          return;
         }
-      } else if (profile?.property_id) {
-        // Fallback to legacy single-property assignment
-        activePropertyId = profile.property_id;
-        
-        // Fetch its name for the list
-        const { data: fallbackProp } = await supabase.from('properties').select('id, name').eq('id', activePropertyId).single();
-        if (fallbackProp) {
-          setAccessiblePropsList([fallbackProp]);
+
+        // Check for forced password reset
+        if (user.user_metadata?.requires_password_change === true) {
+          setRequiresPasswordReset(true);
+          setIsLoading(false);
+          return;
         }
-      }
-        
-      if (activePropertyId) {
-        // Fetch property details
-        const { data: propData } = await supabase
-          .from('properties')
+
+        const { data: accessibleProperties } = await supabase
+          .from('property_access')
+          .select(`
+            property_id,
+            properties ( id, name )
+          `)
+          .eq('user_id', user.id);
+
+        const { data: profile } = await supabase
+          .from('profiles')
           .select('*')
-          .eq('id', activePropertyId)
+          .eq('id', user.id)
           .single();
         
-        if (propData) {
-          setProperty(propData);
+        if (profile) setUserProfile(profile);
+
+        let activePropertyId = null;
+        let parsedPropsList: {id: string, name: string}[] = [];
+        
+        if (accessibleProperties && accessibleProperties.length > 0) {
+          parsedPropsList = accessibleProperties.map((p: any) => p.properties);
+          setAccessiblePropsList(parsedPropsList);
           
-          // Only fetch staff data if the user is an owner/admin or has staff management rights
-          if (profile && (profile.role === 'owner' || profile.role === 'admin' || (profile.permissions && profile.permissions.staff_management !== 'none'))) {
-            const { data: staffData } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('property_id', activePropertyId)
-              .eq('role', 'staff');
-            if (staffData) setStaffList(staffData);
+          const savedId = localStorage.getItem('pms_active_property');
+          if (savedId && parsedPropsList.some(p => p.id === savedId)) {
+            activePropertyId = savedId;
+          } else {
+            activePropertyId = parsedPropsList[0].id;
+            localStorage.setItem('pms_active_property', activePropertyId);
           }
-
-          // Fetch rooms for THIS property
-          const { data: roomsData } = await supabase
-            .from('rooms')
-            .select('*')
-            .eq('property_id', propData.id);
+        } else if (profile?.property_id) {
+          activePropertyId = profile.property_id;
+          const { data: fallbackProp } = await supabase.from('properties').select('id, name').eq('id', activePropertyId).single();
+          if (fallbackProp) {
+            setAccessiblePropsList([fallbackProp]);
+          }
+        }
           
-          // Fetch bookings for THIS property
-          const { data: bookingsData } = await supabase
-            .from('bookings')
+        if (activePropertyId) {
+          const { data: propData } = await supabase
+            .from('properties')
             .select('*')
-            .eq('property_id', propData.id)
-            .order('check_in', { ascending: false });
+            .eq('id', activePropertyId)
+            .single();
+          
+          if (propData) {
+            setProperty(propData);
+            
+            if (profile && (profile.role === 'owner' || profile.role === 'admin' || (profile.permissions && profile.permissions.staff_management !== 'none'))) {
+              const { data: staffData } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('property_id', activePropertyId)
+                .in('role', ['staff', 'Guest Journey', 'Night Auditor', 'Room Attendant', 'Supervisor']);
+              if (staffData) setStaffList(staffData);
+            }
 
-          if (roomsData) setRooms(roomsData);
-          if (bookingsData) setBookings(bookingsData);
+            const { data: roomsData } = await supabase.from('rooms').select('*').eq('property_id', propData.id);
+            const { data: bookingsData } = await supabase.from('bookings').select('*').eq('property_id', propData.id).order('check_in', { ascending: false });
 
-          // Only fetch analytics data if the user is an owner/admin or has analytics rights
-          if (profile && (profile.role === 'owner' || profile.role === 'admin' || (profile.permissions && profile.permissions.analytics !== 'none'))) {
-            try {
-              const analyticsRes = await getRevenueData(propData.id);
-              if (analyticsRes.success && analyticsRes.data) {
-                setRevenueData(analyticsRes.data);
+            if (roomsData) setRooms(roomsData);
+            if (bookingsData) setBookings(bookingsData);
+
+            if (profile && (profile.role === 'owner' || profile.role === 'admin' || (profile.permissions && profile.permissions.analytics !== 'none'))) {
+              try {
+                const analyticsRes = await getRevenueData(propData.id);
+                if (analyticsRes.success && analyticsRes.data) {
+                  setRevenueData(analyticsRes.data);
+                }
+              } catch (e) {
+                console.warn("Analytics fetch failed:", e);
               }
-            } catch (e) {
-              console.warn("Analytics fetch failed:", e);
             }
           }
         }
+      } catch (err) {
+        console.error("Dashboard Load Error:", err);
       }
       setIsLoading(false);
     }
-
     fetchData();
   }, [supabase]);
 
