@@ -38,7 +38,7 @@ export default function FrontOfficeTerminal() {
   const supabase = createClient();
   const router = useRouter();
 
-  React.useEffect(() => {
+  useEffect(() => {
     async function fetchData() {
       setIsLoading(true);
       try {
@@ -55,13 +55,17 @@ export default function FrontOfficeTerminal() {
           if (!activeId || !acc.some((a: any) => a.property_id === activeId)) {
             activeId = acc[0].property_id;
           }
+        } else if (prof?.property_id) {
+          activeId = prof.property_id;
+          const { data: fallbackProp } = await supabase.from('properties').select('id, name').eq('id', activeId).single();
+          if (fallbackProp) setAccessiblePropsList([fallbackProp]);
         }
 
         if (activeId) {
           const { data: prop } = await supabase.from('properties').select('*').eq('id', activeId).single();
           setProperty(prop);
 
-          // Fetch rooms and bookings
+          // Fetch rooms and bookings safely
           const [roomsRes, bookingsRes] = await Promise.all([
             supabase.from('rooms').select('*').eq('property_id', activeId).order('room_number'),
             supabase.from('bookings').select('*').eq('property_id', activeId)
@@ -96,15 +100,28 @@ export default function FrontOfficeTerminal() {
     return true;
   };
 
-  const isReadOnly = () => {
+  // SURGICAL IAM CHECKS (Checking specific JSON keys)
+  const canCreateBooking = () => {
     if (!userProfile) return false;
-    if (userProfile.role === 'owner' || userProfile.role === 'admin') return false;
-    if (isLoading) return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
-
-  return (userProfile.permissions || {}).front_office === 'read';
+    if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
+    return userProfile.permissions?.front_office?.create_booking === 'write';
   };
 
-  if (isLoading) return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
+  const canCheckIn = () => {
+    if (!userProfile) return false;
+    if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
+    return userProfile.permissions?.front_office?.perform_check_in === 'write';
+  };
+
+  const canCheckOut = () => {
+    if (!userProfile) return false;
+    if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
+    return userProfile.permissions?.front_office?.perform_check_out === 'write';
+  };
+
+  if (isLoading) {
+    return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
+  }
 
   return (
     <div className="flex min-h-screen bg-[#08080a] font-sans selection:bg-indigo-500/30 overflow-hidden">
@@ -126,14 +143,18 @@ export default function FrontOfficeTerminal() {
         <nav className="flex-1 px-3 space-y-1 mt-4">
           {NAV_ITEMS.map((item) => {
             const locked = !hasAccess(item.module);
-            if (isLoading) return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
-
-  return (
+            return (
               <Link
                 key={item.label}
                 href={locked ? "#" : item.href}
+                onClick={(e) => {
+                  if (locked) {
+                    e.preventDefault();
+                    alert(`Access Restricted: The ${item.label} module requires higher authorization.`);
+                  }
+                }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all ${
-                  item.active ? 'bg-white/[0.06] text-white' : locked ? 'text-zinc-700' : 'text-zinc-500 hover:text-white'
+                  item.active ? 'bg-white/[0.06] text-white' : locked ? 'text-zinc-700' : 'text-zinc-500 hover:text-white hover:bg-white/[0.02]'
                 }`}
               >
                 <item.icon size={17} />
@@ -156,13 +177,20 @@ export default function FrontOfficeTerminal() {
             <p className="text-zinc-500 text-sm mt-1">Real-time availability and guest management</p>
           </div>
           
-          {!isReadOnly() && (
+          {canCreateBooking() ? (
             <button 
               onClick={() => setShowBookingModal(true)}
               className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg active:scale-95"
             >
               <Plus size={18} />
               New Walk-In
+            </button>
+          ) : (
+            <button 
+              disabled
+              className="bg-zinc-800 text-zinc-600 px-6 py-3 rounded-xl font-bold flex items-center gap-2 cursor-not-allowed"
+            >
+              <Lock size={14} /> New Walk-In
             </button>
           )}
         </header>
@@ -179,13 +207,9 @@ export default function FrontOfficeTerminal() {
                 </tr>
               </thead>
               <tbody>
-                {isLoading ? (
-                  <tr><td colSpan={8} className="py-20 text-center"><Loader2 className="animate-spin inline text-indigo-500" /></td></tr>
-                ) : rooms.map((room) => {
+                {rooms.map((room) => {
                   const booking = getBookingForRoom(room.id);
-                  if (isLoading) return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
-
-  return (
+                  return (
                     <tr key={room.id} className="border-b border-white/5 hover:bg-white/[0.01]">
                       <td className="p-4 border-r border-white/5 sticky left-0 bg-[#09090b] z-10">
                         <p className="text-sm font-bold text-white">{room.room_number}</p>
@@ -212,26 +236,36 @@ export default function FrontOfficeTerminal() {
                                     {booking.status}
                                   </span>
                                   
-                                  {!isReadOnly() && (
-                                    <div className="flex gap-2">
-                                      {booking.status === 'Confirmed' && (
+                                  <div className="flex gap-2">
+                                    {booking.status === 'Confirmed' && (
+                                      canCheckIn() ? (
                                         <button 
                                           onClick={async () => await checkInGuest(booking.id)}
                                           className="bg-emerald-600 hover:bg-emerald-500 text-white text-[9px] font-bold px-3 py-1 rounded-lg transition-all"
                                         >
                                           Check In
                                         </button>
-                                      )}
-                                      {booking.status === 'Checked In' && (
+                                      ) : (
+                                        <button disabled className="bg-zinc-800 text-zinc-600 text-[9px] font-bold px-3 py-1 rounded-lg flex items-center gap-1 cursor-not-allowed">
+                                          <Lock size={10} /> Check In
+                                        </button>
+                                      )
+                                    )}
+                                    {booking.status === 'Checked In' && (
+                                      canCheckOut() ? (
                                         <button 
                                           onClick={async () => await checkOutGuest(booking.id, room.id)}
                                           className="bg-rose-600 hover:bg-rose-500 text-white text-[9px] font-bold px-3 py-1 rounded-lg transition-all"
                                         >
                                           Check Out
                                         </button>
-                                      )}
-                                    </div>
-                                  )}
+                                      ) : (
+                                        <button disabled className="bg-zinc-800 text-zinc-600 text-[9px] font-bold px-3 py-1 rounded-lg flex items-center gap-1 cursor-not-allowed">
+                                          <Lock size={10} /> Check Out
+                                        </button>
+                                      )
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             </motion.div>
