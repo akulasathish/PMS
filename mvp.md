@@ -20,6 +20,11 @@ This document defines the Minimum Viable Product (MVP) requirements for the comm
     *   **Feature Grouping:** Front Office (Tape Chart, Upgrades, Refunds), Housekeeping (Cleaning, Inspection, Minibar), Finance (Audit, Reports).
     *   **Custom Role Templates:** Save hybrid configurations as reusable templates for specific shift needs.
     *   **Staff Lifecycle Control:** Exclusively allow **Tier 2 Owners** to permanently delete staff accounts and revoke access for employees within their specific property.
+    *   **Surgical IAM Profile (`/staff/[id]`):** Dedicated "Command Center" page for each employee.
+    *   **Cross-Department Assignment:** Ability to assign 25+ specific features (from any department) to any user, regardless of their base job title.
+    *   **The 3-Tier Toggle:** Every feature must have `[R] Read`, `[W] Write`, and `[D] Deny` access levels.
+    *   **JSON Playground:** An advanced view for Owners to directly write/paste raw JSON permission arrays.
+    *   **Searchable Matrix:** A live search bar to instantly filter the 25+ features (e.g., typing "Refund").
 - [ ] **Front Office Suite:**
     *   **Transactional Actions:** Room Upgrades (live move), Refund Folios, Guest Notes.
     *   **Room Blocking:** Administrative lock on rooms for maintenance, meetings, or group events (Marriages/Meetings).

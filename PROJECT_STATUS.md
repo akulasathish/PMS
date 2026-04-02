@@ -59,6 +59,7 @@ The project implements a strict 3-tier Role-Based Access Control (RBAC) architec
    - Implement the granular **Action-Level Matrix** (e.g. Check-in vs Check-out).
    - Build **Reusable Role Templates** for Owners to save custom configurations.
    - **Staff Lifecycle Control:** Implement "Revoke Access" (Delete Staff) functionality for Tier 2 Owners.
+   - Build **Surgical IAM Profile (`/staff/[id]`)**: A dedicated page for Owners to assign 25+ specific `Read/Write/Deny` features to any employee, including a searchable matrix and JSON Playground.
 2. **Housekeeping Evolution:**
    - Add the **"Inspect"** button for supervisors to move rooms from Clean ➡️ Ready.
    - Implement **Minibar Posting** and cleaning timers in the mobile view.
