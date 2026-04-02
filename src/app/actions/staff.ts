@@ -106,6 +106,31 @@ export async function revokeStaffAccess(staffId: string) {
   return { success: true };
 }
 
+/**
+ * Update granular permissions for a staff member
+ */
+export async function updateStaffPermissions(staffId: string, permissions: any) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user || (user.user_metadata?.role !== 'owner' && user.user_metadata?.role !== 'admin')) {
+    return { error: 'Unauthorized.' };
+  }
+
+  const { error } = await supabaseAdmin
+    .from('profiles')
+    .update({ permissions })
+    .eq('id', staffId);
+
+  if (error) {
+    console.error("Failed to update staff permissions:", error);
+    return { error: "Failed to update permissions in the database." };
+  }
+
+  revalidatePath('/dashboard/staff');
+  return { success: true };
+}
+
 export async function addStaff(formData: FormData) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -118,17 +143,20 @@ export async function addStaff(formData: FormData) {
   }
 
   const email = formData.get('email') as string;
-  const role = formData.get('role') as string;
+  const rawRole = formData.get('role') as string;
   const propertyId = formData.get('propertyId') as string;
   const permissionsStr = formData.get('permissions') as string;
 
-  console.log("2. Form Data:", { email, role, propertyId, permissionsStr });
+  // We enforce 'staff' as the base role for the database constraint. 
+  // Their actual power is derived from the permissions JSON, not this string.
+  const safeDatabaseRole = 'staff';
 
-  if (!email || !role || !propertyId) {
-    return { error: 'Email, Role, and Property ID are required.' };
+  console.log("2. Form Data:", { email, rawRole, propertyId, permissionsStr });
+
+  if (!email || !propertyId) {
+    return { error: 'Email and Property ID are required.' };
   }
 
-  // Parse custom permissions if provided, else rely on defaults
   let permissions = null;
   if (permissionsStr) {
     try {
@@ -141,13 +169,13 @@ export async function addStaff(formData: FormData) {
   const dummyPassword = generateDummyPassword();
   console.log("3. Creating staff user via Admin API...");
 
-  // 1. Create the user in Supabase Auth via Admin API
   const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
     email,
     password: dummyPassword,
     email_confirm: true,
     user_metadata: {
-      role: role,
+      role: safeDatabaseRole,
+      title: rawRole, // We save their "Template Name" (e.g. Night Auditor) as a display title
       requires_password_change: true
     }
   });
@@ -160,11 +188,10 @@ export async function addStaff(formData: FormData) {
 
   console.log("4. Linking staff profile to property...");
   
-  // 2. Prepare Profile Data
   const profileData: any = {
     id: authData.user.id,
     email: email,
-    role: role,
+    role: safeDatabaseRole,
     property_id: propertyId
   };
   
@@ -172,7 +199,6 @@ export async function addStaff(formData: FormData) {
     profileData.permissions = permissions;
   }
 
-  // 3. Insert into public.profiles
   const { error: profileError } = await supabaseAdmin
     .from('profiles')
     .insert([profileData]);

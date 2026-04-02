@@ -438,7 +438,7 @@ const handleSaveTemplate = async () => {
                         <div>
                           <p className="text-[13px] font-bold text-white">{st.email}</p>
                           <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest">Front Desk Staff</span>
+                            <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest">{st.role === 'staff' ? 'Authorized Terminal User' : st.role}</span>
                             <span className="w-1 h-1 bg-zinc-700 rounded-full" />
                             <span className="text-[9px] text-zinc-600 uppercase font-bold tracking-widest italic flex items-center gap-1">
                               <Activity size={10} /> Active
@@ -447,8 +447,12 @@ const handleSaveTemplate = async () => {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                         <button className="p-2 rounded-lg hover:bg-white/5 text-zinc-500 hover:text-white transition-all"><Settings size={14} /></button>
-                         <button onClick={() => setStaffToDelete(st)} className="p-2 rounded-lg hover:bg-rose-500/10 text-zinc-500 hover:text-rose-500 transition-all"><Trash2 size={14} /></button>
+                         <Link href={`/dashboard/staff/${st.id}`} className="p-2 rounded-lg hover:bg-white/5 text-zinc-500 hover:text-white transition-all">
+                            <Settings size={14} />
+                         </Link>
+                         <button onClick={() => setStaffToDelete(st)} className="p-2 rounded-lg hover:bg-rose-500/10 text-zinc-500 hover:text-rose-500 transition-all">
+                            <Trash2 size={14} />
+                         </button>
                       </div>
                       </motion.div>
                       ))}
