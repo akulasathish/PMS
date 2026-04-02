@@ -26,7 +26,7 @@ import {
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { addStaff, getRoleTemplates } from '@/app/actions/staff';
+import { addStaff, getRoleTemplates, saveRoleTemplate, revokeStaffAccess } from '@/app/actions/staff';
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Overview", href: "/dashboard", active: false, module: 'analytics' },
@@ -190,9 +190,10 @@ const handleAddStaff = async (formData: FormData) => {
 
 const [saveTemplateName, setSaveTemplateName] = useState('');
 const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+const [staffToDelete, setStaffToDelete] = useState<any>(null);
+const [isDeleting, setIsDeleting] = useState(false);
 
-const FEATURE_MAP = {
-  front_office: {
+const FEATURE_MAP = {  front_office: {
     label: 'Front Office',
     features: [
       { key: 'tape_chart', label: 'Tape Chart' },
@@ -261,6 +262,19 @@ const handleSaveTemplate = async () => {
   }
   setIsSavingTemplate(false);
 };
+  const handleRevokeStaff = async () => {
+    if (!staffToDelete) return;
+    setIsDeleting(true);
+    const res = await revokeStaffAccess(staffToDelete.id);
+    if (res.error) {
+      alert(res.error);
+    } else {
+      setStaffList(staffList.filter(s => s.id !== staffToDelete.id));
+      setStaffToDelete(null);
+    }
+    setIsDeleting(false);
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.refresh();
@@ -432,17 +446,17 @@ const handleSaveTemplate = async () => {
                       </div>
                       <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                          <button className="p-2 rounded-lg hover:bg-white/5 text-zinc-500 hover:text-white transition-all"><Settings size={14} /></button>
-                         <button className="p-2 rounded-lg hover:bg-rose-500/10 text-zinc-500 hover:text-rose-500 transition-all"><Trash2 size={14} /></button>
+                         <button onClick={() => setStaffToDelete(st)} className="p-2 rounded-lg hover:bg-rose-500/10 text-zinc-500 hover:text-rose-500 transition-all"><Trash2 size={14} /></button>
                       </div>
-                    </motion.div>
-                  ))}
-                </div>
-              )}
-            </GlassCard>
-          </div>
+                      </motion.div>
+                      ))}
+                      </div>
+                      )}
+                      </GlassCard>
+                      </div>
 
-          {/* ADD FORM */}
-          <div className="col-span-12 lg:col-span-4">
+                      {/* ADD STAFF FORM */}
+                      <div className="col-span-12 lg:col-span-4 space-y-6">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -605,6 +619,37 @@ const handleSaveTemplate = async () => {
             </motion.div>
           </div>
         </div>
+      {staffToDelete && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-[#09090b] border border-rose-500/20 rounded-2xl overflow-hidden shadow-2xl">
+            <div className="p-6 flex flex-col items-center text-center">
+              <div className="w-12 h-12 bg-rose-500/10 text-rose-500 rounded-full flex items-center justify-center mb-4 border border-rose-500/20">
+                <Trash2 size={24} />
+              </div>
+              <h2 className="text-lg font-bold text-white mb-2">Revoke Staff Access?</h2>
+              <p className="text-xs text-zinc-400 mb-6 leading-relaxed">
+                You are about to permanently delete the account for <strong className="text-white">{staffToDelete.email}</strong>. This action is irreversible.
+              </p>
+              <div className="flex gap-3 w-full">
+                <button 
+                  onClick={() => setStaffToDelete(null)}
+                  disabled={isDeleting}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-white/10 text-zinc-300 font-bold text-xs hover:bg-white/5 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleRevokeStaff}
+                  disabled={isDeleting}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-rose-600 text-white font-bold text-xs hover:bg-rose-500 transition-colors flex items-center justify-center gap-2 disabled:bg-rose-600/50"
+                >
+                  {isDeleting ? <Loader2 size={14} className="animate-spin" /> : "Confirm Revocation"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       </main>
     </div>
   );

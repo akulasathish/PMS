@@ -70,6 +70,40 @@ export async function saveRoleTemplate(propertyId: string, name: string, permiss
   return { success: true };
 }
 
+/**
+ * Permanently revoke a staff member's access (Delete Account)
+ */
+export async function revokeStaffAccess(staffId: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // Only Owners or Admins can perform lifecycle deletions
+  if (!user || (user.user_metadata?.role !== 'owner' && user.user_metadata?.role !== 'admin')) {
+    return { error: 'Unauthorized. Only executives can revoke staff access.' };
+  }
+
+  // 1. Verify the target is actually a staff member (prevent deleting other owners)
+  const { data: targetProfile } = await supabaseAdmin
+    .from('profiles')
+    .select('role')
+    .eq('id', staffId)
+    .single();
+
+  if (!targetProfile || targetProfile.role !== 'staff') {
+    return { error: 'Invalid operation. Can only revoke operational staff accounts.' };
+  }
+
+  // 2. Delete the user from Supabase Auth (Cascades to profiles and property_access)
+  const { error } = await supabaseAdmin.auth.admin.deleteUser(staffId);
+
+  if (error) {
+    console.error("Failed to revoke staff access:", error);
+    return { error: "Database rejected the deletion request." };
+  }
+  
+  return { success: true };
+}
+
 export async function addStaff(formData: FormData) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
