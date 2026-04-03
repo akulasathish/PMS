@@ -122,6 +122,14 @@ export default function FrontOfficeTerminal() {
     return `${year}-${month}-${day}`;
   };
 
+  // Helper to format date for human reading (e.g., "2026-04-21" -> "Apr 21")
+  const formatFriendlyDate = (dateString: string) => {
+    if (!dateString) return '';
+    const d = new Date(dateString);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${months[d.getMonth()]} ${d.getDate()}`;
+  };
+
   const getArrivalsToday = () => {
     const todayStr = getLocalYYYYMMDD(new Date());
     return bookings.filter(b => {
@@ -335,8 +343,8 @@ export default function FrontOfficeTerminal() {
             <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">
               Room {rooms.find(r => r.id === booking.room_id)?.room_number || 'N/A'} &bull; {booking.id.slice(0, 8)}
             </p>
-            <p className="text-[10px] font-bold text-indigo-500/80 uppercase tracking-widest">
-              {calculateNights(booking.check_in, booking.check_out)} Nights ({booking.check_in?.substring(0,10)} to {booking.check_out?.substring(0,10)})
+            <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest bg-indigo-500/10 px-2 py-0.5 rounded-md w-fit">
+              {calculateNights(booking.check_in, booking.check_out)} Nights &bull; {formatFriendlyDate(booking.check_in)} to {formatFriendlyDate(booking.check_out)}
             </p>
           </div>
         </div>
