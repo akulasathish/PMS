@@ -145,12 +145,20 @@ export default function FrontOfficeTerminal() {
   };
 
   const getAllReservations = () => {
-    if (!searchQuery) return bookings;
-    const lowerQuery = searchQuery.toLowerCase();
-    return bookings.filter(b => 
-      b.guest_name.toLowerCase().includes(lowerQuery) || 
-      b.id.toLowerCase().includes(lowerQuery)
-    );
+    let filtered = bookings;
+    if (searchQuery) {
+      const lowerQuery = searchQuery.toLowerCase();
+      filtered = bookings.filter(b => 
+        b.guest_name.toLowerCase().includes(lowerQuery) || 
+        b.id.toLowerCase().includes(lowerQuery)
+      );
+    }
+    // Sort chronologically by check-in date
+    return filtered.sort((a, b) => {
+      const dateA = new Date(a.check_in).getTime();
+      const dateB = new Date(b.check_in).getTime();
+      return dateA - dateB;
+    });
   };
 
   const hasAccess = (moduleName: string) => {
@@ -317,9 +325,14 @@ export default function FrontOfficeTerminal() {
         </div>
         <div>
           <h4 className="text-sm font-bold text-white group-hover:text-indigo-400 transition-colors">{booking.guest_name}</h4>
-          <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-0.5">
-            Room {rooms.find(r => r.id === booking.room_id)?.room_number || 'N/A'} &bull; {booking.id.slice(0, 8)}
-          </p>
+          <div className="flex flex-col gap-1 mt-1">
+            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">
+              Room {rooms.find(r => r.id === booking.room_id)?.room_number || 'N/A'} &bull; {booking.id.slice(0, 8)}
+            </p>
+            <p className="text-[10px] font-bold text-indigo-500/80 uppercase tracking-widest">
+              {calculateNights(booking.check_in, booking.check_out)} Nights ({booking.check_in?.substring(0,10)} to {booking.check_out?.substring(0,10)})
+            </p>
+          </div>
         </div>
       </div>
 
@@ -765,7 +778,8 @@ export default function FrontOfficeTerminal() {
           isOpen={showBookingModal} 
           onClose={() => setShowBookingModal(false)}
           propertyId={property?.id} 
-          rooms={rooms.filter(r => r.status === 'Available')} 
+          rooms={rooms}
+          bookings={bookings}
         />
       )}
     </div>

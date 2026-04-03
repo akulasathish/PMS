@@ -17,9 +17,10 @@ interface BookingModalProps {
   onSuccess?: () => void;
   propertyId: string;
   rooms: Room[];
+  bookings: any[]; // Accept all bookings to check for overlaps
 }
 
-export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, rooms }: BookingModalProps) {
+export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, rooms, bookings }: BookingModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -36,6 +37,27 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowStr = getLocalYYYYMMDD(tomorrow);
+
+  // Track the dates selected in the form to dynamically filter room availability
+  const [selectedCheckIn, setSelectedCheckIn] = useState(todayStr);
+  const [selectedCheckOut, setSelectedCheckOut] = useState(tomorrowStr);
+
+  // Calculate truly available rooms based on date overlap
+  const availableRooms = rooms.filter(room => {
+    // A room is unavailable if ANY existing booking overlaps with the selected dates
+    const hasOverlap = bookings.some(b => {
+      if (b.room_id !== room.id) return false;
+      if (b.status === 'Cancelled' || b.status === 'Checked Out') return false; // Ignore dead bookings
+      
+      const bIn = b.check_in ? String(b.check_in).substring(0, 10) : '';
+      const bOut = b.check_out ? String(b.check_out).substring(0, 10) : '';
+      
+      // Standard Overlap Formula: (StartA < EndB) AND (EndA > StartB)
+      return bIn < selectedCheckOut && bOut > selectedCheckIn;
+    });
+
+    return !hasOverlap;
+  });
 
   if (!isOpen) return null;
 
@@ -102,8 +124,10 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
                     required
                     className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white text-sm focus:outline-none focus:border-azure-500/50 appearance-none"
                   >
-                    <option value="">Select an available room...</option>
-                    {rooms.map(room => (
+                    <option value="">
+                      {availableRooms.length > 0 ? "Select an available room..." : "NO ROOMS AVAILABLE FOR THESE DATES"}
+                    </option>
+                    {availableRooms.map(room => (
                       <option key={room.id} value={room.id}>
                         Room {room.room_number} ({room.type})
                       </option>
@@ -153,7 +177,8 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
                     type="date" 
                     name="checkIn"
                     required
-                    defaultValue={todayStr}
+                    value={selectedCheckIn}
+                    onChange={(e) => setSelectedCheckIn(e.target.value)}
                     className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-azure-500/50"
                   />
                 </div>
@@ -164,7 +189,8 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
                     type="date" 
                     name="checkOut"
                     required
-                    defaultValue={tomorrowStr}
+                    value={selectedCheckOut}
+                    onChange={(e) => setSelectedCheckOut(e.target.value)}
                     className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-azure-500/50"
                   />
                 </div>
