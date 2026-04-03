@@ -7,7 +7,7 @@ import {
   ArrowRightLeft, ChevronLeft, ChevronRight, 
   Plus, Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, LogOut,
-  ChevronsUpDown, Lock, Brush, CheckCircle2,
+  ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck,
   Trash2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -59,6 +59,11 @@ export default function FrontOfficeTerminal() {
   const [notesInput, setNotesInput] = useState('');
   const [upgradeRoomId, setUpgradeRoomId] = useState('');
   const [refundInput, setRefundInput] = useState('');
+  
+  // Check-In Requirements State
+  const [checkIdVerified, setCheckIdVerified] = useState(false);
+  const [checkRegCardSigned, setCheckRegCardSigned] = useState(false);
+  const [checkPaymentSecured, setCheckPaymentSecured] = useState(false);
   
   const supabase = createClient();
   const router = useRouter();
@@ -323,6 +328,11 @@ export default function FrontOfficeTerminal() {
     setNotesInput(booking.notes || '');
     setRefundInput('');
     setUpgradeRoomId('');
+    
+    // Reset Check-In checklist for safety
+    setCheckIdVerified(false);
+    setCheckRegCardSigned(false);
+    setCheckPaymentSecured(false);
   };
 
   // --- SUB-COMPONENT: LIST ITEM ---
@@ -360,10 +370,10 @@ export default function FrontOfficeTerminal() {
           {booking.status === 'Confirmed' && (
             canCheckIn() ? (
               <button 
-                onClick={(e) => handleSafeCheckIn(e, booking.id)}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black px-4 py-2 rounded-xl transition-all shadow-lg shadow-emerald-500/10"
+                onClick={(e) => { e.stopPropagation(); openActionDrawer(booking); }}
+                className="bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-black px-4 py-2 rounded-xl transition-all shadow-lg shadow-amber-500/10"
               >
-                CHECK IN
+                START CHECK-IN
               </button>
             ) : <Lock size={14} className="text-zinc-700 mx-4" />
           )}
@@ -563,10 +573,10 @@ export default function FrontOfficeTerminal() {
                                       {booking.status === 'Confirmed' && (
                                         canCheckIn() ? (
                                           <button 
-                                            onClick={(e) => handleSafeCheckIn(e, booking.id)}
-                                            className="bg-emerald-600 hover:bg-emerald-500 text-white text-[9px] font-bold px-3 py-1 rounded-lg transition-all"
+                                            onClick={(e) => { e.stopPropagation(); openActionDrawer(booking); }}
+                                            className="bg-amber-600 hover:bg-amber-500 text-white text-[9px] font-bold px-3 py-1 rounded-lg transition-all"
                                           >
-                                            Check In
+                                            Start Check-In
                                           </button>
                                         ) : (
                                           <button disabled className="bg-zinc-800 text-zinc-600 text-[9px] font-bold px-3 py-1 rounded-lg flex items-center gap-1 cursor-not-allowed">
@@ -679,6 +689,38 @@ export default function FrontOfficeTerminal() {
               </div>
 
               <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                {/* 0. CHECK-IN REQUIREMENTS (Only for Confirmed guests) */}
+                {selectedBooking.status === 'Confirmed' && (
+                  <div className="space-y-3 pb-6 border-b border-white/[0.04]">
+                    <h3 className="text-xs font-bold text-amber-400 uppercase tracking-widest flex items-center gap-2">
+                      <ClipboardCheck size={14} /> Check-In Requirements
+                    </h3>
+                    <div className="space-y-2 bg-black/40 p-4 rounded-xl border border-white/[0.04]">
+                      <label className="flex items-center gap-3 cursor-pointer group">
+                        <input type="checkbox" className="w-4 h-4 rounded bg-black border-white/20 accent-amber-500" checked={checkIdVerified} onChange={e => setCheckIdVerified(e.target.checked)} />
+                        <span className="text-sm text-zinc-300 group-hover:text-white transition-colors">Verify Guest Identity (Aadhar/Passport)</span>
+                      </label>
+                      <label className="flex items-center gap-3 cursor-pointer group">
+                        <input type="checkbox" className="w-4 h-4 rounded bg-black border-white/20 accent-amber-500" checked={checkRegCardSigned} onChange={e => setCheckRegCardSigned(e.target.checked)} />
+                        <span className="text-sm text-zinc-300 group-hover:text-white transition-colors">Sign Digital RegCard & Terms</span>
+                      </label>
+                      <label className="flex items-center gap-3 cursor-pointer group">
+                        <input type="checkbox" className="w-4 h-4 rounded bg-black border-white/20 accent-amber-500" checked={checkPaymentSecured} onChange={e => setCheckPaymentSecured(e.target.checked)} />
+                        <span className="text-sm text-zinc-300 group-hover:text-white transition-colors">Secure Payment / Auth (${selectedBooking.amount})</span>
+                      </label>
+                    </div>
+                    
+                    <button 
+                      onClick={(e) => handleSafeCheckIn(e as any, selectedBooking.id)}
+                      disabled={!checkIdVerified || !checkRegCardSigned || !checkPaymentSecured || actionLoading || !canCheckIn()}
+                      className="w-full mt-4 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-900/50 disabled:text-emerald-500/50 text-white py-3 rounded-xl font-bold text-xs transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)] disabled:shadow-none flex items-center justify-center gap-2"
+                    >
+                      {actionLoading ? <Loader2 size={16} className="animate-spin" /> : "Complete Check-In"}
+                    </button>
+                    {!canCheckIn() && <p className="text-[10px] text-rose-500 flex items-center gap-1 justify-center mt-2"><Lock size={10} /> You do not have permission to Check-In guests.</p>}
+                  </div>
+                )}
+
                 {/* 1. GUEST NOTES */}
                 <div className="space-y-3">
                   <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
