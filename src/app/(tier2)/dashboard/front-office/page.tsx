@@ -15,6 +15,7 @@ import { createClient } from '@/lib/supabase/client';
 import BookingModal from './BookingModal';
 import { checkInGuest, checkOutGuest, updateGuestNotes, toggleRoomBlock, upgradeRoom, issueRefund } from '@/app/actions/booking';
 
+
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Overview", href: "/dashboard", active: false, module: 'analytics' },
   { icon: Activity, label: "Front Office", href: "/dashboard/front-office", active: true, module: 'front_office' },

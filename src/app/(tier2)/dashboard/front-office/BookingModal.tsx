@@ -58,6 +58,7 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
       setTimeout(() => {
         setSuccess(false);
         onClose();
+        window.location.reload();
       }, 1500);
     }
   };
