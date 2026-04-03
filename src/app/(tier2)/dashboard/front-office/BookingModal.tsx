@@ -23,6 +23,12 @@ export default function BookingModal({ isOpen, onClose, propertyId, rooms }: Boo
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
+  // Auto-generate dates for speed
+  const todayStr = new Date().toISOString().split('T')[0];
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
   if (!isOpen) return null;
 
   const handleSubmit = async (formData: FormData) => {
@@ -137,6 +143,7 @@ export default function BookingModal({ isOpen, onClose, propertyId, rooms }: Boo
                     type="date" 
                     name="checkIn"
                     required
+                    defaultValue={todayStr}
                     className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-azure-500/50"
                   />
                 </div>
@@ -147,6 +154,7 @@ export default function BookingModal({ isOpen, onClose, propertyId, rooms }: Boo
                     type="date" 
                     name="checkOut"
                     required
+                    defaultValue={tomorrowStr}
                     className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-azure-500/50"
                   />
                 </div>

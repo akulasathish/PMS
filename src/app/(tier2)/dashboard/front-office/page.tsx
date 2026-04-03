@@ -24,7 +24,18 @@ const NAV_ITEMS = [
   { icon: Settings, label: "Settings", href: "#", active: false, module: 'settings' },
 ];
 
-const DAYS = ["22 Mar", "23 Mar", "24 Mar", "25 Mar", "26 Mar", "27 Mar", "28 Mar"];
+const generateDays = () => {
+  const days = [];
+  const today = new Date();
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    days.push(d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }));
+  }
+  return days;
+};
+
+const DAYS = generateDays();
 
 export default function FrontOfficeTerminal() {
   const [rooms, setRooms] = useState<any[]>([]);
