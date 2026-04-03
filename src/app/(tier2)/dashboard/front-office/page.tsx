@@ -146,13 +146,19 @@ export default function FrontOfficeTerminal() {
 
   const getAllReservations = () => {
     let filtered = bookings;
+    
     if (searchQuery) {
+      // UNIVERSAL SEARCH: If they are searching, look through EVERYTHING (Past, Present, Cancelled)
       const lowerQuery = searchQuery.toLowerCase();
       filtered = bookings.filter(b => 
         b.guest_name.toLowerCase().includes(lowerQuery) || 
         b.id.toLowerCase().includes(lowerQuery)
       );
+    } else {
+      // DEFAULT VIEW: If not searching, ONLY show upcoming 'Confirmed' reservations to prevent clutter
+      filtered = bookings.filter(b => b.status === 'Confirmed');
     }
+
     // Sort chronologically by check-in date
     return filtered.sort((a, b) => {
       const dateA = new Date(a.check_in).getTime();
@@ -453,7 +459,7 @@ export default function FrontOfficeTerminal() {
                 { id: 'arrivals', label: 'Arrivals Today', icon: UserCheck },
                 { id: 'departures', label: 'Departures Today', icon: LogOut },
                 { id: 'house', label: 'In-House', icon: Bed },
-                { id: 'all', label: 'All Reservations', icon: Search },
+                { id: 'all', label: 'Reservations', icon: Search },
               ].map((tab) => (
                 <button
                   key={tab.id}
