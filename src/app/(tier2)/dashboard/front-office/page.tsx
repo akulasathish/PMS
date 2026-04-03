@@ -50,7 +50,8 @@ export default function FrontOfficeTerminal() {
   const [showPropertyDropdown, setShowPropertyDropdown] = useState(false);
   
   // Tabs State
-  const [activeTab, setActiveTab] = useState<'tape' | 'arrivals' | 'departures' | 'house'>('tape');
+  const [activeTab, setActiveTab] = useState<'tape' | 'arrivals' | 'departures' | 'house' | 'all'>('tape');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Action Drawer State
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
@@ -141,6 +142,15 @@ export default function FrontOfficeTerminal() {
 
   const getInHouse = () => {
     return bookings.filter(b => b.status === 'Checked In');
+  };
+
+  const getAllReservations = () => {
+    if (!searchQuery) return bookings;
+    const lowerQuery = searchQuery.toLowerCase();
+    return bookings.filter(b => 
+      b.guest_name.toLowerCase().includes(lowerQuery) || 
+      b.id.toLowerCase().includes(lowerQuery)
+    );
   };
 
   const hasAccess = (moduleName: string) => {
@@ -423,27 +433,47 @@ export default function FrontOfficeTerminal() {
           </div>
 
           {/* TAB SYSTEM */}
-          <div className="flex items-center gap-1 bg-white/[0.02] border border-white/[0.05] p-1 rounded-2xl w-fit self-center md:self-start">
-            {[
-              { id: 'tape', label: 'Tape Chart', icon: Calendar },
-              { id: 'arrivals', label: 'Arrivals Today', icon: UserCheck },
-              { id: 'departures', label: 'Departures Today', icon: LogOut },
-              { id: 'house', label: 'In-House', icon: Bed },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
-                  activeTab === tab.id 
-                    ? 'bg-indigo-600 text-white shadow-lg' 
-                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5'
-                }`}
-              >
-                <tab.icon size={14} />
-                {tab.label}
-                {tab.id === 'arrivals' && getArrivalsToday().length > 0 && <span className="ml-1 bg-white text-indigo-600 px-1.5 py-0.5 rounded-md text-[9px]">{getArrivalsToday().length}</span>}
-              </button>
-            ))}
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-1 bg-white/[0.02] border border-white/[0.05] p-1 rounded-2xl w-fit self-center md:self-start">
+              {[
+                { id: 'tape', label: 'Tape Chart', icon: Calendar },
+                { id: 'arrivals', label: 'Arrivals Today', icon: UserCheck },
+                { id: 'departures', label: 'Departures Today', icon: LogOut },
+                { id: 'house', label: 'In-House', icon: Bed },
+                { id: 'all', label: 'All Reservations', icon: Search },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setActiveTab(tab.id as any);
+                    setSearchQuery(''); // Clear search when switching tabs
+                  }}
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
+                    activeTab === tab.id 
+                      ? 'bg-indigo-600 text-white shadow-lg' 
+                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5'
+                  }`}
+                >
+                  <tab.icon size={14} />
+                  {tab.label}
+                  {tab.id === 'arrivals' && getArrivalsToday().length > 0 && <span className="ml-1 bg-white text-indigo-600 px-1.5 py-0.5 rounded-md text-[9px]">{getArrivalsToday().length}</span>}
+                </button>
+              ))}
+            </div>
+
+            {/* SEARCH BAR (Only visible on All Reservations) */}
+            {activeTab === 'all' && (
+              <div className="relative w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" size={14} />
+                <input 
+                  type="text" 
+                  placeholder="Search guest or ID..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-xs text-white focus:outline-none focus:border-indigo-500/50 transition-all"
+                />
+              </div>
+            )}
           </div>
         </header>
 
@@ -568,6 +598,14 @@ export default function FrontOfficeTerminal() {
                     <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs">No Guests Currently In-House</p>
                   </div>
                 ) : getInHouse().map(b => <BookingRow key={b.id} booking={b} />)
+              )}
+              {activeTab === 'all' && (
+                getAllReservations().length === 0 ? (
+                  <div className="py-40 text-center border border-dashed border-white/5 rounded-3xl bg-white/[0.01]">
+                    <Search size={40} className="text-zinc-500/40 mx-auto mb-4" />
+                    <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs">No Reservations Found</p>
+                  </div>
+                ) : getAllReservations().map(b => <BookingRow key={b.id} booking={b} />)
               )}
             </div>
           )}
