@@ -60,50 +60,57 @@ export default function FrontOfficeTerminal() {
   const supabase = createClient();
   const router = useRouter();
 
-  useEffect(() => {
-    async function fetchData() {
-      setIsLoading(true);
-      try {
-        const { data: auth } = await supabase.auth.getUser();
-        if (!auth.user) return;
+  // Extract fetch data to a callable function to avoid window.location.reload()
+  const loadDashboardData = async () => {
+    setIsLoading(true);
+    try {
+      const { data: auth } = await supabase.auth.getUser();
+      if (!auth.user) return;
 
-        const { data: acc } = await supabase.from('property_access').select('property_id, properties(id, name)').eq('user_id', auth.user.id);
-        const { data: prof } = await supabase.from('profiles').select('*').eq('id', auth.user.id).single();
-        setUserProfile(prof);
+      const { data: acc } = await supabase.from('property_access').select('property_id, properties(id, name)').eq('user_id', auth.user.id);
+      const { data: prof } = await supabase.from('profiles').select('*').eq('id', auth.user.id).single();
+      setUserProfile(prof);
 
-        let activeId = localStorage.getItem('pms_active_property');
-        if (acc && acc.length > 0) {
-          setAccessiblePropsList(acc.map((a: any) => a.properties));
-          if (!activeId || !acc.some((a: any) => a.property_id === activeId)) {
-            activeId = acc[0].property_id;
-          }
-        } else if (prof?.property_id) {
-          activeId = prof.property_id;
-          const { data: fallbackProp } = await supabase.from('properties').select('id, name').eq('id', activeId).single();
-          if (fallbackProp) setAccessiblePropsList([fallbackProp]);
+      let activeId = localStorage.getItem('pms_active_property');
+      if (acc && acc.length > 0) {
+        setAccessiblePropsList(acc.map((a: any) => a.properties));
+        if (!activeId || !acc.some((a: any) => a.property_id === activeId)) {
+          activeId = acc[0].property_id;
         }
-
-        if (activeId) {
-          const { data: prop } = await supabase.from('properties').select('*').eq('id', activeId).single();
-          setProperty(prop);
-
-          // Fetch rooms and bookings safely
-          const [roomsRes, bookingsRes] = await Promise.all([
-            supabase.from('rooms').select('*').eq('property_id', activeId).order('room_number'),
-            supabase.from('bookings').select('*').eq('property_id', activeId)
-          ]);
-
-          setRooms(roomsRes.data || []);
-          setBookings(bookingsRes.data || []);
-        }
-      } catch (err) {
-        console.error("Dashboard Load Error:", err);
-      } finally {
-        setIsLoading(false);
+      } else if (prof?.property_id) {
+        activeId = prof.property_id;
+        const { data: fallbackProp } = await supabase.from('properties').select('id, name').eq('id', activeId).single();
+        if (fallbackProp) setAccessiblePropsList([fallbackProp]);
       }
+
+      if (activeId) {
+        const { data: prop } = await supabase.from('properties').select('*').eq('id', activeId).single();
+        setProperty(prop);
+
+        // Fetch rooms and bookings, explicitly bypassing browser cache
+        const [roomsRes, bookingsRes] = await Promise.all([
+          supabase.from('rooms').select('*').eq('property_id', activeId).order('room_number'),
+          supabase.from('bookings').select('*').eq('property_id', activeId).order('created_at', { ascending: false })
+        ]);
+
+        setRooms(roomsRes.data || []);
+        setBookings(bookingsRes.data || []);
+      }
+    } catch (err) {
+      console.error("Dashboard Load Error:", err);
+    } finally {
+      setIsLoading(false);
     }
-    fetchData();
+  };
+
+  useEffect(() => {
+    loadDashboardData();
   }, []);
+
+  const handleBookingModalClose = () => {
+    setShowBookingModal(false);
+    loadDashboardData(); // Smoothly refresh data instead of reloading the page
+  };
 
   const getBookingForRoom = (roomId: string) => {
     return bookings.find(b => b.room_id === roomId && (b.status === 'Confirmed' || b.status === 'Checked In'));
@@ -223,7 +230,7 @@ export default function FrontOfficeTerminal() {
     setActionLoading(true);
     const res = await upgradeRoom(selectedBooking.id, selectedBooking.room_id, upgradeRoomId);
     if (res.success) {
-      window.location.reload();
+      loadDashboardData();
     } else {
       alert(res.error);
     }
@@ -244,13 +251,13 @@ export default function FrontOfficeTerminal() {
   const handleSafeCheckIn = async (e: React.MouseEvent, bookingId: string) => {
     e.stopPropagation();
     await checkInGuest(bookingId);
-    window.location.reload();
+    loadDashboardData();
   };
 
   const handleSafeCheckOut = async (e: React.MouseEvent, bookingId: string, roomId: string) => {
     e.stopPropagation();
     await checkOutGuest(bookingId, roomId);
-    window.location.reload();
+    loadDashboardData();
   };
 
   const openActionDrawer = (booking: any) => {

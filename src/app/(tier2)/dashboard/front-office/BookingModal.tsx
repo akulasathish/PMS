@@ -53,9 +53,7 @@ export default function BookingModal({ isOpen, onClose, propertyId, rooms }: Boo
       setSuccess(true);
       setTimeout(() => {
         setSuccess(false);
-        onClose();
-        // Force the parent component to reload its data array
-        window.location.reload();
+        onClose(); // This now automatically triggers a data refresh in the parent!
       }, 1500);
     }
   };
