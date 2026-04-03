@@ -121,12 +121,20 @@ export default function FrontOfficeTerminal() {
 
   const getArrivalsToday = () => {
     const todayStr = getLocalYYYYMMDD(new Date());
-    return bookings.filter(b => b.check_in === todayStr && b.status === 'Confirmed');
+    return bookings.filter(b => {
+      // Extract only the first 10 characters (YYYY-MM-DD) from whatever Postgres returned
+      const dbDate = b.check_in ? String(b.check_in).substring(0, 10) : '';
+      return dbDate === todayStr && b.status === 'Confirmed';
+    });
   };
 
   const getDeparturesToday = () => {
     const todayStr = getLocalYYYYMMDD(new Date());
-    return bookings.filter(b => b.check_out === todayStr && b.status === 'Checked In');
+    return bookings.filter(b => {
+      // Extract only the first 10 characters
+      const dbDate = b.check_out ? String(b.check_out).substring(0, 10) : '';
+      return dbDate === todayStr && b.status === 'Checked In';
+    });
   };
 
   const getInHouse = () => {
@@ -225,7 +233,7 @@ export default function FrontOfficeTerminal() {
     setActionLoading(true);
     const res = await upgradeRoom(selectedBooking.id, selectedBooking.room_id, upgradeRoomId);
     if (res.success) {
-      loadDashboardData();
+      window.location.reload();
     } else {
       alert(res.error);
     }
@@ -246,13 +254,13 @@ export default function FrontOfficeTerminal() {
   const handleSafeCheckIn = async (e: React.MouseEvent, bookingId: string) => {
     e.stopPropagation();
     await checkInGuest(bookingId);
-    loadDashboardData();
+    window.location.reload();
   };
 
   const handleSafeCheckOut = async (e: React.MouseEvent, bookingId: string, roomId: string) => {
     e.stopPropagation();
     await checkOutGuest(bookingId, roomId);
-    loadDashboardData();
+    window.location.reload();
   };
 
   const openActionDrawer = (booking: any) => {
@@ -674,7 +682,6 @@ export default function FrontOfficeTerminal() {
         <BookingModal 
           isOpen={showBookingModal} 
           onClose={() => setShowBookingModal(false)}
-          onSuccess={() => loadDashboardData()}
           propertyId={property?.id} 
           rooms={rooms.filter(r => r.status === 'Available')} 
         />
