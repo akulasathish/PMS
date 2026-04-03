@@ -7,7 +7,7 @@ import {
   ArrowRightLeft, ChevronLeft, ChevronRight, 
   Plus, Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, LogOut,
-  ChevronsUpDown, Lock, Brush
+  ChevronsUpDown, Lock, Brush, CheckCircle2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -47,6 +47,9 @@ export default function FrontOfficeTerminal() {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [showPropertyDropdown, setShowPropertyDropdown] = useState(false);
   
+  // Tabs State
+  const [activeTab, setActiveTab] = useState<'tape' | 'arrivals' | 'departures' | 'house'>('tape');
+
   // Action Drawer State
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -104,6 +107,20 @@ export default function FrontOfficeTerminal() {
 
   const getBookingForRoom = (roomId: string) => {
     return bookings.find(b => b.room_id === roomId && (b.status === 'Confirmed' || b.status === 'Checked In'));
+  };
+
+  const getArrivalsToday = () => {
+    const today = new Date().toISOString().split('T')[0];
+    return bookings.filter(b => b.check_in === today && b.status === 'Confirmed');
+  };
+
+  const getDeparturesToday = () => {
+    const today = new Date().toISOString().split('T')[0];
+    return bookings.filter(b => b.check_out === today && b.status === 'Checked In');
+  };
+
+  const getInHouse = () => {
+    return bookings.filter(b => b.status === 'Checked In');
   };
 
   const hasAccess = (moduleName: string) => {
@@ -231,6 +248,58 @@ export default function FrontOfficeTerminal() {
     setUpgradeRoomId('');
   };
 
+  // --- SUB-COMPONENT: LIST ITEM ---
+  const BookingRow = ({ booking }: { booking: any }) => (
+    <motion.div 
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      onClick={() => openActionDrawer(booking)}
+      className="group flex items-center justify-between p-5 bg-zinc-900/40 border border-white/[0.04] rounded-2xl hover:border-indigo-500/40 transition-all cursor-pointer shadow-xl"
+    >
+      <div className="flex items-center gap-5">
+        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500/20 to-violet-500/20 border border-white/5 flex items-center justify-center text-indigo-400 font-black text-xs uppercase group-hover:scale-105 transition-transform">
+          {booking.guest_name.substring(0, 2)}
+        </div>
+        <div>
+          <h4 className="text-sm font-bold text-white group-hover:text-indigo-400 transition-colors">{booking.guest_name}</h4>
+          <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-0.5">
+            Room {rooms.find(r => r.id === booking.room_id)?.room_number || 'N/A'} &bull; {booking.id.slice(0, 8)}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-6">
+        <div className="text-right hidden md:block">
+          <p className="text-[10px] text-zinc-600 font-black uppercase tracking-tighter">Amount Due</p>
+          <p className="text-sm font-black text-white">${booking.amount}</p>
+        </div>
+        
+        <div className="flex gap-2">
+          {booking.status === 'Confirmed' && (
+            canCheckIn() ? (
+              <button 
+                onClick={async (e) => { e.stopPropagation(); await checkInGuest(booking.id); }}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black px-4 py-2 rounded-xl transition-all shadow-lg shadow-emerald-500/10"
+              >
+                CHECK IN
+              </button>
+            ) : <Lock size={14} className="text-zinc-700 mx-4" />
+          )}
+          {booking.status === 'Checked In' && (
+            canCheckOut() ? (
+              <button 
+                onClick={async (e) => { e.stopPropagation(); await checkOutGuest(booking.id, booking.room_id); }}
+                className="bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-black px-4 py-2 rounded-xl transition-all shadow-lg shadow-rose-500/10"
+              >
+                CHECK OUT
+              </button>
+            ) : <Lock size={14} className="text-zinc-700 mx-4" />
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+
   if (isLoading) {
     return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
   }
@@ -280,129 +349,177 @@ export default function FrontOfficeTerminal() {
 
       {/* MAIN */}
       <main className="flex-1 flex flex-col overflow-hidden">
-        <header className="p-8 border-b border-white/[0.04] flex justify-between items-center bg-[#08080a]">
-          <div>
-            <h2 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
-              <Activity className="text-emerald-400" />
-              Front Office Terminal
-            </h2>
-            <p className="text-zinc-500 text-sm mt-1">Real-time availability and guest management</p>
+        <header className="p-8 border-b border-white/[0.04] bg-[#08080a] flex flex-col gap-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
+                <Activity className="text-emerald-400" />
+                Front Office Terminal
+              </h2>
+              <p className="text-zinc-500 text-sm mt-1">Real-time availability and guest management</p>
+            </div>
+            
+            {canCreateBooking() && (
+              <button 
+                onClick={() => setShowBookingModal(true)}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg active:scale-95"
+              >
+                <Plus size={18} />
+                New Walk-In
+              </button>
+            )}
           </div>
-          
-          {canCreateBooking() ? (
-            <button 
-              onClick={() => setShowBookingModal(true)}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg active:scale-95"
-            >
-              <Plus size={18} />
-              New Walk-In
-            </button>
-          ) : (
-            <button 
-              disabled
-              className="bg-zinc-800 text-zinc-600 px-6 py-3 rounded-xl font-bold flex items-center gap-2 cursor-not-allowed"
-            >
-              <Lock size={14} /> New Walk-In
-            </button>
-          )}
+
+          {/* TAB SYSTEM */}
+          <div className="flex items-center gap-1 bg-white/[0.02] border border-white/[0.05] p-1 rounded-2xl w-fit self-center md:self-start">
+            {[
+              { id: 'tape', label: 'Tape Chart', icon: Calendar },
+              { id: 'arrivals', label: 'Arrivals Today', icon: UserCheck },
+              { id: 'departures', label: 'Departures Today', icon: LogOut },
+              { id: 'house', label: 'In-House', icon: Bed },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
+                  activeTab === tab.id 
+                    ? 'bg-indigo-600 text-white shadow-lg' 
+                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5'
+                }`}
+              >
+                <tab.icon size={14} />
+                {tab.label}
+                {tab.id === 'arrivals' && getArrivalsToday().length > 0 && <span className="ml-1 bg-white text-indigo-600 px-1.5 py-0.5 rounded-md text-[9px]">{getArrivalsToday().length}</span>}
+              </button>
+            ))}
+          </div>
         </header>
 
         <div className="flex-1 p-8 overflow-auto">
-          <div className="bg-zinc-900/30 rounded-2xl border border-white/[0.06] overflow-hidden">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-black/40 border-b border-white/[0.06]">
-                  <th className="p-4 text-left text-[10px] font-black text-zinc-500 uppercase tracking-widest border-r border-white/5 sticky left-0 bg-[#09090b] z-20">Room</th>
-                  {DAYS.map(day => (
-                    <th key={day} className="p-4 text-center text-[10px] font-black text-zinc-400 uppercase tracking-widest border-r border-white/5 min-w-[140px]">{day}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rooms.map((room) => {
-                  const booking = getBookingForRoom(room.id);
-                  return (
-                    <tr key={room.id} className="border-b border-white/5 hover:bg-white/[0.01]">
-                      <td className="p-4 border-r border-white/5 sticky left-0 bg-[#09090b] z-10">
-                        {canBlockRoom() ? (
-                          <button 
-                            onClick={() => handleBlockRoom(room)}
-                            disabled={actionLoading || (room.status !== 'Available' && room.status !== 'Blocked')}
-                            className={`text-sm font-bold transition-colors ${room.status === 'Blocked' ? 'text-rose-500 hover:text-rose-400' : 'text-white hover:text-rose-300'} disabled:opacity-50`}
-                          >
-                            {room.room_number} {room.status === 'Blocked' && <Lock size={10} className="inline ml-1" />}
-                          </button>
-                        ) : (
-                          <p className={`text-sm font-bold ${room.status === 'Blocked' ? 'text-rose-500' : 'text-white'}`}>
-                            {room.room_number} {room.status === 'Blocked' && <Lock size={10} className="inline ml-1" />}
-                          </p>
-                        )}
-                        <p className="text-[10px] text-zinc-500 uppercase mt-0.5">{room.type}</p>
-                      </td>
-                      {DAYS.map((_, idx) => (
-                        <td key={idx} className="p-2 border-r border-white/5 relative h-20">
-                          {booking && idx === 0 ? (
-                            <motion.div 
-                              layoutId={booking.id}
-                              onClick={() => openActionDrawer(booking)}
-                              className={`absolute inset-y-2 left-2 right-[-240px] rounded-xl border p-3 flex items-center justify-between z-20 shadow-2xl cursor-pointer hover:border-indigo-400/50 transition-colors ${
-                                booking.status === 'Confirmed' ? 'bg-amber-500/10 border-amber-500/30' : 'bg-emerald-500/10 border-emerald-500/30'
-                              }`}
+          {activeTab === 'tape' ? (
+            <div className="bg-zinc-900/30 rounded-2xl border border-white/[0.06] overflow-hidden">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-black/40 border-b border-white/[0.06]">
+                    <th className="p-4 text-left text-[10px] font-black text-zinc-500 uppercase tracking-widest border-r border-white/5 sticky left-0 bg-[#09090b] z-20">Room</th>
+                    {DAYS.map(day => (
+                      <th key={day} className="p-4 text-center text-[10px] font-black text-zinc-400 uppercase tracking-widest border-r border-white/5 min-w-[140px]">{day}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rooms.map((room) => {
+                    const booking = getBookingForRoom(room.id);
+                    return (
+                      <tr key={room.id} className="border-b border-white/5 hover:bg-white/[0.01]">
+                        <td className="p-4 border-r border-white/5 sticky left-0 bg-[#09090b] z-10">
+                          {canBlockRoom() ? (
+                            <button 
+                              onClick={() => handleBlockRoom(room)}
+                              disabled={actionLoading || (room.status !== 'Available' && room.status !== 'Blocked')}
+                              className={`text-sm font-bold transition-colors ${room.status === 'Blocked' ? 'text-rose-500 hover:text-rose-400' : 'text-white hover:text-rose-300'} disabled:opacity-50`}
                             >
-                              <div className="flex flex-col gap-1 w-full">
-                                <div className="flex items-center gap-2">
-                                  <UserCheck size={14} className={booking.status === 'Confirmed' ? 'text-amber-400' : 'text-emerald-400'} />
-                                  <span className="text-[12px] font-bold text-white">{booking.guest_name}</span>
-                                </div>
-                                <div className="flex items-center justify-between mt-2">
-                                  <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                                    booking.status === 'Confirmed' ? 'bg-amber-500/20 text-amber-500' : 'bg-emerald-500/20 text-emerald-500'
-                                  }`}>
-                                    {booking.status}
-                                  </span>
-                                  
-                                  <div className="flex gap-2">
-                                    {booking.status === 'Confirmed' && (
-                                      canCheckIn() ? (
-                                        <button 
-                                          onClick={async (e) => { e.stopPropagation(); await checkInGuest(booking.id); }}
-                                          className="bg-emerald-600 hover:bg-emerald-500 text-white text-[9px] font-bold px-3 py-1 rounded-lg transition-all"
-                                        >
-                                          Check In
-                                        </button>
-                                      ) : (
-                                        <button disabled className="bg-zinc-800 text-zinc-600 text-[9px] font-bold px-3 py-1 rounded-lg flex items-center gap-1 cursor-not-allowed">
-                                          <Lock size={10} /> Check In
-                                        </button>
-                                      )
-                                    )}
-                                    {booking.status === 'Checked In' && (
-                                      canCheckOut() ? (
-                                        <button 
-                                          onClick={async (e) => { e.stopPropagation(); await checkOutGuest(booking.id, room.id); }}
-                                          className="bg-rose-600 hover:bg-rose-500 text-white text-[9px] font-bold px-3 py-1 rounded-lg transition-all"
-                                        >
-                                          Check Out
-                                        </button>
-                                      ) : (
-                                        <button disabled className="bg-zinc-800 text-zinc-600 text-[9px] font-bold px-3 py-1 rounded-lg flex items-center gap-1 cursor-not-allowed">
-                                          <Lock size={10} /> Check Out
-                                        </button>
-                                      )
-                                    )}
+                              {room.room_number} {room.status === 'Blocked' && <Lock size={10} className="inline ml-1" />}
+                            </button>
+                          ) : (
+                            <p className={`text-sm font-bold ${room.status === 'Blocked' ? 'text-rose-500' : 'text-white'}`}>
+                              {room.room_number} {room.status === 'Blocked' && <Lock size={10} className="inline ml-1" />}
+                            </p>
+                          )}
+                          <p className="text-[10px] text-zinc-500 uppercase mt-0.5">{room.type}</p>
+                        </td>
+                        {DAYS.map((_, idx) => (
+                          <td key={idx} className="p-2 border-r border-white/5 relative h-20">
+                            {booking && idx === 0 ? (
+                              <motion.div 
+                                layoutId={booking.id}
+                                onClick={() => openActionDrawer(booking)}
+                                className={`absolute inset-y-2 left-2 right-[-240px] rounded-xl border p-3 flex items-center justify-between z-20 shadow-2xl cursor-pointer hover:border-indigo-400/50 transition-colors ${
+                                  booking.status === 'Confirmed' ? 'bg-amber-500/10 border-amber-500/30' : 'bg-emerald-500/10 border-emerald-500/30'
+                                }`}
+                              >
+                                <div className="flex flex-col gap-1 w-full">
+                                  <div className="flex items-center gap-2">
+                                    <UserCheck size={14} className={booking.status === 'Confirmed' ? 'text-amber-400' : 'text-emerald-400'} />
+                                    <span className="text-[12px] font-bold text-white">{booking.guest_name}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between mt-2">
+                                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                      booking.status === 'Confirmed' ? 'bg-amber-500/20 text-amber-500' : 'bg-emerald-500/20 text-emerald-500'
+                                    }`}>
+                                      {booking.status}
+                                    </span>
+                                    
+                                    <div className="flex gap-2">
+                                      {booking.status === 'Confirmed' && (
+                                        canCheckIn() ? (
+                                          <button 
+                                            onClick={async (e) => { e.stopPropagation(); await checkInGuest(booking.id); }}
+                                            className="bg-emerald-600 hover:bg-emerald-500 text-white text-[9px] font-bold px-3 py-1 rounded-lg transition-all"
+                                          >
+                                            Check In
+                                          </button>
+                                        ) : (
+                                          <button disabled className="bg-zinc-800 text-zinc-600 text-[9px] font-bold px-3 py-1 rounded-lg flex items-center gap-1 cursor-not-allowed">
+                                            <Lock size={10} /> Check In
+                                          </button>
+                                        )
+                                      )}
+                                      {booking.status === 'Checked In' && (
+                                        canCheckOut() ? (
+                                          <button 
+                                            onClick={async (e) => { e.stopPropagation(); await checkOutGuest(booking.id, room.id); }}
+                                            className="bg-rose-600 hover:bg-rose-500 text-white text-[9px] font-bold px-3 py-1 rounded-lg transition-all"
+                                          >
+                                            Check Out
+                                          </button>
+                                        ) : (
+                                          <button disabled className="bg-zinc-800 text-zinc-600 text-[9px] font-bold px-3 py-1 rounded-lg flex items-center gap-1 cursor-not-allowed">
+                                            <Lock size={10} /> Check Out
+                                          </button>
+                                        )
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            </motion.div>
-                          ) : null}
-                        </td>
-                      ))}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                              </motion.div>
+                            ) : null}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="max-w-5xl mx-auto space-y-4 pb-20">
+              {activeTab === 'arrivals' && (
+                getArrivalsToday().length === 0 ? (
+                  <div className="py-40 text-center border border-dashed border-white/5 rounded-3xl bg-white/[0.01]">
+                    <CheckCircle2 size={40} className="text-emerald-500/40 mx-auto mb-4" />
+                    <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs">No Arrivals Remaining Today</p>
+                  </div>
+                ) : getArrivalsToday().map(b => <BookingRow key={b.id} booking={b} />)
+              )}
+              {activeTab === 'departures' && (
+                getDeparturesToday().length === 0 ? (
+                  <div className="py-40 text-center border border-dashed border-white/5 rounded-3xl bg-white/[0.01]">
+                    <LogOut size={40} className="text-indigo-500/40 mx-auto mb-4" />
+                    <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs">No Departures Scheduled Today</p>
+                  </div>
+                ) : getDeparturesToday().map(b => <BookingRow key={b.id} booking={b} />)
+              )}
+              {activeTab === 'house' && (
+                getInHouse().length === 0 ? (
+                  <div className="py-40 text-center border border-dashed border-white/5 rounded-3xl bg-white/[0.01]">
+                    <Bed size={40} className="text-amber-500/40 mx-auto mb-4" />
+                    <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs">No Guests Currently In-House</p>
+                  </div>
+                ) : getInHouse().map(b => <BookingRow key={b.id} booking={b} />)
+              )}
+            </div>
+          )}
         </div>
       </main>
 
