@@ -7,13 +7,14 @@ import {
   ArrowRightLeft, ChevronLeft, ChevronRight, 
   Plus, Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, LogOut,
-  ChevronsUpDown, Lock, Brush, CheckCircle2
+  ChevronsUpDown, Lock, Brush, CheckCircle2,
+  Trash2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import BookingModal from './BookingModal';
-import { checkInGuest, checkOutGuest, updateGuestNotes, toggleRoomBlock, upgradeRoom, issueRefund } from '@/app/actions/booking';
+import { checkInGuest, checkOutGuest, updateGuestNotes, toggleRoomBlock, upgradeRoom, issueRefund, cancelBooking } from '@/app/actions/booking';
 
 
 const NAV_ITEMS = [
@@ -198,7 +199,28 @@ export default function FrontOfficeTerminal() {
     return userProfile.permissions?.front_office?.guest_notes === 'write' || userProfile.permissions?.front_office?.guest_notes === 'full';
   };
 
+  const canCancel = () => {
+    if (!userProfile) return false;
+    if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
+    // For now, we reuse modify_booking permission for cancellation
+    return userProfile.permissions?.front_office?.modify_booking === 'write' || userProfile.permissions?.front_office?.modify_booking === 'full';
+  };
+
   // --- ACTION HANDLERS ---
+  const handleCancelBooking = async () => {
+    if (!selectedBooking) return;
+    if (!confirm(`Are you sure you want to PERMANENTLY CANCEL the reservation for ${selectedBooking.guest_name}?`)) return;
+    
+    setActionLoading(true);
+    const res = await cancelBooking(selectedBooking.id, selectedBooking.room_id);
+    if (res.success) {
+      window.location.reload();
+    } else {
+      alert(res.error);
+    }
+    setActionLoading(false);
+  };
+
   const handleSaveNotes = async () => {
     if (!selectedBooking) return;
     setActionLoading(true);
@@ -322,6 +344,13 @@ export default function FrontOfficeTerminal() {
       </div>
     </motion.div>
   );
+
+  const calculateNights = (inDate: string, outDate: string) => {
+    const d1 = new Date(inDate);
+    const d2 = new Date(outDate);
+    const diff = d2.getTime() - d1.getTime();
+    return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  };
 
   if (isLoading) {
     return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
@@ -572,9 +601,8 @@ export default function FrontOfficeTerminal() {
                     <UserCheck className="text-indigo-400" size={20} />
                     {selectedBooking.guest_name}
                   </h2>
-                  <p className="text-xs text-zinc-500 mt-1 flex items-center gap-2">
-                    Room {rooms.find(r => r.id === selectedBooking.room_id)?.room_number} 
-                    <span className="text-[10px] bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-400">{selectedBooking.status}</span>
+                  <p className="text-[11px] font-black text-indigo-500 uppercase tracking-widest mt-1">
+                    {calculateNights(selectedBooking.check_in, selectedBooking.check_out)} Nights &bull; {selectedBooking.check_in} to {selectedBooking.check_out}
                   </p>
                 </div>
                 <button 
@@ -672,6 +700,21 @@ export default function FrontOfficeTerminal() {
                     </button>
                   </div>
                   {!canRefund() && <p className="text-[10px] text-rose-500 flex items-center gap-1"><Lock size={10} /> You do not have permission to issue refunds.</p>}
+                </div>
+
+                {/* 4. DANGER ZONE */}
+                <div className="pt-6 border-t border-rose-500/20">
+                  <h3 className="text-xs font-bold text-rose-500 uppercase tracking-widest flex items-center gap-2 mb-4">
+                    <Trash2 size={14} /> Danger Zone
+                  </h3>
+                  <button 
+                    onClick={handleCancelBooking}
+                    disabled={!canCancel() || actionLoading}
+                    className="w-full bg-rose-500/10 hover:bg-rose-500 border border-rose-500/20 text-rose-500 hover:text-white py-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 disabled:opacity-30"
+                  >
+                    {actionLoading ? <Loader2 size={14} className="animate-spin" /> : "Cancel Reservation"}
+                  </button>
+                  {!canCancel() && <p className="text-[10px] text-rose-500 mt-2 flex items-center gap-1 justify-center"><Lock size={10} /> Cancellation restricted by your access level.</p>}
                 </div>
 
               </div>

@@ -63,8 +63,8 @@ export async function createBooking(formData: FormData) {
   }
 
   // Revalidate the front-desk dashboard path
-  revalidatePath('/front-desk');
-  revalidatePath('/(tier3)/front-desk', 'page');
+  revalidatePath('/dashboard/front-office');
+  revalidatePath('/(tier3)/dashboard/front-office', 'page');
   
   return { success: true, bookingId: bookingData.id };
 }
@@ -93,11 +93,47 @@ export async function checkInGuest(bookingId: string) {
   }
 
   // Revalidate the tape chart so the status changes instantly
-  revalidatePath('/front-desk');
-  revalidatePath('/(tier3)/front-desk', 'page');
+  revalidatePath('/dashboard/front-office');
+  revalidatePath('/dashboard/front-office', 'page');
 
   return { success: true };
-}
+  }
+
+  /**
+  * Cancel a reservation and release the room inventory
+  */
+  export async function cancelBooking(bookingId: string, roomId: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user || !['staff', 'front-desk', 'owner', 'admin'].includes(user.user_metadata?.role)) {
+    return { error: 'Unauthorized.' };
+  }
+
+  // 1. Update booking status to Cancelled
+  const { error: bookingError } = await supabaseAdmin
+    .from('bookings')
+    .update({ status: 'Cancelled' })
+    .eq('id', bookingId);
+
+  if (bookingError) {
+    console.error("Failed to cancel booking:", bookingError);
+    return { error: `Cancellation Error: ${bookingError.message}` };
+  }
+
+  // 2. Release the room back to Available
+  const { error: roomError } = await supabaseAdmin
+    .from('rooms')
+    .update({ status: 'Available' })
+    .eq('id', roomId);
+
+  if (roomError) {
+    console.error("Failed to release room during cancellation:", roomError);
+  }
+
+  revalidatePath('/dashboard/front-office');
+  return { success: true };
+  }
 
 /**
  * Update internal guest notes for a booking
@@ -247,8 +283,8 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
     return { error: `Room Update Error: ${roomError.message}` };
   }
 
-  revalidatePath('/front-desk');
-  revalidatePath('/(tier3)/front-desk', 'page');
+  revalidatePath('/dashboard/front-office');
+  revalidatePath('/dashboard/front-office', 'page');
 
   return { success: true };
-}
+  }

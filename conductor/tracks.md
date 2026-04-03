@@ -65,6 +65,11 @@ This file tracks all major tracks for the project. Each track has its own detail
 - **Goal:** Digital registration card with Aadhar/ID capture and e-signatures.
 - **Link:** [Track Details](./tracks/guest_compliance_20260331/index.md)
 
+## Performance & Logs (Audit Trail)
+- **ID:** `audit_logs_20260402`
+- **Goal:** Track all critical operational actions for accountability and display a recent activity feed.
+- **Link:** [Track Details](./tracks/audit_logs_20260402/index.md)
+
 ## Integrated Indian Payments (Razorpay)
 - **ID:** `integrated_payments_20260331`
 - **Goal:** UPI QR codes and dynamic checkout for the Indian market.

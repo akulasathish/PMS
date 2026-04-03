@@ -49,24 +49,27 @@ The project implements a strict 3-tier Role-Based Access Control (RBAC) architec
   - `addStaff` (Provisions staff accounts and assigns them to a property).
   - `deleteProperty` (Admin "Hard Delete" that strictly cascades auth deletion of owners/staff before wiping DB data).
 
+- [x] **Staff Architect (Enterprise IAM):**
+  - Implemented the granular Action-Level Matrix with 25+ specific `Read/Write/Deny` features.
+  - Built Reusable Role Templates and the "Surgical IAM Profile" command center (`/staff/[id]`).
+  - **Staff Lifecycle Control:** Implemented "Revoke Access" (Delete Staff) functionality for Tier 2 Owners.
+
 ## 3. Security Gaps
 
 - **Low: Hardcoded Dummy Passwords:** `addStaff`, `provisionOwner`, and `registerProperty` currently generate random string passwords and return them in the frontend response. The user is forced to change this password on their first login via a secure UI blockade (`requires_password_change`), but bypassing this with Supabase's native invite email flow (`supabase.auth.admin.inviteUserByEmail`) would be more robust.
 
 ## 4. Next Implementation Steps
 
-1. **Staff Architect (Enterprise IAM):**
-   - Implement the granular **Action-Level Matrix** (e.g. Check-in vs Check-out).
-   - Build **Reusable Role Templates** for Owners to save custom configurations.
-   - **Staff Lifecycle Control:** Implement "Revoke Access" (Delete Staff) functionality for Tier 2 Owners.
-   - Build **Surgical IAM Profile (`/staff/[id]`)**: A dedicated page for Owners to assign 25+ specific `Read/Write/Deny` features to any employee, including a searchable matrix and JSON Playground.
-2. **Housekeeping Evolution:**
+1. **Front Office Suite (Daily Operations):**
+   - Build **Daily Operational Lists** (Tabs for Arrivals Today, Departures Today, In-House).
+   - Implement **Room Upgrades**, **Refund Folios**, and **Guest Notes** directly from the Action Drawer.
+   - Build **Room Blocking** logic for maintenance/marriages/meetings.
+2. **Performance & Logs (Audit Trail):**
+   - Create `audit_logs` table to track all critical Staff/Owner actions.
+   - Build a "Recent Activity Feed" widget for the Owner Dashboard.
+3. **Housekeeping Evolution:**
    - Add the **"Inspect"** button for supervisors to move rooms from Clean ➡️ Ready.
    - Implement **Minibar Posting** and cleaning timers in the mobile view.
-3. **Front Office Suite:**
-   - Implement **Room Upgrades** (Live room swapping) and **Refund Folios**.
-   - Build **Room Blocking** logic for maintenance/marriages/meetings.
-   - Implement **Guest Notes** per booking.
 4. **Transition to Transactional Auth Logic:** 
    - Replace the dummy password generation with Supabase's native invite email flow.
 5. **Guest Compliance (Indian Market):**
