@@ -23,34 +23,41 @@ export default function BookingModal({ isOpen, onClose, propertyId, rooms }: Boo
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
-  // Auto-generate dates for speed
-  const todayStr = new Date().toISOString().split('T')[0];
+  // Helper to format local date
+  const getLocalYYYYMMDD = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const todayStr = getLocalYYYYMMDD(new Date());
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = tomorrow.toISOString().split('T')[0];
+  const tomorrowStr = getLocalYYYYMMDD(tomorrow);
 
   if (!isOpen) return null;
 
   const handleSubmit = async (formData: FormData) => {
     setIsLoading(true);
     setError('');
-    
-    // Add propertyId to the form data
+
     formData.append('propertyId', propertyId);
 
     const result = await createBooking(formData);
 
     if (result.error) {
       setError(result.error);
+      setIsLoading(false);
     } else {
       setSuccess(true);
       setTimeout(() => {
         setSuccess(false);
         onClose();
-      }, 2000);
+        // Force the parent component to reload its data array
+        window.location.reload();
+      }, 1500);
     }
-    
-    setIsLoading(false);
   };
 
   return (

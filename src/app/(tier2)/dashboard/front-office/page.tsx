@@ -109,14 +109,22 @@ export default function FrontOfficeTerminal() {
     return bookings.find(b => b.room_id === roomId && (b.status === 'Confirmed' || b.status === 'Checked In'));
   };
 
+  // Helper to format local date to YYYY-MM-DD
+  const getLocalYYYYMMDD = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const getArrivalsToday = () => {
-    const today = new Date().toISOString().split('T')[0];
-    return bookings.filter(b => b.check_in === today && b.status === 'Confirmed');
+    const todayStr = getLocalYYYYMMDD(new Date());
+    return bookings.filter(b => b.check_in === todayStr && b.status === 'Confirmed');
   };
 
   const getDeparturesToday = () => {
-    const today = new Date().toISOString().split('T')[0];
-    return bookings.filter(b => b.check_out === today && b.status === 'Checked In');
+    const todayStr = getLocalYYYYMMDD(new Date());
+    return bookings.filter(b => b.check_out === todayStr && b.status === 'Checked In');
   };
 
   const getInHouse = () => {
@@ -215,15 +223,7 @@ export default function FrontOfficeTerminal() {
     setActionLoading(true);
     const res = await upgradeRoom(selectedBooking.id, selectedBooking.room_id, upgradeRoomId);
     if (res.success) {
-      // 1. Mark old room as dirty
-      setRooms(rooms.map(r => r.id === selectedBooking.room_id ? { ...r, status: 'Dirty' } : r));
-      // 2. Mark new room as occupied
-      setRooms(prev => prev.map(r => r.id === upgradeRoomId ? { ...r, status: 'Occupied' } : r));
-      // 3. Move booking to new room
-      setBookings(bookings.map(b => b.id === selectedBooking.id ? { ...b, room_id: upgradeRoomId, original_room_id: selectedBooking.room_id } : b));
-      
-      setSelectedBooking(null); // Close drawer
-      setUpgradeRoomId('');
+      window.location.reload();
     } else {
       alert(res.error);
     }
@@ -239,6 +239,18 @@ export default function FrontOfficeTerminal() {
       alert(res.error);
     }
     setActionLoading(false);
+  };
+
+  const handleSafeCheckIn = async (e: React.MouseEvent, bookingId: string) => {
+    e.stopPropagation();
+    await checkInGuest(bookingId);
+    window.location.reload();
+  };
+
+  const handleSafeCheckOut = async (e: React.MouseEvent, bookingId: string, roomId: string) => {
+    e.stopPropagation();
+    await checkOutGuest(bookingId, roomId);
+    window.location.reload();
   };
 
   const openActionDrawer = (booking: any) => {
@@ -278,7 +290,7 @@ export default function FrontOfficeTerminal() {
           {booking.status === 'Confirmed' && (
             canCheckIn() ? (
               <button 
-                onClick={async (e) => { e.stopPropagation(); await checkInGuest(booking.id); }}
+                onClick={(e) => handleSafeCheckIn(e, booking.id)}
                 className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black px-4 py-2 rounded-xl transition-all shadow-lg shadow-emerald-500/10"
               >
                 CHECK IN
@@ -288,7 +300,7 @@ export default function FrontOfficeTerminal() {
           {booking.status === 'Checked In' && (
             canCheckOut() ? (
               <button 
-                onClick={async (e) => { e.stopPropagation(); await checkOutGuest(booking.id, booking.room_id); }}
+                onClick={(e) => handleSafeCheckOut(e, booking.id, booking.room_id)}
                 className="bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-black px-4 py-2 rounded-xl transition-all shadow-lg shadow-rose-500/10"
               >
                 CHECK OUT
@@ -454,7 +466,7 @@ export default function FrontOfficeTerminal() {
                                       {booking.status === 'Confirmed' && (
                                         canCheckIn() ? (
                                           <button 
-                                            onClick={async (e) => { e.stopPropagation(); await checkInGuest(booking.id); }}
+                                            onClick={(e) => handleSafeCheckIn(e, booking.id)}
                                             className="bg-emerald-600 hover:bg-emerald-500 text-white text-[9px] font-bold px-3 py-1 rounded-lg transition-all"
                                           >
                                             Check In
@@ -468,7 +480,7 @@ export default function FrontOfficeTerminal() {
                                       {booking.status === 'Checked In' && (
                                         canCheckOut() ? (
                                           <button 
-                                            onClick={async (e) => { e.stopPropagation(); await checkOutGuest(booking.id, room.id); }}
+                                            onClick={(e) => handleSafeCheckOut(e, booking.id, room.id)}
                                             className="bg-rose-600 hover:bg-rose-500 text-white text-[9px] font-bold px-3 py-1 rounded-lg transition-all"
                                           >
                                             Check Out
@@ -479,8 +491,7 @@ export default function FrontOfficeTerminal() {
                                           </button>
                                         )
                                       )}
-                                    </div>
-                                  </div>
+                                    </div>                                  </div>
                                 </div>
                               </motion.div>
                             ) : null}
