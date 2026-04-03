@@ -112,25 +112,25 @@ export default function FrontOfficeTerminal() {
   const canCreateBooking = () => {
     if (!userProfile) return false;
     if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
-    return userProfile.permissions?.front_office?.create_booking === 'write';
+    return userProfile.permissions?.front_office?.create_booking === 'write' || userProfile.permissions?.front_office?.create_booking === 'full';
   };
 
   const canCheckIn = () => {
     if (!userProfile) return false;
     if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
-    return userProfile.permissions?.front_office?.perform_check_in === 'write';
+    return userProfile.permissions?.front_office?.perform_check_in === 'write' || userProfile.permissions?.front_office?.perform_check_in === 'full';
   };
 
   const canCheckOut = () => {
     if (!userProfile) return false;
     if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
-    return userProfile.permissions?.front_office?.perform_check_out === 'write';
+    return userProfile.permissions?.front_office?.perform_check_out === 'write' || userProfile.permissions?.front_office?.perform_check_out === 'full';
   };
 
   const canRefund = () => {
     if (!userProfile) return false;
     if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
-    return userProfile.permissions?.front_office?.refund_folio === 'write';
+    return userProfile.permissions?.front_office?.refund_folio === 'write' || userProfile.permissions?.front_office?.refund_folio === 'full';
   };
 
   const canUpgrade = () => {
