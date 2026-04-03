@@ -122,12 +122,12 @@ export default function FrontOfficeTerminal() {
     return `${year}-${month}-${day}`;
   };
 
-  // Helper to format date for human reading (e.g., "2026-04-21" -> "Apr 21")
+  // Helper to format date for human reading (e.g., "2026-04-21" -> "Apr 21, 2026")
   const formatFriendlyDate = (dateString: string) => {
     if (!dateString) return '';
     const d = new Date(dateString);
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return `${months[d.getMonth()]} ${d.getDate()}`;
+    return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
   };
 
   const getArrivalsToday = () => {
