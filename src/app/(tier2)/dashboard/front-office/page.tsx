@@ -7,7 +7,7 @@ import {
   ArrowRightLeft, ChevronLeft, ChevronRight, 
   Plus, Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, LogOut,
-  ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck,
+  ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck, Link2, ShieldCheck, AlertCircle,
   Trash2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -333,6 +333,12 @@ export default function FrontOfficeTerminal() {
     setCheckIdVerified(false);
     setCheckRegCardSigned(false);
     setCheckPaymentSecured(false);
+    
+    // Auto-check requirements if they were already done via the Magic Link
+    if (booking.id_verified) {
+      setCheckIdVerified(true);
+      setCheckRegCardSigned(true);
+    }
   };
 
   // --- SUB-COMPONENT: LIST ITEM ---
@@ -744,6 +750,54 @@ export default function FrontOfficeTerminal() {
                       {actionLoading ? <Loader2 size={14} className="animate-spin" /> : "Save Notes"}
                     </button>
                   </div>
+                </div>
+
+                {/* 1. GUEST IDENTITY (The Magic Link) */}
+                <div className="space-y-3 pt-6 border-t border-white/[0.04]">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                      <ShieldCheck size={14} className="text-indigo-400" /> Guest Identity
+                    </h3>
+                    {selectedBooking.id_verified ? (
+                      <span className="text-[10px] font-black text-emerald-500 uppercase flex items-center gap-1">
+                        <CheckCircle2 size={12} /> Verified
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-black text-amber-500 uppercase flex items-center gap-1">
+                        <AlertCircle size={12} /> Pending
+                      </span>
+                    )}
+                  </div>
+
+                  {!selectedBooking.id_verified ? (
+                    <div className="bg-indigo-500/5 border border-indigo-500/10 p-4 rounded-2xl space-y-3">
+                      <p className="text-[11px] text-zinc-500">
+                        Send a secure magic link to the guest's phone. They can scan their ID and sign the RegCard instantly.
+                      </p>
+                      <button 
+                        onClick={() => {
+                          const url = `${window.location.origin}/guest/regcard/${selectedBooking.id}`;
+                          navigator.clipboard.writeText(url);
+                          alert("Magic Link copied to clipboard! Send this to the guest via WhatsApp/SMS.");
+                        }}
+                        className="w-full bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 border border-indigo-500/20 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all"
+                      >
+                        <Link2 size={14} /> Copy Magic Link
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="aspect-[3/2] bg-black/40 border border-white/5 rounded-xl overflow-hidden relative group">
+                         <img src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/guest-ids/${selectedBooking.id_photo_url}`} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
+                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <p className="text-[8px] font-black text-white/40 uppercase tracking-tighter">Guest ID Scan</p>
+                         </div>
+                      </div>
+                      <div className="aspect-[3/2] bg-white rounded-xl overflow-hidden flex items-center justify-center p-2">
+                         <img src={selectedBooking.signature_url} className="max-h-full max-w-full" />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* 2. ROOM UPGRADE */}
