@@ -14,11 +14,12 @@ interface Room {
 interface BookingModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
   propertyId: string;
   rooms: Room[];
 }
 
-export default function BookingModal({ isOpen, onClose, propertyId, rooms }: BookingModalProps) {
+export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, rooms }: BookingModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -51,9 +52,12 @@ export default function BookingModal({ isOpen, onClose, propertyId, rooms }: Boo
       setIsLoading(false);
     } else {
       setSuccess(true);
+      if (onSuccess) {
+        onSuccess();
+      }
       setTimeout(() => {
         setSuccess(false);
-        onClose(); // This now automatically triggers a data refresh in the parent!
+        onClose();
       }, 1500);
     }
   };

@@ -107,11 +107,6 @@ export default function FrontOfficeTerminal() {
     loadDashboardData();
   }, []);
 
-  const handleBookingModalClose = () => {
-    setShowBookingModal(false);
-    loadDashboardData(); // Smoothly refresh data instead of reloading the page
-  };
-
   const getBookingForRoom = (roomId: string) => {
     return bookings.find(b => b.room_id === roomId && (b.status === 'Confirmed' || b.status === 'Checked In'));
   };
@@ -678,7 +673,8 @@ export default function FrontOfficeTerminal() {
       {showBookingModal && (
         <BookingModal 
           isOpen={showBookingModal} 
-          onClose={() => setShowBookingModal(false)} 
+          onClose={() => setShowBookingModal(false)}
+          onSuccess={() => loadDashboardData()}
           propertyId={property?.id} 
           rooms={rooms.filter(r => r.status === 'Available')} 
         />
