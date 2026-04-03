@@ -100,8 +100,121 @@ export async function checkInGuest(bookingId: string) {
 }
 
 /**
- * Check-Out a Guest (Updates booking to 'Checked Out' and room to 'Dirty')
+ * Update internal guest notes for a booking
  */
+export async function updateGuestNotes(bookingId: string, notes: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user || !['staff', 'front-desk', 'owner', 'admin'].includes(user.user_metadata?.role)) {
+    return { error: 'Unauthorized.' };
+  }
+
+  const { error } = await supabaseAdmin
+    .from('bookings')
+    .update({ notes })
+    .eq('id', bookingId);
+
+  if (error) {
+    console.error("Failed to update notes:", error);
+    return { error: `Update Error: ${error.message}` };
+  }
+
+  revalidatePath('/dashboard/front-office');
+  return { success: true };
+}
+
+/**
+ * Block or Unblock a room (e.g., Maintenance, Events)
+ */
+export async function toggleRoomBlock(roomId: string, currentStatus: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user || !['owner', 'admin'].includes(user.user_metadata?.role)) {
+    return { error: 'Unauthorized. Only management can block physical inventory.' };
+  }
+
+  const newStatus = currentStatus === 'Blocked' ? 'Available' : 'Blocked';
+
+  const { error } = await supabaseAdmin
+    .from('rooms')
+    .update({ status: newStatus })
+    .eq('id', roomId);
+
+  if (error) {
+    console.error("Failed to block/unblock room:", error);
+    return { error: `Inventory Error: ${error.message}` };
+  }
+
+  revalidatePath('/dashboard/front-office');
+  revalidatePath('/dashboard/inventory');
+  return { success: true, newStatus };
+}
+
+/**
+ * Upgrade / Move a guest to a different room
+ */
+export async function upgradeRoom(bookingId: string, oldRoomId: string, newRoomId: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user || !['staff', 'front-desk', 'owner', 'admin'].includes(user.user_metadata?.role)) {
+    return { error: 'Unauthorized.' };
+  }
+
+  // 1. Mark the OLD room as Dirty (since they were likely in it)
+  await supabaseAdmin.from('rooms').update({ status: 'Dirty' }).eq('id', oldRoomId);
+
+  // 2. Mark the NEW room as Occupied
+  await supabaseAdmin.from('rooms').update({ status: 'Occupied' }).eq('id', newRoomId);
+
+  // 3. Move the booking to the new room, and log the original room
+  const { error } = await supabaseAdmin
+    .from('bookings')
+    .update({ room_id: newRoomId, original_room_id: oldRoomId })
+    .eq('id', bookingId);
+
+  if (error) {
+    console.error("Failed to upgrade room:", error);
+    return { error: `Upgrade Error: ${error.message}` };
+  }
+
+  revalidatePath('/dashboard/front-office');
+  return { success: true };
+}
+/**
+ * Process a partial or full refund on a booking
+ */
+export async function issueRefund(bookingId: string, currentAmount: number, refundAmount: number) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user || !['staff', 'front-desk', 'owner', 'admin'].includes(user.user_metadata?.role)) {
+    return { error: 'Unauthorized.' };
+  }
+
+  if (refundAmount > currentAmount || refundAmount <= 0) {
+    return { error: 'Invalid refund amount.' };
+  }
+
+  const newAmount = currentAmount - refundAmount;
+
+  // Ideally, this would write to a transaction ledger. For MVP, we update the total.
+  const { error } = await supabaseAdmin
+    .from('bookings')
+    .update({ amount: newAmount })
+    .eq('id', bookingId);
+
+  if (error) {
+    console.error("Failed to process refund:", error);
+    return { error: `Refund Error: ${error.message}` };
+  }
+
+  revalidatePath('/dashboard/front-office');
+  return { success: true, newAmount };
+}
+
 export async function checkOutGuest(bookingId: string, roomId: string) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();

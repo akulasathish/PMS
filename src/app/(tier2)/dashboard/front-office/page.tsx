@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Bed, Calendar, Search, UserCheck, Clock, 
   ArrowRightLeft, ChevronLeft, ChevronRight, 
@@ -13,7 +13,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import BookingModal from './BookingModal';
-import { checkInGuest, checkOutGuest } from '@/app/actions/booking';
+import { checkInGuest, checkOutGuest, updateGuestNotes, toggleRoomBlock, upgradeRoom, issueRefund } from '@/app/actions/booking';
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Overview", href: "/dashboard", active: false, module: 'analytics' },
@@ -34,6 +34,14 @@ export default function FrontOfficeTerminal() {
   const [userProfile, setUserProfile] = useState<any>(null);
   const [accessiblePropsList, setAccessiblePropsList] = useState<any[]>([]);
   const [showBookingModal, setShowBookingModal] = useState(false);
+  const [showPropertyDropdown, setShowPropertyDropdown] = useState(false);
+  
+  // Action Drawer State
+  const [selectedBooking, setSelectedBooking] = useState<any>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [notesInput, setNotesInput] = useState('');
+  const [upgradeRoomId, setUpgradeRoomId] = useState('');
+  const [refundInput, setRefundInput] = useState('');
   
   const supabase = createClient();
   const router = useRouter();
@@ -117,6 +125,99 @@ export default function FrontOfficeTerminal() {
     if (!userProfile) return false;
     if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
     return userProfile.permissions?.front_office?.perform_check_out === 'write';
+  };
+
+  const canRefund = () => {
+    if (!userProfile) return false;
+    if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
+    return userProfile.permissions?.front_office?.refund_folio === 'write';
+  };
+
+  const canUpgrade = () => {
+    if (!userProfile) return false;
+    if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
+    return userProfile.permissions?.front_office?.upgrade_room === 'write' || userProfile.permissions?.front_office?.upgrade_room === 'full';
+  };
+
+  const canBlockRoom = () => {
+    if (!userProfile) return false;
+    if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
+    return userProfile.permissions?.front_office?.block_rooms === 'write' || userProfile.permissions?.front_office?.block_rooms === 'full';
+  };
+
+  const canWriteNotes = () => {
+    if (!userProfile) return false;
+    if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
+    return userProfile.permissions?.front_office?.guest_notes === 'write' || userProfile.permissions?.front_office?.guest_notes === 'full';
+  };
+
+  // --- ACTION HANDLERS ---
+  const handleSaveNotes = async () => {
+    if (!selectedBooking) return;
+    setActionLoading(true);
+    const res = await updateGuestNotes(selectedBooking.id, notesInput);
+    if (res.success) {
+      setBookings(bookings.map(b => b.id === selectedBooking.id ? { ...b, notes: notesInput } : b));
+    } else {
+      alert(res.error);
+    }
+    setActionLoading(false);
+  };
+
+  const handleProcessRefund = async () => {
+    if (!selectedBooking || !refundInput) return;
+    const amount = parseFloat(refundInput);
+    if (isNaN(amount) || amount <= 0) return alert("Invalid refund amount");
+
+    setActionLoading(true);
+    const res = await issueRefund(selectedBooking.id, selectedBooking.amount, amount);
+    if (res.success && res.newAmount !== undefined) {
+      setBookings(bookings.map(b => b.id === selectedBooking.id ? { ...b, amount: res.newAmount } : b));
+      setRefundInput('');
+      setSelectedBooking({ ...selectedBooking, amount: res.newAmount }); // Update drawer UI
+      alert(`Refund of $${amount} successful. New balance: $${res.newAmount}`);
+    } else {
+      alert(res.error);
+    }
+    setActionLoading(false);
+  };
+
+  const handleExecuteUpgrade = async () => {
+    if (!selectedBooking || !upgradeRoomId) return;
+    setActionLoading(true);
+    const res = await upgradeRoom(selectedBooking.id, selectedBooking.room_id, upgradeRoomId);
+    if (res.success) {
+      // 1. Mark old room as dirty
+      setRooms(rooms.map(r => r.id === selectedBooking.room_id ? { ...r, status: 'Dirty' } : r));
+      // 2. Mark new room as occupied
+      setRooms(prev => prev.map(r => r.id === upgradeRoomId ? { ...r, status: 'Occupied' } : r));
+      // 3. Move booking to new room
+      setBookings(bookings.map(b => b.id === selectedBooking.id ? { ...b, room_id: upgradeRoomId, original_room_id: selectedBooking.room_id } : b));
+      
+      setSelectedBooking(null); // Close drawer
+      setUpgradeRoomId('');
+    } else {
+      alert(res.error);
+    }
+    setActionLoading(false);
+  };
+
+  const handleBlockRoom = async (room: any) => {
+    setActionLoading(true);
+    const res = await toggleRoomBlock(room.id, room.status);
+    if (res.success && res.newStatus) {
+      setRooms(rooms.map(r => r.id === room.id ? { ...r, status: res.newStatus } : r));
+    } else {
+      alert(res.error);
+    }
+    setActionLoading(false);
+  };
+
+  const openActionDrawer = (booking: any) => {
+    setSelectedBooking(booking);
+    setNotesInput(booking.notes || '');
+    setRefundInput('');
+    setUpgradeRoomId('');
   };
 
   if (isLoading) {
@@ -212,15 +313,28 @@ export default function FrontOfficeTerminal() {
                   return (
                     <tr key={room.id} className="border-b border-white/5 hover:bg-white/[0.01]">
                       <td className="p-4 border-r border-white/5 sticky left-0 bg-[#09090b] z-10">
-                        <p className="text-sm font-bold text-white">{room.room_number}</p>
-                        <p className="text-[10px] text-zinc-500 uppercase">{room.type}</p>
+                        {canBlockRoom() ? (
+                          <button 
+                            onClick={() => handleBlockRoom(room)}
+                            disabled={actionLoading || (room.status !== 'Available' && room.status !== 'Blocked')}
+                            className={`text-sm font-bold transition-colors ${room.status === 'Blocked' ? 'text-rose-500 hover:text-rose-400' : 'text-white hover:text-rose-300'} disabled:opacity-50`}
+                          >
+                            {room.room_number} {room.status === 'Blocked' && <Lock size={10} className="inline ml-1" />}
+                          </button>
+                        ) : (
+                          <p className={`text-sm font-bold ${room.status === 'Blocked' ? 'text-rose-500' : 'text-white'}`}>
+                            {room.room_number} {room.status === 'Blocked' && <Lock size={10} className="inline ml-1" />}
+                          </p>
+                        )}
+                        <p className="text-[10px] text-zinc-500 uppercase mt-0.5">{room.type}</p>
                       </td>
                       {DAYS.map((_, idx) => (
                         <td key={idx} className="p-2 border-r border-white/5 relative h-20">
                           {booking && idx === 0 ? (
                             <motion.div 
                               layoutId={booking.id}
-                              className={`absolute inset-y-2 left-2 right-[-240px] rounded-xl border p-3 flex items-center justify-between z-20 shadow-2xl ${
+                              onClick={() => openActionDrawer(booking)}
+                              className={`absolute inset-y-2 left-2 right-[-240px] rounded-xl border p-3 flex items-center justify-between z-20 shadow-2xl cursor-pointer hover:border-indigo-400/50 transition-colors ${
                                 booking.status === 'Confirmed' ? 'bg-amber-500/10 border-amber-500/30' : 'bg-emerald-500/10 border-emerald-500/30'
                               }`}
                             >
@@ -240,7 +354,7 @@ export default function FrontOfficeTerminal() {
                                     {booking.status === 'Confirmed' && (
                                       canCheckIn() ? (
                                         <button 
-                                          onClick={async () => await checkInGuest(booking.id)}
+                                          onClick={async (e) => { e.stopPropagation(); await checkInGuest(booking.id); }}
                                           className="bg-emerald-600 hover:bg-emerald-500 text-white text-[9px] font-bold px-3 py-1 rounded-lg transition-all"
                                         >
                                           Check In
@@ -254,7 +368,7 @@ export default function FrontOfficeTerminal() {
                                     {booking.status === 'Checked In' && (
                                       canCheckOut() ? (
                                         <button 
-                                          onClick={async () => await checkOutGuest(booking.id, room.id)}
+                                          onClick={async (e) => { e.stopPropagation(); await checkOutGuest(booking.id, room.id); }}
                                           className="bg-rose-600 hover:bg-rose-500 text-white text-[9px] font-bold px-3 py-1 rounded-lg transition-all"
                                         >
                                           Check Out
@@ -281,6 +395,140 @@ export default function FrontOfficeTerminal() {
         </div>
       </main>
 
+      {/* ACTION DRAWER */}
+      <AnimatePresence>
+        {selectedBooking && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedBooking(null)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+            />
+            {/* Drawer */}
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed top-0 right-0 h-full w-[450px] bg-[#0a0a0c] border-l border-white/[0.08] shadow-2xl z-50 flex flex-col"
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-white/[0.06] bg-zinc-900/40 backdrop-blur-md flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    <UserCheck className="text-indigo-400" size={20} />
+                    {selectedBooking.guest_name}
+                  </h2>
+                  <p className="text-xs text-zinc-500 mt-1 flex items-center gap-2">
+                    Room {rooms.find(r => r.id === selectedBooking.room_id)?.room_number} 
+                    <span className="text-[10px] bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-400">{selectedBooking.status}</span>
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setSelectedBooking(null)}
+                  className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                {/* 1. GUEST NOTES */}
+                <div className="space-y-3">
+                  <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                    <Activity size={14} /> Guest Notes
+                  </h3>
+                  <div className="bg-black/40 border border-white/[0.04] rounded-xl p-2 focus-within:border-indigo-500/50 transition-colors">
+                    <textarea 
+                      value={notesInput}
+                      onChange={(e) => setNotesInput(e.target.value)}
+                      disabled={!canWriteNotes() || actionLoading}
+                      placeholder="Add dietary requirements, late arrival notes, etc..."
+                      className="w-full h-24 bg-transparent text-sm text-zinc-300 placeholder:text-zinc-700 resize-none focus:outline-none p-2 disabled:opacity-50"
+                    />
+                  </div>
+                  <div className="flex justify-end">
+                    <button 
+                      onClick={handleSaveNotes}
+                      disabled={!canWriteNotes() || actionLoading || notesInput === (selectedBooking.notes || "")}
+                      className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-600/30 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors"
+                    >
+                      {actionLoading ? <Loader2 size={14} className="animate-spin" /> : "Save Notes"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. ROOM UPGRADE */}
+                <div className="space-y-3 pt-6 border-t border-white/[0.04]">
+                  <h3 className="text-xs font-bold text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+                    <ArrowRightLeft size={14} /> Room Move / Upgrade
+                  </h3>
+                  <p className="text-[11px] text-zinc-500 leading-relaxed">
+                    Moving this guest will instantly mark Room {rooms.find(r => r.id === selectedBooking.room_id)?.room_number} as "Dirty" and assign them to the new room.
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <select 
+                      value={upgradeRoomId}
+                      onChange={(e) => setUpgradeRoomId(e.target.value)}
+                      disabled={!canUpgrade() || actionLoading}
+                      className="flex-1 bg-black/40 border border-white/[0.06] text-sm text-zinc-300 rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500/50 disabled:opacity-50 appearance-none"
+                    >
+                      <option value="">Select Available Room...</option>
+                      {rooms.filter(r => r.status === "Available" && r.id !== selectedBooking.room_id).map(r => (
+                        <option key={r.id} value={r.id}>Room {r.room_number} ({r.type})</option>
+                      ))}
+                    </select>
+                    <button 
+                      onClick={handleExecuteUpgrade}
+                      disabled={!canUpgrade() || actionLoading || !upgradeRoomId}
+                      className="bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/30 disabled:opacity-30 px-4 py-2.5 rounded-xl text-xs font-bold transition-all"
+                    >
+                      Execute Move
+                    </button>
+                  </div>
+                  {!canUpgrade() && <p className="text-[10px] text-rose-500 flex items-center gap-1"><Lock size={10} /> You do not have permission to process room moves.</p>}
+                </div>
+
+                {/* 3. REFUND FOLIO */}
+                <div className="space-y-3 pt-6 border-t border-white/[0.04]">
+                  <h3 className="text-xs font-bold text-rose-400 uppercase tracking-widest flex items-center gap-2">
+                    <Activity size={14} /> Refund Folio
+                  </h3>
+                  <div className="flex items-center justify-between p-3 bg-white/[0.02] rounded-xl border border-white/[0.04]">
+                    <span className="text-xs font-bold text-zinc-400">Total Collected</span>
+                    <span className="text-sm font-black text-white">${selectedBooking.amount}</span>
+                  </div>
+                  <div className="flex items-center gap-3 mt-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-bold">$</span>
+                      <input 
+                        type="number"
+                        value={refundInput}
+                        onChange={(e) => setRefundInput(e.target.value)}
+                        disabled={!canRefund() || actionLoading}
+                        placeholder="Amount to refund"
+                        className="w-full bg-black/40 border border-white/[0.06] text-sm text-zinc-300 rounded-xl pl-7 pr-3 py-2.5 focus:outline-none focus:border-rose-500/50 disabled:opacity-50"
+                      />
+                    </div>
+                    <button 
+                      onClick={handleProcessRefund}
+                      disabled={!canRefund() || actionLoading || !refundInput}
+                      className="bg-rose-500/20 text-rose-400 border border-rose-500/30 hover:bg-rose-500/30 disabled:opacity-30 px-4 py-2.5 rounded-xl text-xs font-bold transition-all"
+                    >
+                      Issue Refund
+                    </button>
+                  </div>
+                  {!canRefund() && <p className="text-[10px] text-rose-500 flex items-center gap-1"><Lock size={10} /> You do not have permission to issue refunds.</p>}
+                </div>
+
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
       {showBookingModal && (
         <BookingModal 
           isOpen={showBookingModal} 
