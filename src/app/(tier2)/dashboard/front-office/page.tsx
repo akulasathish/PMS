@@ -771,14 +771,7 @@ export default function FrontOfficeTerminal() {
                     </div>
 
                     
-                    <button 
-                      onClick={(e) => handleSafeCheckIn(e as any, selectedBooking.id)}
-                      disabled={!checkIdVerified || !checkRegCardSigned || !checkPaymentSecured || actionLoading || !canCheckIn()}
-                      className="w-full mt-4 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-900/50 disabled:text-emerald-500/50 text-white py-3 rounded-xl font-bold text-xs transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)] disabled:shadow-none flex items-center justify-center gap-2"
-                    >
-                      {actionLoading ? <Loader2 size={16} className="animate-spin" /> : "Complete Check-In"}
-                    </button>
-                    {!canCheckIn() && <p className="text-[10px] text-rose-500 flex items-center gap-1 justify-center mt-2"><Lock size={10} /> You do not have permission to Check-In guests.</p>}
+                    
                   </div>
                 )}
 
@@ -932,7 +925,7 @@ export default function FrontOfficeTerminal() {
                   <div className="pt-4">
                     <button 
                       onClick={(e) => handleSafeCheckIn(e as any, selectedBooking.id)}
-                      disabled={!checkIdVerified || !checkRegCardSigned || !checkPaymentSecured || !checkFormFDone || actionLoading || !canCheckIn()}
+                      disabled={!checkIdVerified || !checkRegCardSigned || !checkPaymentSecured || !checkFormFDone || guestAddress.trim().length < 5 || actionLoading || !canCheckIn()}
                       className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-900/30 disabled:text-emerald-500/30 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs transition-all shadow-xl shadow-emerald-500/10 flex items-center justify-center gap-3"
                     >
                       {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <><CheckCircle2 size={16} /> Complete Final Check-In</>}
