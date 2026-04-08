@@ -8,14 +8,14 @@ import {
   ArrowRightLeft, ChevronLeft, ChevronRight, 
   Plus, Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, LogOut,
-  ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck, RefreshCw, Printer, Link2, Camera, X, ShieldCheck, AlertCircle,
+  ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck, RefreshCw, RotateCcw, Printer, Link2, Camera, X, ShieldCheck, AlertCircle,
   Trash2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import BookingModal from './BookingModal';
-import { checkInGuest, checkOutGuest, updateGuestNotes, toggleRoomBlock, upgradeRoom, issueRefund, cancelBooking } from '@/app/actions/booking';
+import { checkInGuest, checkOutGuest, updateGuestNotes, toggleRoomBlock, upgradeRoom, issueRefund, cancelBooking, resetGuestIdentity } from '@/app/actions/booking';
 
 
 const NAV_ITEMS = [
@@ -359,6 +359,24 @@ export default function FrontOfficeTerminal() {
     };
   }, [selectedBooking]);
 
+
+
+  const handleRetakeIdentity = async () => {
+    if (!selectedBooking) return;
+    if (!confirm("Are you sure you want to VOID the current ID and signature? You will need to capture them again.")) return;
+    
+    setActionLoading(true);
+    const res = await resetGuestIdentity(selectedBooking.id);
+    if (res.success) {
+      // Fetch fresh data to reset UI
+      await refreshBookingStatus();
+      setCheckIdVerified(false);
+      setCheckRegCardSigned(false);
+    } else {
+      alert(res.error);
+    }
+    setActionLoading(false);
+  };
 
   const refreshBookingStatus = async () => {
     if (!selectedBooking) return;
@@ -870,6 +888,16 @@ export default function FrontOfficeTerminal() {
                     </div>
                   ) : (
                     <div className="space-y-3">
+                      
+                      <div className="flex justify-end mb-1">
+                        <button 
+                          onClick={handleRetakeIdentity}
+                          disabled={actionLoading}
+                          className="text-[9px] font-black text-rose-500 hover:text-rose-400 uppercase flex items-center gap-1 transition-colors px-2 py-1 rounded bg-rose-500/5 hover:bg-rose-500/10"
+                        >
+                          <RotateCcw size={10} /> Retake / Void
+                        </button>
+                      </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="aspect-[3/2] bg-black/40 border border-white/5 rounded-xl overflow-hidden relative group">
                            <img src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/guest-ids/${selectedBooking.id_photo_url}`} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />

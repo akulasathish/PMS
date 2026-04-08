@@ -100,6 +100,34 @@ export async function checkInGuest(bookingId: string) {
   }
 
   /**
+  * Reset guest identity (Void the ID capture) to allow retaking.
+  */
+  export async function resetGuestIdentity(bookingId: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user || !['staff', 'front-desk', 'owner', 'admin'].includes(user.user_metadata?.role)) {
+    return { error: 'Unauthorized.' };
+  }
+
+  const { error } = await supabaseAdmin
+    .from('bookings')
+    .update({ 
+      id_verified: false, 
+      id_photo_url: null,
+      signature_url: null
+    })
+    .eq('id', bookingId);
+
+  if (error) {
+    console.error("Failed to reset identity:", error);
+    return { error: `Reset Error: \${error.message}` };
+  }
+
+  revalidatePath('/dashboard/front-office');
+  return { success: true };
+  }
+  /**
   * Cancel a reservation and release the room inventory
   */
   export async function cancelBooking(bookingId: string, roomId: string) {
@@ -288,3 +316,4 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
 
   return { success: true };
   }
+
