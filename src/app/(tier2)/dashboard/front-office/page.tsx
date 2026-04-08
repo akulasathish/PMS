@@ -1,4 +1,5 @@
 "use client";
+import { QRCodeSVG } from 'qrcode.react';
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -7,7 +8,7 @@ import {
   ArrowRightLeft, ChevronLeft, ChevronRight, 
   Plus, Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, LogOut,
-  ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck, Link2, ShieldCheck, AlertCircle,
+  ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck, Link2, Camera, X, ShieldCheck, AlertCircle,
   Trash2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -68,6 +69,7 @@ export default function FrontOfficeTerminal() {
   
   // Form F Fields State
   const [guestAddress, setGuestAddress] = useState('');
+  const [showQrCode, setShowQrCode] = useState(false);
   
   const supabase = createClient();
   const router = useRouter();
@@ -326,6 +328,36 @@ export default function FrontOfficeTerminal() {
     await checkOutGuest(bookingId, roomId);
     window.location.reload();
   };
+
+
+  useEffect(() => {
+    if (!selectedBooking) return;
+
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'bookings',
+          filter: "id=eq." + selectedBooking.id
+        },
+        (payload) => {
+          if (payload.new.id_verified) {
+            setSelectedBooking(payload.new);
+            setCheckIdVerified(true);
+            setCheckRegCardSigned(true);
+            setShowQrCode(false);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedBooking]);
 
   const openActionDrawer = (booking: any) => {
     setSelectedBooking(booking);
@@ -797,16 +829,24 @@ export default function FrontOfficeTerminal() {
                       <p className="text-[11px] text-zinc-500">
                         Send a secure magic link to the guest's phone. They can scan their ID and sign the RegCard instantly.
                       </p>
-                      <button 
-                        onClick={() => {
-                          const url = `${window.location.origin}/guest/regcard/${selectedBooking.id}`;
-                          navigator.clipboard.writeText(url);
-                          alert("Magic Link copied to clipboard! Send this to the guest via WhatsApp/SMS.");
-                        }}
-                        className="w-full bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 border border-indigo-500/20 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all"
-                      >
-                        <Link2 size={14} /> Copy Magic Link
-                      </button>
+                                            <div className="flex gap-2">
+                        <button 
+                          onClick={() => {
+                            const url = window.location.origin + "/guest/regcard/" + selectedBooking.id;
+                            navigator.clipboard.writeText(url);
+                            alert("Magic Link copied to clipboard! Send this to the guest via WhatsApp/SMS.");
+                          }}
+                          className="flex-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 border border-indigo-500/20 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all"
+                        >
+                          <Link2 size={14} /> Copy Link
+                        </button>
+                        <button 
+                          onClick={() => setShowQrCode(true)}
+                          className="flex-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-500 border border-amber-500/20 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all"
+                        >
+                          <Camera size={14} /> Scan with Phone
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 gap-3">
@@ -929,6 +969,41 @@ export default function FrontOfficeTerminal() {
           rooms={rooms}
           bookings={bookings}
         />
+      )}
+
+      {showQrCode && selectedBooking && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-sm bg-zinc-900 border border-white/10 rounded-[32px] overflow-hidden shadow-2xl p-8 text-center"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-sm font-bold text-white uppercase tracking-widest">Phone Scanner Link</h3>
+              <button onClick={() => setShowQrCode(false)} className="text-zinc-500 hover:text-white transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="bg-white p-6 rounded-3xl inline-block mb-6 shadow-xl shadow-indigo-500/10">
+              <QRCodeSVG 
+                value={window.location.origin + "/guest/regcard/" + selectedBooking.id} 
+                size={200}
+                level="H"
+                includeMargin={false}
+              />
+            </div>
+
+            <p className="text-xs text-zinc-400 leading-relaxed mb-6">
+              Point your phone camera at this screen to open the <span className="text-indigo-400 font-bold">Identity Capture Terminal</span> for {selectedBooking.guest_name}.
+            </p>
+
+            <div className="flex items-center justify-center gap-3 py-3 px-4 bg-white/5 rounded-2xl border border-white/5">
+              <Loader2 size={16} className="animate-spin text-indigo-500" />
+              <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest animate-pulse">Waiting for phone sync...</span>
+            </div>
+          </motion.div>
+        </div>
       )}
     </div>
   );
