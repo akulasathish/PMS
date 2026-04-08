@@ -96,6 +96,25 @@ export default function PrintRegCard() {
         </div>
       </div>
 
+      
+        <div className="space-y-4">
+           <h3 className="text-[10px] font-black uppercase tracking-[0.2em] border-l-4 border-black pl-3 mb-4">Identity Verification Proof</h3>
+           <div className="grid grid-cols-1 gap-6">
+              <div className="aspect-[3/2] w-full max-w-[300px] border-2 border-black/10 rounded-lg overflow-hidden flex items-center justify-center bg-zinc-50">
+                {data.id_photo_url ? (
+                  <img 
+                    src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/guest-ids/${data.id_photo_url}`} 
+                    className="w-full h-full object-cover grayscale contrast-125" 
+                    alt="ID Proof" 
+                  />
+                ) : (
+                  <p className="text-[10px] font-black text-zinc-300 uppercase tracking-widest italic">Physical ID Scan Required</p>
+                )}
+              </div>
+              <p className="text-[8px] text-zinc-400 font-bold uppercase italic mt-1">* This image is a digital capture of the guest's original identity document.</p>
+           </div>
+        </div>
+
       {/* SIGNATURE SECTION */}
       <div className="mt-20 pt-10 border-t-2 border-black/5 flex justify-between items-center">
         <div className="w-1/2">
