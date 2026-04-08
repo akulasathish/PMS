@@ -68,7 +68,6 @@ export default function FrontOfficeTerminal() {
   
   // Form F Fields State
   const [guestAddress, setGuestAddress] = useState('');
-  const [vehicleNo, setVehicleNo] = useState('');
   
   const supabase = createClient();
   const router = useRouter();
@@ -340,7 +339,6 @@ export default function FrontOfficeTerminal() {
     setCheckPaymentSecured(false);
     setCheckFormFDone(false);
     setGuestAddress(booking.guest_address || '');
-    setVehicleNo(booking.vehicle_no || '');
     
     // Auto-check requirements if they were already done via the Magic Link
     if (booking.id_verified) {
@@ -724,7 +722,7 @@ export default function FrontOfficeTerminal() {
                       </label>
                       <label className="flex items-center gap-3 cursor-pointer group">
                         <input type="checkbox" className="w-4 h-4 rounded bg-black border-white/20 accent-amber-500" checked={checkFormFDone} onChange={e => setCheckFormFDone(e.target.checked)} />
-                        <span className="text-sm text-zinc-300 group-hover:text-white transition-colors">Capture Form F (Address & Vehicle)</span>
+                        <span className="text-sm text-zinc-300 group-hover:text-white transition-colors">Capture Form F (Home Address)</span>
                       </label>
                     </div>
                     <div className="mt-4 grid grid-cols-1 gap-3">
@@ -737,16 +735,7 @@ export default function FrontOfficeTerminal() {
                           className="w-full h-16 bg-black/40 border border-white/[0.06] text-xs text-zinc-300 rounded-xl p-3 focus:outline-none focus:border-amber-500/50 resize-none"
                         />
                       </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest pl-1">Vehicle Number</label>
-                        <input 
-                          type="text" 
-                          value={vehicleNo}
-                          onChange={(e) => setVehicleNo(e.target.value)}
-                          placeholder="e.g. MH 01 AB 1234"
-                          className="w-full bg-black/40 border border-white/[0.06] text-xs text-zinc-300 rounded-xl p-3 focus:outline-none focus:border-amber-500/50"
-                        />
-                      </div>
+
                     </div>
 
                     
