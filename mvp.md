@@ -28,12 +28,15 @@ This document defines the Minimum Viable Product (MVP) requirements for the comm
 - [ ] **Performance & Logs (Audit Trail):**
     *   **Activity Feed:** Real-time logging of who created bookings, issued refunds, or marked rooms clean.
     *   **Owner Visibility:** A dedicated "Recent Activity" widget on the Tier 2 Dashboard.
-- [ ] **Front Office Suite:**
+- [x] **Front Office Suite:**
     *   **Daily Operational Lists:** Tabbed interface replacing purely visual Tape Charts for fast, high-volume action (Arrivals Today, Departures Today, In-House).
-    *   **Master Reservations:** Searchable master list for future/past bookings with date filters (Solves "where is my guest for 24th April?").
+    *   **Master Reservations:** Universal search for future/past bookings with chronological sorting and professional date formats (e.g., "Apr 21, 2026").
     *   **Transactional Actions:** Room Upgrades (live move), Refund Folios, Guest Notes directly accessible from any list view via the slide-out Action Drawer.
     *   **Stay Summary Header:** Action Drawer displays `Total Nights` and `Date Range` clearly for staff.
-    *   **Room Blocking:** Administrative lock on rooms for maintenance, meetings, or group events (Marriages/Meetings).
+    *   **Enterprise Check-In Guardrails:** Mandatory 3-step checklist (ID, Signature, Payment) mathematically blocks the "Check In" status flip until compliance is met.
+    *   **Inventory Protection:** Dynamic date overlap calculation mathematically prevents overbooking during Walk-Ins.
+- [ ] **Night Audit & Room Blocking:**
+    *   **Room Blocking:** Administrative lock on rooms for maintenance or events.
     *   **Night Audit:** "End of Day" logic to lock revenue and generate daily reports.
 - [ ] **Housekeeping Web Terminal:** 
     *   **Cleaner View:** Mobile task list with "Start/Finish" timers and Minibar posting.
@@ -42,14 +45,18 @@ This document defines the Minimum Viable Product (MVP) requirements for the comm
 
 ## Pillar 3: Guest Journey & Automation
 - [x] **Smart Communications:** Automated n8n emails for Confirmation and Smart Check-In.
+- [x] **Digital Registration Card (RegCard):**
+    *   **Magic Link Workflow:** SMS/Email link sent to guest's phone for self-serve ID capture.
+    *   **Mobile ID Upload:** Guest captures Aadhar/Passport directly to secure Supabase storage.
+    *   **Digital Signature:** React Canvas integration for legal terms agreement.
+    *   **Real-Time Sync:** Auto-ticks the Front Desk's Check-In checklist upon completion.
+- [ ] **Guest Identity (Receptionist Hardware):**
+    *   **Mobile QR Handshake:** Receptionist uses their own smartphone to scan physical IDs directly into the desktop PMS.
+    *   **Master Guest Profiles:** Linking isolated bookings to a unified, permanent CRM guest record.
 - [ ] **The Professional Folio:**
     *   **Balance Enforcement:** Physically block "Check-Out" button if Folio balance is not $0.00.
     *   **Extra Charges:** UI to post incidentals (Laundry, Minibar, Room Service) to the guest's bill.
-- [ ] **Smart Cancellation:** One-click "Cancel / No Show" button to instantly release room inventory.
-- [ ] **Digital Registration Card (RegCard):**
-    *   Capture Address, ID Type (Aadhar/Passport/DL), and Father's Name.
-    *   UI for legal terms agreement and e-signature.
-    *   Photo upload for Guest ID/Aadhar.
+- [x] **Smart Cancellation:** One-click "Cancel / No Show" button to instantly release room inventory.
 - [ ] **Automated PDF Invoicing:** Generation of guest folios emailed upon checkout.
 
 ## Pillar 4: Indian Market Compliance (Localization)

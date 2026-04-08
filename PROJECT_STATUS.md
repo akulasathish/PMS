@@ -53,6 +53,18 @@ The project implements a strict 3-tier Role-Based Access Control (RBAC) architec
   - Implemented the granular Action-Level Matrix with 25+ specific `Read/Write/Deny` features.
   - Built Reusable Role Templates and the "Surgical IAM Profile" command center (`/staff/[id]`).
   - **Staff Lifecycle Control:** Implemented "Revoke Access" (Delete Staff) functionality for Tier 2 Owners.
+- [x] **Front Office Suite (Daily Operations):**
+  - Built **Daily Operational Lists** (Tabs for Arrivals Today, Departures Today, In-House).
+  - Built **Master Reservations View** (Universal search with chronological sorting and professional date formatting).
+  - Implemented **Room Upgrades**, **Refund Folios**, and **Guest Notes** directly from the Action Drawer.
+  - Built **Enterprise Check-In Guardrails** (Mandatory 3-step checklist mathematically blocking the Check-In button).
+  - Built **Inventory Protection** (Dynamic date overlap calculation mathematically prevents overbooking during Walk-Ins).
+  - Built **Smart Cancellations** (One-click room inventory release).
+- [x] **Guest Compliance & Identity (Indian Market):**
+  - Built the **Digital RegCard** with a mobile-optimized "Magic Link" workflow.
+  - Implemented **Aadhar/ID photo upload** directly to Supabase Storage.
+  - Implemented **Digital Signatures** using a React Canvas.
+  - Built **Real-Time Sync** (Auto-ticks the Front Desk's Check-In checklist upon guest completion).
 
 ## 3. Security Gaps
 
@@ -60,21 +72,20 @@ The project implements a strict 3-tier Role-Based Access Control (RBAC) architec
 
 ## 4. Next Implementation Steps
 
-1. **Front Office Suite (Daily Operations):**
-   - Build **Daily Operational Lists** (Tabs for Arrivals Today, Departures Today, In-House).
-   - Implement **Room Upgrades**, **Refund Folios**, and **Guest Notes** directly from the Action Drawer.
-   - Build **Room Blocking** logic for maintenance/marriages/meetings.
-2. **Performance & Logs (Audit Trail):**
-   - Create `audit_logs` table to track all critical Staff/Owner actions.
-   - Build a "Recent Activity Feed" widget for the Owner Dashboard.
-3. **Housekeeping Evolution:**
+1. **Housekeeping Evolution:**
    - Add the **"Inspect"** button for supervisors to move rooms from Clean ➡️ Ready.
    - Implement **Minibar Posting** and cleaning timers in the mobile view.
+2. **Indian Financial Suite:**
+   - Implement **GST-compliant folios** (CGST/SGST splitting based on slab).
+   - Generate **Razorpay UPI** dynamic QR codes at the Front Desk.
+   - Build **The Professional Folio** (Blocking Check-Out if balance isn't $0.00 and adding UI for incidentals).
+3. **Performance & Logs (Audit Trail):**
+   - Create `audit_logs` table to track all critical Staff/Owner actions.
+   - Build a "Recent Activity Feed" widget for the Owner Dashboard.
 4. **Transition to Transactional Auth Logic:** 
    - Replace the dummy password generation with Supabase's native invite email flow.
-5. **Guest Compliance (Indian Market):**
-   - Build the Digital RegCard with **Aadhar/ID upload** and e-signatures.
-6. **Indian Financial Suite:**
-   - Implement **GST-compliant invoicing** and **Razorpay UPI** dynamic QR codes.
-7. **Financial Analytics:** 
+5. **Night Audit & Room Blocking:**
+   - Build **Room Blocking** logic for maintenance/marriages/meetings.
+   - **Night Audit:** "End of Day" logic to lock revenue and generate daily reports.
+6. **Financial Analytics:** 
    - Build out the Recharts visualization suite for revenue and occupancy trends.
