@@ -64,6 +64,11 @@ export default function FrontOfficeTerminal() {
   const [checkIdVerified, setCheckIdVerified] = useState(false);
   const [checkRegCardSigned, setCheckRegCardSigned] = useState(false);
   const [checkPaymentSecured, setCheckPaymentSecured] = useState(false);
+  const [checkFormFDone, setCheckFormFDone] = useState(false);
+  
+  // Form F Fields State
+  const [guestAddress, setGuestAddress] = useState('');
+  const [vehicleNo, setVehicleNo] = useState('');
   
   const supabase = createClient();
   const router = useRouter();
@@ -333,6 +338,9 @@ export default function FrontOfficeTerminal() {
     setCheckIdVerified(false);
     setCheckRegCardSigned(false);
     setCheckPaymentSecured(false);
+    setCheckFormFDone(false);
+    setGuestAddress(booking.guest_address || '');
+    setVehicleNo(booking.vehicle_no || '');
     
     // Auto-check requirements if they were already done via the Magic Link
     if (booking.id_verified) {
@@ -714,7 +722,33 @@ export default function FrontOfficeTerminal() {
                         <input type="checkbox" className="w-4 h-4 rounded bg-black border-white/20 accent-amber-500" checked={checkPaymentSecured} onChange={e => setCheckPaymentSecured(e.target.checked)} />
                         <span className="text-sm text-zinc-300 group-hover:text-white transition-colors">Secure Payment / Auth (${selectedBooking.amount})</span>
                       </label>
+                      <label className="flex items-center gap-3 cursor-pointer group">
+                        <input type="checkbox" className="w-4 h-4 rounded bg-black border-white/20 accent-amber-500" checked={checkFormFDone} onChange={e => setCheckFormFDone(e.target.checked)} />
+                        <span className="text-sm text-zinc-300 group-hover:text-white transition-colors">Capture Form F (Address & Vehicle)</span>
+                      </label>
                     </div>
+                    <div className="mt-4 grid grid-cols-1 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest pl-1">Guest Home Address</label>
+                        <textarea 
+                          value={guestAddress}
+                          onChange={(e) => setGuestAddress(e.target.value)}
+                          placeholder="Full address for police records..."
+                          className="w-full h-16 bg-black/40 border border-white/[0.06] text-xs text-zinc-300 rounded-xl p-3 focus:outline-none focus:border-amber-500/50 resize-none"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest pl-1">Vehicle Number</label>
+                        <input 
+                          type="text" 
+                          value={vehicleNo}
+                          onChange={(e) => setVehicleNo(e.target.value)}
+                          placeholder="e.g. MH 01 AB 1234"
+                          className="w-full bg-black/40 border border-white/[0.06] text-xs text-zinc-300 rounded-xl p-3 focus:outline-none focus:border-amber-500/50"
+                        />
+                      </div>
+                    </div>
+
                     
                     <button 
                       onClick={(e) => handleSafeCheckIn(e as any, selectedBooking.id)}
@@ -862,6 +896,21 @@ export default function FrontOfficeTerminal() {
                   </div>
                   {!canRefund() && <p className="text-[10px] text-rose-500 flex items-center gap-1"><Lock size={10} /> You do not have permission to issue refunds.</p>}
                 </div>
+
+
+                {/* 3.5 FINAL ACTION */}
+                {selectedBooking.status === 'Confirmed' && (
+                  <div className="pt-4">
+                    <button 
+                      onClick={(e) => handleSafeCheckIn(e as any, selectedBooking.id)}
+                      disabled={!checkIdVerified || !checkRegCardSigned || !checkPaymentSecured || !checkFormFDone || actionLoading || !canCheckIn()}
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-900/30 disabled:text-emerald-500/30 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs transition-all shadow-xl shadow-emerald-500/10 flex items-center justify-center gap-3"
+                    >
+                      {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <><CheckCircle2 size={16} /> Complete Final Check-In</>}
+                    </button>
+                    {!canCheckIn() && <p className="text-[10px] text-rose-500 mt-2 text-center">Unauthorized to finalize check-in.</p>}
+                  </div>
+                )}
 
                 {/* 4. DANGER ZONE */}
                 <div className="pt-6 border-t border-rose-500/20">
