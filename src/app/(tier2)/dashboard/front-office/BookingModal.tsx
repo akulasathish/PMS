@@ -9,6 +9,7 @@ interface Room {
   id: string;
   room_number: string;
   type: string;
+  status: string;
 }
 
 interface BookingModalProps {
@@ -42,17 +43,21 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
   const [selectedCheckIn, setSelectedCheckIn] = useState(todayStr);
   const [selectedCheckOut, setSelectedCheckOut] = useState(tomorrowStr);
 
-  // Calculate truly available rooms based on date overlap
+  // Calculate truly available rooms based on physical state AND date overlap
   const availableRooms = rooms.filter(room => {
-    // A room is unavailable if ANY existing booking overlaps with the selected dates
+    // 1. PHYSICAL BLOCK: A room MUST be 'Available' (Clean) right now to be assigned to a new Walk-In.
+    // We cannot sell a 'Dirty', 'Occupied', or 'Blocked' room.
+    if (room.status !== 'Available') return false;
+
+    // 2. TEMPORAL BLOCK: Even if it is clean today, is someone else booked into it tomorrow?
     const hasOverlap = bookings.some(b => {
       if (b.room_id !== room.id) return false;
-      if (b.status === 'Cancelled' || b.status === 'Checked Out') return false; // Ignore dead bookings
+      if (b.status === 'Cancelled' || b.status === 'Checked Out') return false; 
       
       const bIn = b.check_in ? String(b.check_in).substring(0, 10) : '';
       const bOut = b.check_out ? String(b.check_out).substring(0, 10) : '';
       
-      // Standard Overlap Formula: (StartA < EndB) AND (EndA > StartB)
+      // Overlap Formula: (StartA < EndB) AND (EndA > StartB)
       return bIn < selectedCheckOut && bOut > selectedCheckIn;
     });
 
