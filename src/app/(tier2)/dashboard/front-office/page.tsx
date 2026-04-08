@@ -858,34 +858,35 @@ export default function FrontOfficeTerminal() {
                           }}
                           className="flex-[2] bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 border border-indigo-500/20 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all"
                         >
-                          <Link2 size={14} /> Link
+                          <Link2 size={14} /> Send Link
                         </button>
                         <button 
                           onClick={() => setShowQrCode(true)}
                           className="flex-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-500 border border-amber-500/20 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all"
                         >
-                          <Camera size={14} /> QR
-                        </button>
-                        <button 
-                          onClick={() => window.open("/guest/print-regcard/" + selectedBooking.id, "_blank")}
-                          className="flex-1 bg-white/5 hover:bg-white/10 text-white border border-white/10 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all"
-                          title="Print for Police Form F"
-                        >
-                          <Printer size={14} /> Print
+                          <Camera size={14} /> QR Scan
                         </button>
                       </div>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="aspect-[3/2] bg-black/40 border border-white/5 rounded-xl overflow-hidden relative group">
-                         <img src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/guest-ids/${selectedBooking.id_photo_url}`} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
-                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                            <p className="text-[8px] font-black text-white/40 uppercase tracking-tighter">Guest ID Scan</p>
-                         </div>
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="aspect-[3/2] bg-black/40 border border-white/5 rounded-xl overflow-hidden relative group">
+                           <img src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/guest-ids/${selectedBooking.id_photo_url}`} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
+                           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              <p className="text-[8px] font-black text-white/40 uppercase tracking-tighter">Guest ID Scan</p>
+                           </div>
+                        </div>
+                        <div className="aspect-[3/2] bg-white rounded-xl overflow-hidden flex items-center justify-center p-2">
+                           <img src={selectedBooking.signature_url} className="max-h-full max-w-full" />
+                        </div>
                       </div>
-                      <div className="aspect-[3/2] bg-white rounded-xl overflow-hidden flex items-center justify-center p-2">
-                         <img src={selectedBooking.signature_url} className="max-h-full max-w-full" />
-                      </div>
+                      <button 
+                        onClick={() => window.open("/guest/print-regcard/" + selectedBooking.id, "_blank")}
+                        className="w-full bg-indigo-600/20 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/30 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg"
+                      >
+                        <Printer size={16} /> Print Official Form F / RegCard
+                      </button>
                     </div>
                   )}
                 </div>
