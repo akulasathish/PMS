@@ -8,7 +8,7 @@ import {
   ArrowRightLeft, ChevronLeft, ChevronRight, 
   Plus, Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, LogOut,
-  ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck, Link2, Camera, X, ShieldCheck, AlertCircle,
+  ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck, RefreshCw, Printer, Link2, Camera, X, ShieldCheck, AlertCircle,
   Trash2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -358,6 +358,21 @@ export default function FrontOfficeTerminal() {
       supabase.removeChannel(channel);
     };
   }, [selectedBooking]);
+
+
+  const refreshBookingStatus = async () => {
+    if (!selectedBooking) return;
+    setActionLoading(true);
+    const { data, error } = await supabase.from('bookings').select('*').eq('id', selectedBooking.id).single();
+    if (data && !error) {
+      setSelectedBooking(data);
+      if (data.id_verified) {
+        setCheckIdVerified(true);
+        setCheckRegCardSigned(true);
+      }
+    }
+    setActionLoading(false);
+  };
 
   const openActionDrawer = (booking: any) => {
     setSelectedBooking(booking);
@@ -724,12 +739,24 @@ export default function FrontOfficeTerminal() {
                     {calculateNights(selectedBooking.check_in, selectedBooking.check_out)} Nights &bull; {selectedBooking.check_in} to {selectedBooking.check_out}
                   </p>
                 </div>
-                <button 
-                  onClick={() => setSelectedBooking(null)}
-                  className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
-                >
-                  <ChevronRight size={16} />
-                </button>
+                
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={refreshBookingStatus}
+                    disabled={actionLoading}
+                    className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-indigo-400 transition-all disabled:opacity-50"
+                    title="Refresh Status"
+                  >
+                    <RefreshCw size={16} className={actionLoading ? 'animate-spin' : ''} />
+                  </button>
+                  <button 
+                    onClick={() => setSelectedBooking(null)}
+                    className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+
               </div>
 
               <div className="flex-1 overflow-y-auto p-6 space-y-8">
@@ -829,15 +856,22 @@ export default function FrontOfficeTerminal() {
                             navigator.clipboard.writeText(url);
                             alert("Magic Link copied to clipboard! Send this to the guest via WhatsApp/SMS.");
                           }}
-                          className="flex-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 border border-indigo-500/20 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all"
+                          className="flex-[2] bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 border border-indigo-500/20 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all"
                         >
-                          <Link2 size={14} /> Copy Link
+                          <Link2 size={14} /> Link
                         </button>
                         <button 
                           onClick={() => setShowQrCode(true)}
                           className="flex-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-500 border border-amber-500/20 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all"
                         >
-                          <Camera size={14} /> Scan with Phone
+                          <Camera size={14} /> QR
+                        </button>
+                        <button 
+                          onClick={() => window.open("/guest/print-regcard/" + selectedBooking.id, "_blank")}
+                          className="flex-1 bg-white/5 hover:bg-white/10 text-white border border-white/10 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all"
+                          title="Print for Police Form F"
+                        >
+                          <Printer size={14} /> Print
                         </button>
                       </div>
                     </div>
