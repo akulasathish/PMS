@@ -183,7 +183,7 @@ export default function GuestRegCard() {
                 <input 
                   type="file" 
                   accept="image/*" 
-                  capture="environment"
+                  
                   onChange={handleFileChange}
                   className="absolute inset-0 opacity-0 cursor-pointer"
                 />
