@@ -8,7 +8,7 @@ import {
   ArrowRightLeft, ChevronLeft, ChevronRight, 
   Plus, Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, LogOut,
-  ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck, RefreshCw, RotateCcw, Printer, Link2, Camera, X, ShieldCheck, AlertCircle,
+  ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck, RefreshCw, RotateCcw, Printer, XCircle, Link2, Camera, X, ShieldCheck, AlertCircle,
   Trash2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -54,6 +54,8 @@ export default function FrontOfficeTerminal() {
   const [activeTab, setActiveTab] = useState<'tape' | 'arrivals' | 'departures' | 'house' | 'all'>('tape');
   const [searchQuery, setSearchQuery] = useState('');
   const [reservationFilter, setReservationFilter] = useState('Confirmed');
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
 
   // Action Drawer State
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
@@ -165,53 +167,41 @@ export default function FrontOfficeTerminal() {
   };
 
   
+  
   const getAllReservations = () => {
     let filtered = bookings;
     
-    
-    // 1. Apply Universal Smart Search FIRST (If they are typing, search EVERYTHING)
+    // 1. Status Filter
+    if (reservationFilter !== 'All') {
+      if (reservationFilter === 'Past') {
+        filtered = filtered.filter(b => b.status === 'Checked Out' || b.status === 'Cancelled');
+      } else {
+        filtered = filtered.filter(b => b.status === reservationFilter);
+      }
+    }
+
+    // 2. Date Range Filter
+    if (filterStartDate) {
+      filtered = filtered.filter(b => b.check_in >= filterStartDate);
+    }
+    if (filterEndDate) {
+      filtered = filtered.filter(b => b.check_in <= filterEndDate);
+    }
+
+    // 3. Text Search
     if (searchQuery) {
       const lowerQuery = searchQuery.toLowerCase().trim();
       filtered = filtered.filter(b => {
         const roomNum = rooms.find(r => r.id === b.room_id)?.room_number || '';
-        
-        // Safety check for text search
         const nameMatch = b.guest_name ? b.guest_name.toLowerCase().includes(lowerQuery) : false;
-        const idMatch = b.id ? b.id.toLowerCase().includes(lowerQuery) : false;
         const roomMatch = roomNum.toLowerCase() === lowerQuery;
-        
-        // Bulletproof Date matching
-        let dateMatch = false;
-        // If the query looks like a date (e.g., contains dashes)
-        if (lowerQuery.includes('-')) {
-           // Create a safe YYYY-MM-DD string from the database dates
-           const dbInStr = b.check_in ? new Date(b.check_in).toISOString().substring(0, 10) : '';
-           const dbOutStr = b.check_out ? new Date(b.check_out).toISOString().substring(0, 10) : '';
-           
-           if (dbInStr === lowerQuery || dbOutStr === lowerQuery) {
-              dateMatch = true;
-           }
-        }
-
-        return nameMatch || idMatch || roomMatch || dateMatch;
+        return nameMatch || roomMatch;
       });
-    } else {
-
-      // 2. Only apply the Dropdown Filter if they ARE NOT actively searching
-      if (reservationFilter !== 'All') {
-        if (reservationFilter === 'Past') {
-          filtered = filtered.filter(b => b.status === 'Checked Out' || b.status === 'Cancelled');
-        } else {
-          filtered = filtered.filter(b => b.status === reservationFilter);
-        }
-      }
     }
 
-    // 3. Sort Chronologically
     return filtered.sort((a, b) => {
       const dateA = new Date(a.check_in).getTime();
       const dateB = new Date(b.check_in).getTime();
-      
       if (reservationFilter === 'Past') {
          const outA = new Date(a.check_out || a.created_at).getTime();
          const outB = new Date(b.check_out || b.created_at).getTime();
@@ -220,6 +210,7 @@ export default function FrontOfficeTerminal() {
       return dateA - dateB;
     });
   };
+
 
 
   const hasAccess = (moduleName: string) => {
