@@ -168,16 +168,7 @@ export default function FrontOfficeTerminal() {
   const getAllReservations = () => {
     let filtered = bookings;
     
-    // 1. Apply the Dropdown Status Filter first (unless it's 'All')
-    if (reservationFilter !== 'All') {
-      if (reservationFilter === 'Past') {
-        filtered = filtered.filter(b => b.status === 'Checked Out' || b.status === 'Cancelled');
-      } else {
-        filtered = filtered.filter(b => b.status === reservationFilter);
-      }
-    }
-
-    // 2. Apply Universal Smart Search (Name, Room, or Date)
+    // 1. Apply Universal Smart Search FIRST (If they are typing, search EVERYTHING)
     if (searchQuery) {
       const lowerQuery = searchQuery.toLowerCase().trim();
       filtered = filtered.filter(b => {
@@ -193,6 +184,15 @@ export default function FrontOfficeTerminal() {
           outDate === lowerQuery                  
         );
       });
+    } else {
+      // 2. Only apply the Dropdown Filter if they ARE NOT actively searching
+      if (reservationFilter !== 'All') {
+        if (reservationFilter === 'Past') {
+          filtered = filtered.filter(b => b.status === 'Checked Out' || b.status === 'Cancelled');
+        } else {
+          filtered = filtered.filter(b => b.status === reservationFilter);
+        }
+      }
     }
 
     // 3. Sort Chronologically
