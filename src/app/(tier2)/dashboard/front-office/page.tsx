@@ -1,19 +1,22 @@
 "use client";
+import { QRCodeSVG } from 'qrcode.react';
 
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Bed, Calendar, Search, UserCheck, Clock, 
   ArrowRightLeft, ChevronLeft, ChevronRight, 
   Plus, Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, LogOut,
-  ChevronsUpDown, Lock, Brush
+  ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck, RefreshCw, RotateCcw, Printer, XCircle, Link2, Camera, X, ShieldCheck, AlertCircle,
+  Trash2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import BookingModal from './BookingModal';
-import { checkInGuest, checkOutGuest } from '@/app/actions/booking';
+import { checkInGuest, checkOutGuest, updateGuestNotes, toggleRoomBlock, upgradeRoom, issueRefund, cancelBooking, resetGuestIdentity } from '@/app/actions/booking';
+
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Overview", href: "/dashboard", active: false, module: 'analytics' },
@@ -24,7 +27,18 @@ const NAV_ITEMS = [
   { icon: Settings, label: "Settings", href: "#", active: false, module: 'settings' },
 ];
 
-const DAYS = ["22 Mar", "23 Mar", "24 Mar", "25 Mar", "26 Mar", "27 Mar", "28 Mar"];
+const generateDays = () => {
+  const days = [];
+  const today = new Date();
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    days.push(d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }));
+  }
+  return days;
+};
+
+const DAYS = generateDays();
 
 export default function FrontOfficeTerminal() {
   const [rooms, setRooms] = useState<any[]>([]);
@@ -34,58 +48,170 @@ export default function FrontOfficeTerminal() {
   const [userProfile, setUserProfile] = useState<any>(null);
   const [accessiblePropsList, setAccessiblePropsList] = useState<any[]>([]);
   const [showBookingModal, setShowBookingModal] = useState(false);
+  const [showPropertyDropdown, setShowPropertyDropdown] = useState(false);
+  
+  // Tabs State
+  const [activeTab, setActiveTab] = useState<'tape' | 'arrivals' | 'departures' | 'house' | 'all'>('tape');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [reservationFilter, setReservationFilter] = useState('Confirmed');
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
+
+  // Action Drawer State
+  const [selectedBooking, setSelectedBooking] = useState<any>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [notesInput, setNotesInput] = useState('');
+  const [upgradeRoomId, setUpgradeRoomId] = useState('');
+  const [refundInput, setRefundInput] = useState('');
+  
+  // Check-In Requirements State
+  const [checkIdVerified, setCheckIdVerified] = useState(false);
+  const [checkRegCardSigned, setCheckRegCardSigned] = useState(false);
+  const [checkPaymentSecured, setCheckPaymentSecured] = useState(false);
+  const [checkFormFDone, setCheckFormFDone] = useState(false);
+  
+  // Form F Fields State
+  const [guestAddress, setGuestAddress] = useState('');
+  const [showQrCode, setShowQrCode] = useState(false);
   
   const supabase = createClient();
   const router = useRouter();
 
-  useEffect(() => {
-    async function fetchData() {
-      setIsLoading(true);
-      try {
-        const { data: auth } = await supabase.auth.getUser();
-        if (!auth.user) return;
+  // Extract fetch data to a callable function to avoid window.location.reload()
+  const loadDashboardData = async () => {
+    setIsLoading(true);
+    try {
+      const { data: auth } = await supabase.auth.getUser();
+      if (!auth.user) return;
 
-        const { data: acc } = await supabase.from('property_access').select('property_id, properties(id, name)').eq('user_id', auth.user.id);
-        const { data: prof } = await supabase.from('profiles').select('*').eq('id', auth.user.id).single();
-        setUserProfile(prof);
+      const { data: acc } = await supabase.from('property_access').select('property_id, properties(id, name)').eq('user_id', auth.user.id);
+      const { data: prof } = await supabase.from('profiles').select('*').eq('id', auth.user.id).single();
+      setUserProfile(prof);
 
-        let activeId = localStorage.getItem('pms_active_property');
-        if (acc && acc.length > 0) {
-          setAccessiblePropsList(acc.map((a: any) => a.properties));
-          if (!activeId || !acc.some((a: any) => a.property_id === activeId)) {
-            activeId = acc[0].property_id;
-          }
-        } else if (prof?.property_id) {
-          activeId = prof.property_id;
-          const { data: fallbackProp } = await supabase.from('properties').select('id, name').eq('id', activeId).single();
-          if (fallbackProp) setAccessiblePropsList([fallbackProp]);
+      let activeId = localStorage.getItem('pms_active_property');
+      if (acc && acc.length > 0) {
+        setAccessiblePropsList(acc.map((a: any) => a.properties));
+        if (!activeId || !acc.some((a: any) => a.property_id === activeId)) {
+          activeId = acc[0].property_id;
         }
-
-        if (activeId) {
-          const { data: prop } = await supabase.from('properties').select('*').eq('id', activeId).single();
-          setProperty(prop);
-
-          // Fetch rooms and bookings safely
-          const [roomsRes, bookingsRes] = await Promise.all([
-            supabase.from('rooms').select('*').eq('property_id', activeId).order('room_number'),
-            supabase.from('bookings').select('*').eq('property_id', activeId)
-          ]);
-
-          setRooms(roomsRes.data || []);
-          setBookings(bookingsRes.data || []);
-        }
-      } catch (err) {
-        console.error("Dashboard Load Error:", err);
-      } finally {
-        setIsLoading(false);
+      } else if (prof?.property_id) {
+        activeId = prof.property_id;
+        const { data: fallbackProp } = await supabase.from('properties').select('id, name').eq('id', activeId).single();
+        if (fallbackProp) setAccessiblePropsList([fallbackProp]);
       }
+
+      if (activeId) {
+        const { data: prop } = await supabase.from('properties').select('*').eq('id', activeId).single();
+        setProperty(prop);
+
+        // Fetch rooms and bookings, explicitly bypassing browser cache
+        const [roomsRes, bookingsRes] = await Promise.all([
+          supabase.from('rooms').select('*').eq('property_id', activeId).order('room_number'),
+          supabase.from('bookings').select('*').eq('property_id', activeId).order('created_at', { ascending: false })
+        ]);
+
+        setRooms(roomsRes.data || []);
+        setBookings(bookingsRes.data || []);
+      }
+    } catch (err) {
+      console.error("Dashboard Load Error:", err);
+    } finally {
+      setIsLoading(false);
     }
-    fetchData();
+  };
+
+  useEffect(() => {
+    loadDashboardData();
   }, []);
 
   const getBookingForRoom = (roomId: string) => {
     return bookings.find(b => b.room_id === roomId && (b.status === 'Confirmed' || b.status === 'Checked In'));
   };
+
+  // Helper to format local date to YYYY-MM-DD
+  const getLocalYYYYMMDD = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Helper to format date for human reading (e.g., "2026-04-21" -> "Apr 21, 2026")
+  const formatFriendlyDate = (dateString: string) => {
+    if (!dateString) return '';
+    const d = new Date(dateString);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+  };
+
+  const getArrivalsToday = () => {
+    const todayStr = getLocalYYYYMMDD(new Date());
+    return bookings.filter(b => {
+      // Extract only the first 10 characters (YYYY-MM-DD) from whatever Postgres returned
+      const dbDate = b.check_in ? String(b.check_in).substring(0, 10) : '';
+      return dbDate === todayStr && b.status === 'Confirmed';
+    });
+  };
+
+  const getDeparturesToday = () => {
+    const todayStr = getLocalYYYYMMDD(new Date());
+    return bookings.filter(b => {
+      // Extract only the first 10 characters
+      const dbDate = b.check_out ? String(b.check_out).substring(0, 10) : '';
+      return dbDate === todayStr && b.status === 'Checked In';
+    });
+  };
+
+  const getInHouse = () => {
+    return bookings.filter(b => b.status === 'Checked In');
+  };
+
+  
+  
+  const getAllReservations = () => {
+    let filtered = bookings;
+    
+    // 1. Status Filter
+    if (reservationFilter !== 'All') {
+      if (reservationFilter === 'Past') {
+        filtered = filtered.filter(b => b.status === 'Checked Out' || b.status === 'Cancelled');
+      } else {
+        filtered = filtered.filter(b => b.status === reservationFilter);
+      }
+    }
+
+    // 2. Date Range Filter
+    if (filterStartDate) {
+      filtered = filtered.filter(b => b.check_in >= filterStartDate);
+    }
+    if (filterEndDate) {
+      filtered = filtered.filter(b => b.check_in <= filterEndDate);
+    }
+
+    // 3. Text Search
+    if (searchQuery) {
+      const lowerQuery = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(b => {
+        const roomNum = rooms.find(r => r.id === b.room_id)?.room_number || '';
+        const nameMatch = b.guest_name ? b.guest_name.toLowerCase().includes(lowerQuery) : false;
+        const roomMatch = roomNum.toLowerCase() === lowerQuery;
+        return nameMatch || roomMatch;
+      });
+    }
+
+    return filtered.sort((a, b) => {
+      const dateA = new Date(a.check_in).getTime();
+      const dateB = new Date(b.check_in).getTime();
+      if (reservationFilter === 'Past') {
+         const outA = new Date(a.check_out || a.created_at).getTime();
+         const outB = new Date(b.check_out || b.created_at).getTime();
+         return outB - outA;
+      }
+      return dateA - dateB;
+    });
+  };
+
+
 
   const hasAccess = (moduleName: string) => {
     if (!userProfile) return true;
@@ -104,19 +230,277 @@ export default function FrontOfficeTerminal() {
   const canCreateBooking = () => {
     if (!userProfile) return false;
     if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
-    return userProfile.permissions?.front_office?.create_booking === 'write';
+    return userProfile.permissions?.front_office?.create_booking === 'write' || userProfile.permissions?.front_office?.create_booking === 'full';
   };
 
   const canCheckIn = () => {
     if (!userProfile) return false;
     if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
-    return userProfile.permissions?.front_office?.perform_check_in === 'write';
+    return userProfile.permissions?.front_office?.perform_check_in === 'write' || userProfile.permissions?.front_office?.perform_check_in === 'full';
   };
 
   const canCheckOut = () => {
     if (!userProfile) return false;
     if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
-    return userProfile.permissions?.front_office?.perform_check_out === 'write';
+    return userProfile.permissions?.front_office?.perform_check_out === 'write' || userProfile.permissions?.front_office?.perform_check_out === 'full';
+  };
+
+  const canRefund = () => {
+    if (!userProfile) return false;
+    if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
+    return userProfile.permissions?.front_office?.refund_folio === 'write' || userProfile.permissions?.front_office?.refund_folio === 'full';
+  };
+
+  const canUpgrade = () => {
+    if (!userProfile) return false;
+    if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
+    return userProfile.permissions?.front_office?.upgrade_room === 'write' || userProfile.permissions?.front_office?.upgrade_room === 'full';
+  };
+
+  const canBlockRoom = () => {
+    if (!userProfile) return false;
+    if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
+    return userProfile.permissions?.front_office?.block_rooms === 'write' || userProfile.permissions?.front_office?.block_rooms === 'full';
+  };
+
+  const canWriteNotes = () => {
+    if (!userProfile) return false;
+    if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
+    return userProfile.permissions?.front_office?.guest_notes === 'write' || userProfile.permissions?.front_office?.guest_notes === 'full';
+  };
+
+  const canCancel = () => {
+    if (!userProfile) return false;
+    if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
+    // For now, we reuse modify_booking permission for cancellation
+    return userProfile.permissions?.front_office?.modify_booking === 'write' || userProfile.permissions?.front_office?.modify_booking === 'full';
+  };
+
+  // --- ACTION HANDLERS ---
+  const handleCancelBooking = async () => {
+    if (!selectedBooking) return;
+    if (!confirm(`Are you sure you want to PERMANENTLY CANCEL the reservation for ${selectedBooking.guest_name}?`)) return;
+    
+    setActionLoading(true);
+    const res = await cancelBooking(selectedBooking.id, selectedBooking.room_id);
+    if (res.success) {
+      window.location.reload();
+    } else {
+      alert(res.error);
+    }
+    setActionLoading(false);
+  };
+
+  const handleSaveNotes = async () => {
+    if (!selectedBooking) return;
+    setActionLoading(true);
+    const res = await updateGuestNotes(selectedBooking.id, notesInput);
+    if (res.success) {
+      setBookings(bookings.map(b => b.id === selectedBooking.id ? { ...b, notes: notesInput } : b));
+    } else {
+      alert(res.error);
+    }
+    setActionLoading(false);
+  };
+
+  const handleProcessRefund = async () => {
+    if (!selectedBooking || !refundInput) return;
+    const amount = parseFloat(refundInput);
+    if (isNaN(amount) || amount <= 0) return alert("Invalid refund amount");
+
+    setActionLoading(true);
+    const res = await issueRefund(selectedBooking.id, selectedBooking.amount, amount);
+    if (res.success && res.newAmount !== undefined) {
+      setBookings(bookings.map(b => b.id === selectedBooking.id ? { ...b, amount: res.newAmount } : b));
+      setRefundInput('');
+      setSelectedBooking({ ...selectedBooking, amount: res.newAmount }); // Update drawer UI
+      alert(`Refund of $${amount} successful. New balance: $${res.newAmount}`);
+    } else {
+      alert(res.error);
+    }
+    setActionLoading(false);
+  };
+
+  const handleExecuteUpgrade = async () => {
+    if (!selectedBooking || !upgradeRoomId) return;
+    setActionLoading(true);
+    const res = await upgradeRoom(selectedBooking.id, selectedBooking.room_id, upgradeRoomId);
+    if (res.success) {
+      window.location.reload();
+    } else {
+      alert(res.error);
+    }
+    setActionLoading(false);
+  };
+
+  const handleBlockRoom = async (room: any) => {
+    setActionLoading(true);
+    const res = await toggleRoomBlock(room.id, room.status);
+    if (res.success && res.newStatus) {
+      setRooms(rooms.map(r => r.id === room.id ? { ...r, status: res.newStatus } : r));
+    } else {
+      alert(res.error);
+    }
+    setActionLoading(false);
+  };
+
+  const handleSafeCheckIn = async (e: React.MouseEvent, bookingId: string) => {
+    e.stopPropagation();
+    await checkInGuest(bookingId);
+    window.location.reload();
+  };
+
+  const handleSafeCheckOut = async (e: React.MouseEvent, bookingId: string, roomId: string) => {
+    e.stopPropagation();
+    await checkOutGuest(bookingId, roomId);
+    window.location.reload();
+  };
+
+
+  useEffect(() => {
+    if (!selectedBooking) return;
+
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'bookings',
+          filter: "id=eq." + selectedBooking.id
+        },
+        (payload) => {
+          if (payload.new.id_verified) {
+            setSelectedBooking(payload.new);
+            setCheckIdVerified(true);
+            setCheckRegCardSigned(true);
+            setShowQrCode(false);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedBooking]);
+
+
+
+  const handleRetakeIdentity = async () => {
+    if (!selectedBooking) return;
+    if (!confirm("Are you sure you want to VOID the current ID and signature? You will need to capture them again.")) return;
+    
+    setActionLoading(true);
+    const res = await resetGuestIdentity(selectedBooking.id);
+    if (res.success) {
+      // Fetch fresh data to reset UI
+      await refreshBookingStatus();
+      setCheckIdVerified(false);
+      setCheckRegCardSigned(false);
+    } else {
+      alert(res.error);
+    }
+    setActionLoading(false);
+  };
+
+  const refreshBookingStatus = async () => {
+    if (!selectedBooking) return;
+    setActionLoading(true);
+    const { data, error } = await supabase.from('bookings').select('*').eq('id', selectedBooking.id).single();
+    if (data && !error) {
+      setSelectedBooking(data);
+      if (data.id_verified) {
+        setCheckIdVerified(true);
+        setCheckRegCardSigned(true);
+      }
+    }
+    setActionLoading(false);
+  };
+
+  const openActionDrawer = (booking: any) => {
+    setSelectedBooking(booking);
+    setNotesInput(booking.notes || '');
+    setRefundInput('');
+    setUpgradeRoomId('');
+    
+    // Reset Check-In checklist for safety
+    setCheckIdVerified(false);
+    setCheckRegCardSigned(false);
+    setCheckPaymentSecured(false);
+    setCheckFormFDone(false);
+    setGuestAddress(booking.guest_address || '');
+    
+    // Auto-check requirements if they were already done via the Magic Link
+    if (booking.id_verified) {
+      setCheckIdVerified(true);
+      setCheckRegCardSigned(true);
+    }
+  };
+
+  // --- SUB-COMPONENT: LIST ITEM ---
+  const BookingRow = ({ booking }: { booking: any }) => (
+    <motion.div 
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      onClick={() => openActionDrawer(booking)}
+      className="group flex items-center justify-between p-5 bg-zinc-900/40 border border-white/[0.04] rounded-2xl hover:border-indigo-500/40 transition-all cursor-pointer shadow-xl"
+    >
+      <div className="flex items-center gap-5">
+        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500/20 to-violet-500/20 border border-white/5 flex items-center justify-center text-indigo-400 font-black text-xs uppercase group-hover:scale-105 transition-transform">
+          {booking.guest_name.substring(0, 2)}
+        </div>
+        <div>
+          <h4 className="text-sm font-bold text-white group-hover:text-indigo-400 transition-colors">{booking.guest_name}</h4>
+          <div className="flex flex-col gap-1 mt-1">
+            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">
+              Room {rooms.find(r => r.id === booking.room_id)?.room_number || 'N/A'} &bull; {booking.id.slice(0, 8)}
+            </p>
+            <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest bg-indigo-500/10 px-2 py-0.5 rounded-md w-fit">
+              {calculateNights(booking.check_in, booking.check_out)} Nights &bull; {formatFriendlyDate(booking.check_in)} to {formatFriendlyDate(booking.check_out)}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-6">
+        <div className="text-right hidden md:block">
+          <p className="text-[10px] text-zinc-600 font-black uppercase tracking-tighter">Amount Due</p>
+          <p className="text-sm font-black text-white">${booking.amount}</p>
+        </div>
+        
+        <div className="flex gap-2">
+          {booking.status === 'Confirmed' && (
+            canCheckIn() ? (
+              <button 
+                onClick={(e) => { e.stopPropagation(); openActionDrawer(booking); }}
+                className="bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-black px-4 py-2 rounded-xl transition-all shadow-lg shadow-amber-500/10"
+              >
+                START CHECK-IN
+              </button>
+            ) : <Lock size={14} className="text-zinc-700 mx-4" />
+          )}
+          {booking.status === 'Checked In' && (
+            canCheckOut() ? (
+              <button 
+                onClick={(e) => handleSafeCheckOut(e, booking.id, booking.room_id)}
+                className="bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-black px-4 py-2 rounded-xl transition-all shadow-lg shadow-rose-500/10"
+              >
+                CHECK OUT
+              </button>
+            ) : <Lock size={14} className="text-zinc-700 mx-4" />
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+
+  const calculateNights = (inDate: string, outDate: string) => {
+    const d1 = new Date(inDate);
+    const d2 = new Date(outDate);
+    const diff = d2.getTime() - d1.getTime();
+    return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
   };
 
   if (isLoading) {
@@ -168,126 +552,596 @@ export default function FrontOfficeTerminal() {
 
       {/* MAIN */}
       <main className="flex-1 flex flex-col overflow-hidden">
-        <header className="p-8 border-b border-white/[0.04] flex justify-between items-center bg-[#08080a]">
-          <div>
-            <h2 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
-              <Activity className="text-emerald-400" />
-              Front Office Terminal
-            </h2>
-            <p className="text-zinc-500 text-sm mt-1">Real-time availability and guest management</p>
+        <header className="p-8 border-b border-white/[0.04] bg-[#08080a] flex flex-col gap-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
+                <Activity className="text-emerald-400" />
+                Front Office Terminal
+              </h2>
+              <p className="text-zinc-500 text-sm mt-1">Real-time availability and guest management</p>
+            </div>
+            
+            {canCreateBooking() && (
+              <button 
+                onClick={() => setShowBookingModal(true)}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg active:scale-95"
+              >
+                <Plus size={18} />
+                New Walk-In
+              </button>
+            )}
           </div>
-          
-          {canCreateBooking() ? (
-            <button 
-              onClick={() => setShowBookingModal(true)}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg active:scale-95"
-            >
-              <Plus size={18} />
-              New Walk-In
-            </button>
-          ) : (
-            <button 
-              disabled
-              className="bg-zinc-800 text-zinc-600 px-6 py-3 rounded-xl font-bold flex items-center gap-2 cursor-not-allowed"
-            >
-              <Lock size={14} /> New Walk-In
-            </button>
-          )}
+
+          {/* TAB SYSTEM */}
+          <div className="flex flex-col w-full gap-6">
+            <div className="flex items-center gap-1 bg-white/[0.02] border border-white/[0.05] p-1 rounded-2xl w-fit self-center md:self-start">
+              {[
+                { id: 'tape', label: 'Tape Chart', icon: Calendar },
+                { id: 'arrivals', label: 'Arrivals Today', icon: UserCheck },
+                { id: 'departures', label: 'Departures Today', icon: LogOut },
+                { id: 'house', label: 'In-House', icon: Bed },
+                { id: 'all', label: 'Reservations', icon: Search },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setActiveTab(tab.id as any);
+                    setSearchQuery(''); // Clear search when switching tabs
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                    activeTab === tab.id 
+                      ? 'bg-indigo-600 text-white shadow-lg' 
+                      : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5'
+                  }`}
+                >
+                  <tab.icon size={14} />
+                  {tab.label}
+                  {tab.id === 'arrivals' && getArrivalsToday().length > 0 && <span className="ml-1 bg-white text-indigo-600 px-1.5 py-0.5 rounded-md text-[9px]">{getArrivalsToday().length}</span>}
+                </button>
+              ))}
+            </div>
+
+            
+            {/* RESERVATIONS MASTER CONTROLS */}
+            {activeTab === 'all' && (
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <select 
+                    value={reservationFilter}
+                    onChange={(e) => setReservationFilter(e.target.value)}
+                    className="appearance-none bg-zinc-800 border border-white/20 rounded-xl py-2 pl-4 pr-10 text-xs text-white font-bold focus:outline-none focus:border-indigo-500/50 cursor-pointer hover:bg-zinc-700 transition-colors"
+                  >
+                    <option value="Confirmed">Upcoming (Confirmed)</option>
+                    <option value="Checked In">In-House</option>
+                    <option value="Past">Past (Checked Out/Cancelled)</option>
+                    <option value="All">View Everything</option>
+                  </select>
+                  <ChevronsUpDown size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
+                </div>
+                
+                {/* INJECTED DATE PICKERS */}
+                <div className="flex items-center gap-1.5 bg-black/40 border border-white/10 rounded-lg px-2 py-1 focus-within:border-indigo-500/50">
+                  <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">From</span>
+                  <input 
+                    type="date"
+                    value={filterStartDate}
+                    onChange={(e) => setFilterStartDate(e.target.value)}
+                    className="bg-transparent text-xs text-white font-bold focus:outline-none [color-scheme:dark] cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 focus-within:border-indigo-500/50 transition-colors">
+                  <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">To</span>
+                  <input 
+                    type="date"
+                    value={filterEndDate}
+                    onChange={(e) => setFilterEndDate(e.target.value)}
+                    className="bg-transparent text-xs text-white font-bold focus:outline-none [color-scheme:dark] cursor-pointer"
+                  />
+                </div>
+                
+                {/* CLEAR BUTTON */}
+                {(searchQuery || filterStartDate || filterEndDate || reservationFilter !== 'Confirmed') && (
+                  <button 
+                    onClick={() => {
+                      setSearchQuery('');
+                      setFilterStartDate('');
+                      setFilterEndDate('');
+                      setReservationFilter('Confirmed');
+                    }}
+                    className="p-2 text-zinc-500 hover:text-rose-400 bg-zinc-800 hover:bg-rose-500/10 border border-white/5 rounded-xl transition-all"
+                    title="Clear All Filters"
+                  >
+                    <XCircle size={14} />
+                  </button>
+                )}
+                
+                <div className="relative w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" size={14} />
+                  <input 
+                    type="text" 
+                    placeholder="Search guest or ID..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-xs text-white focus:outline-none focus:border-indigo-500/50 transition-all"
+                  />
+                </div>
+              </div>
+            )}
+
+          </div>
         </header>
 
         <div className="flex-1 p-8 overflow-auto">
-          <div className="bg-zinc-900/30 rounded-2xl border border-white/[0.06] overflow-hidden">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-black/40 border-b border-white/[0.06]">
-                  <th className="p-4 text-left text-[10px] font-black text-zinc-500 uppercase tracking-widest border-r border-white/5 sticky left-0 bg-[#09090b] z-20">Room</th>
-                  {DAYS.map(day => (
-                    <th key={day} className="p-4 text-center text-[10px] font-black text-zinc-400 uppercase tracking-widest border-r border-white/5 min-w-[140px]">{day}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rooms.map((room) => {
-                  const booking = getBookingForRoom(room.id);
-                  return (
-                    <tr key={room.id} className="border-b border-white/5 hover:bg-white/[0.01]">
-                      <td className="p-4 border-r border-white/5 sticky left-0 bg-[#09090b] z-10">
-                        <p className="text-sm font-bold text-white">{room.room_number}</p>
-                        <p className="text-[10px] text-zinc-500 uppercase">{room.type}</p>
-                      </td>
-                      {DAYS.map((_, idx) => (
-                        <td key={idx} className="p-2 border-r border-white/5 relative h-20">
-                          {booking && idx === 0 ? (
-                            <motion.div 
-                              layoutId={booking.id}
-                              className={`absolute inset-y-2 left-2 right-[-240px] rounded-xl border p-3 flex items-center justify-between z-20 shadow-2xl ${
-                                booking.status === 'Confirmed' ? 'bg-amber-500/10 border-amber-500/30' : 'bg-emerald-500/10 border-emerald-500/30'
-                              }`}
+          {activeTab === 'tape' ? (
+            <div className="bg-zinc-900/30 rounded-2xl border border-white/[0.06] overflow-hidden">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-black/40 border-b border-white/[0.06]">
+                    <th className="p-4 text-left text-[10px] font-black text-zinc-500 uppercase tracking-widest border-r border-white/5 sticky left-0 bg-[#09090b] z-20">Room</th>
+                    {DAYS.map(day => (
+                      <th key={day} className="p-4 text-center text-[10px] font-black text-zinc-400 uppercase tracking-widest border-r border-white/5 min-w-[140px]">{day}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rooms.map((room) => {
+                    const booking = getBookingForRoom(room.id);
+                    return (
+                      <tr key={room.id} className="border-b border-white/5 hover:bg-white/[0.01]">
+                        <td className="p-4 border-r border-white/5 sticky left-0 bg-[#09090b] z-10">
+                          {canBlockRoom() ? (
+                            <button 
+                              onClick={() => handleBlockRoom(room)}
+                              disabled={actionLoading || (room.status !== 'Available' && room.status !== 'Blocked')}
+                              className={`text-sm font-bold transition-colors ${room.status === 'Blocked' ? 'text-rose-500 hover:text-rose-400' : 'text-white hover:text-rose-300'} disabled:opacity-50`}
                             >
-                              <div className="flex flex-col gap-1 w-full">
-                                <div className="flex items-center gap-2">
-                                  <UserCheck size={14} className={booking.status === 'Confirmed' ? 'text-amber-400' : 'text-emerald-400'} />
-                                  <span className="text-[12px] font-bold text-white">{booking.guest_name}</span>
-                                </div>
-                                <div className="flex items-center justify-between mt-2">
-                                  <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                                    booking.status === 'Confirmed' ? 'bg-amber-500/20 text-amber-500' : 'bg-emerald-500/20 text-emerald-500'
-                                  }`}>
-                                    {booking.status}
-                                  </span>
-                                  
-                                  <div className="flex gap-2">
-                                    {booking.status === 'Confirmed' && (
-                                      canCheckIn() ? (
-                                        <button 
-                                          onClick={async () => await checkInGuest(booking.id)}
-                                          className="bg-emerald-600 hover:bg-emerald-500 text-white text-[9px] font-bold px-3 py-1 rounded-lg transition-all"
-                                        >
-                                          Check In
-                                        </button>
-                                      ) : (
-                                        <button disabled className="bg-zinc-800 text-zinc-600 text-[9px] font-bold px-3 py-1 rounded-lg flex items-center gap-1 cursor-not-allowed">
-                                          <Lock size={10} /> Check In
-                                        </button>
-                                      )
-                                    )}
-                                    {booking.status === 'Checked In' && (
-                                      canCheckOut() ? (
-                                        <button 
-                                          onClick={async () => await checkOutGuest(booking.id, room.id)}
-                                          className="bg-rose-600 hover:bg-rose-500 text-white text-[9px] font-bold px-3 py-1 rounded-lg transition-all"
-                                        >
-                                          Check Out
-                                        </button>
-                                      ) : (
-                                        <button disabled className="bg-zinc-800 text-zinc-600 text-[9px] font-bold px-3 py-1 rounded-lg flex items-center gap-1 cursor-not-allowed">
-                                          <Lock size={10} /> Check Out
-                                        </button>
-                                      )
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </motion.div>
-                          ) : null}
+                              {room.room_number} {room.status === 'Blocked' && <Lock size={10} className="inline ml-1" />}
+                            </button>
+                          ) : (
+                            <p className={`text-sm font-bold ${room.status === 'Blocked' ? 'text-rose-500' : 'text-white'}`}>
+                              {room.room_number} {room.status === 'Blocked' && <Lock size={10} className="inline ml-1" />}
+                            </p>
+                          )}
+                          <p className="text-[10px] text-zinc-500 uppercase mt-0.5">{room.type}</p>
                         </td>
-                      ))}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        {DAYS.map((_, idx) => (
+                          <td key={idx} className="p-2 border-r border-white/5 relative h-20">
+                            {booking && idx === 0 ? (
+                              <motion.div 
+                                layoutId={booking.id}
+                                onClick={() => openActionDrawer(booking)}
+                                className={`absolute inset-y-2 left-2 right-[-240px] rounded-xl border p-3 flex items-center justify-between z-20 shadow-2xl cursor-pointer hover:border-indigo-400/50 transition-colors ${
+                                  booking.status === 'Confirmed' ? 'bg-amber-500/10 border-amber-500/30' : 'bg-emerald-500/10 border-emerald-500/30'
+                                }`}
+                              >
+                                <div className="flex flex-col gap-1 w-full">
+                                  <div className="flex items-center gap-2">
+                                    <UserCheck size={14} className={booking.status === 'Confirmed' ? 'text-amber-400' : 'text-emerald-400'} />
+                                    <span className="text-[12px] font-bold text-white">{booking.guest_name}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between mt-2">
+                                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                      booking.status === 'Confirmed' ? 'bg-amber-500/20 text-amber-500' : 'bg-emerald-500/20 text-emerald-500'
+                                    }`}>
+                                      {booking.status}
+                                    </span>
+                                    
+                                    <div className="flex gap-2">
+                                      {booking.status === 'Confirmed' && (
+                                        canCheckIn() ? (
+                                          <button 
+                                            onClick={(e) => { e.stopPropagation(); openActionDrawer(booking); }}
+                                            className="bg-amber-600 hover:bg-amber-500 text-white text-[9px] font-bold px-3 py-1 rounded-lg transition-all"
+                                          >
+                                            Start Check-In
+                                          </button>
+                                        ) : (
+                                          <button disabled className="bg-zinc-800 text-zinc-600 text-[9px] font-bold px-3 py-1 rounded-lg flex items-center gap-1 cursor-not-allowed">
+                                            <Lock size={10} /> Check In
+                                          </button>
+                                        )
+                                      )}
+                                      {booking.status === 'Checked In' && (
+                                        canCheckOut() ? (
+                                          <button 
+                                            onClick={(e) => handleSafeCheckOut(e, booking.id, room.id)}
+                                            className="bg-rose-600 hover:bg-rose-500 text-white text-[9px] font-bold px-3 py-1 rounded-lg transition-all"
+                                          >
+                                            Check Out
+                                          </button>
+                                        ) : (
+                                          <button disabled className="bg-zinc-800 text-zinc-600 text-[9px] font-bold px-3 py-1 rounded-lg flex items-center gap-1 cursor-not-allowed">
+                                            <Lock size={10} /> Check Out
+                                          </button>
+                                        )
+                                      )}
+                                    </div>                                  </div>
+                                </div>
+                              </motion.div>
+                            ) : null}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="max-w-5xl mx-auto space-y-4 pb-20">
+              {activeTab === 'arrivals' && (
+                getArrivalsToday().length === 0 ? (
+                  <div className="py-40 text-center border border-dashed border-white/5 rounded-3xl bg-white/[0.01]">
+                    <CheckCircle2 size={40} className="text-emerald-500/40 mx-auto mb-4" />
+                    <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs">No Arrivals Remaining Today</p>
+                  </div>
+                ) : getArrivalsToday().map(b => <BookingRow key={b.id} booking={b} />)
+              )}
+              {activeTab === 'departures' && (
+                getDeparturesToday().length === 0 ? (
+                  <div className="py-40 text-center border border-dashed border-white/5 rounded-3xl bg-white/[0.01]">
+                    <LogOut size={40} className="text-indigo-500/40 mx-auto mb-4" />
+                    <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs">No Departures Scheduled Today</p>
+                  </div>
+                ) : getDeparturesToday().map(b => <BookingRow key={b.id} booking={b} />)
+              )}
+              {activeTab === 'house' && (
+                getInHouse().length === 0 ? (
+                  <div className="py-40 text-center border border-dashed border-white/5 rounded-3xl bg-white/[0.01]">
+                    <Bed size={40} className="text-amber-500/40 mx-auto mb-4" />
+                    <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs">No Guests Currently In-House</p>
+                  </div>
+                ) : getInHouse().map(b => <BookingRow key={b.id} booking={b} />)
+              )}
+              {activeTab === 'all' && (
+                getAllReservations().length === 0 ? (
+                  <div className="py-40 text-center border border-dashed border-white/5 rounded-3xl bg-white/[0.01]">
+                    <Search size={40} className="text-zinc-500/40 mx-auto mb-4" />
+                    <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs">No Reservations Found</p>
+                  </div>
+                ) : getAllReservations().map(b => <BookingRow key={b.id} booking={b} />)
+              )}
+            </div>
+          )}
         </div>
       </main>
 
+      {/* ACTION DRAWER */}
+      <AnimatePresence>
+        {selectedBooking && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedBooking(null)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+            />
+            {/* Drawer */}
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed top-0 right-0 h-full w-[450px] bg-[#0a0a0c] border-l border-white/[0.08] shadow-2xl z-50 flex flex-col"
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-white/[0.06] bg-zinc-900/40 backdrop-blur-md flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    <UserCheck className="text-indigo-400" size={20} />
+                    {selectedBooking.guest_name}
+                  </h2>
+                  <p className="text-[11px] font-black text-indigo-500 uppercase tracking-widest mt-1">
+                    {calculateNights(selectedBooking.check_in, selectedBooking.check_out)} Nights &bull; {selectedBooking.check_in} to {selectedBooking.check_out}
+                  </p>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={refreshBookingStatus}
+                    disabled={actionLoading}
+                    className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-indigo-400 transition-all disabled:opacity-50"
+                    title="Refresh Status"
+                  >
+                    <RefreshCw size={16} className={actionLoading ? 'animate-spin' : ''} />
+                  </button>
+                  <button 
+                    onClick={() => setSelectedBooking(null)}
+                    className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                {/* 0. CHECK-IN REQUIREMENTS (Only for Confirmed guests) */}
+                {selectedBooking.status === 'Confirmed' && (
+                  <div className="space-y-3 pb-6 border-b border-white/[0.04]">
+                    <h3 className="text-xs font-bold text-amber-400 uppercase tracking-widest flex items-center gap-2">
+                      <ClipboardCheck size={14} /> Check-In Requirements
+                    </h3>
+                    <div className="space-y-2 bg-black/40 p-4 rounded-xl border border-white/[0.04]">
+                      <label className="flex items-center gap-3 cursor-pointer group">
+                        <input type="checkbox" className="w-4 h-4 rounded bg-black border-white/20 accent-amber-500" checked={checkIdVerified} onChange={e => setCheckIdVerified(e.target.checked)} />
+                        <span className="text-sm text-zinc-300 group-hover:text-white transition-colors">Verify Guest Identity (Aadhar/Passport)</span>
+                      </label>
+                      <label className="flex items-center gap-3 cursor-pointer group">
+                        <input type="checkbox" className="w-4 h-4 rounded bg-black border-white/20 accent-amber-500" checked={checkRegCardSigned} onChange={e => setCheckRegCardSigned(e.target.checked)} />
+                        <span className="text-sm text-zinc-300 group-hover:text-white transition-colors">Sign Digital RegCard & Terms</span>
+                      </label>
+                      <label className="flex items-center gap-3 cursor-pointer group">
+                        <input type="checkbox" className="w-4 h-4 rounded bg-black border-white/20 accent-amber-500" checked={checkPaymentSecured} onChange={e => setCheckPaymentSecured(e.target.checked)} />
+                        <span className="text-sm text-zinc-300 group-hover:text-white transition-colors">Secure Payment / Auth (${selectedBooking.amount})</span>
+                      </label>
+                      <label className="flex items-center gap-3 cursor-pointer group">
+                        <input type="checkbox" className="w-4 h-4 rounded bg-black border-white/20 accent-amber-500" checked={checkFormFDone} onChange={e => setCheckFormFDone(e.target.checked)} />
+                        <span className="text-sm text-zinc-300 group-hover:text-white transition-colors">Capture Form F (Home Address)</span>
+                      </label>
+                    </div>
+                    <div className="mt-4 grid grid-cols-1 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest pl-1">Guest Home Address</label>
+                        <textarea 
+                          value={guestAddress}
+                          onChange={(e) => setGuestAddress(e.target.value)}
+                          placeholder="Full address for police records..."
+                          className="w-full h-16 bg-black/40 border border-white/[0.06] text-xs text-zinc-300 rounded-xl p-3 focus:outline-none focus:border-amber-500/50 resize-none"
+                        />
+                      </div>
+
+                    </div>
+
+                    
+                    
+                  </div>
+                )}
+
+                {/* 1. GUEST NOTES */}
+                <div className="space-y-3">
+                  <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                    <Activity size={14} /> Guest Notes
+                  </h3>
+                  <div className="bg-black/40 border border-white/[0.04] rounded-xl p-2 focus-within:border-indigo-500/50 transition-colors">
+                    <textarea 
+                      value={notesInput}
+                      onChange={(e) => setNotesInput(e.target.value)}
+                      disabled={!canWriteNotes() || actionLoading}
+                      placeholder="Add dietary requirements, late arrival notes, etc..."
+                      className="w-full h-24 bg-transparent text-sm text-zinc-300 placeholder:text-zinc-700 resize-none focus:outline-none p-2 disabled:opacity-50"
+                    />
+                  </div>
+                  <div className="flex justify-end">
+                    <button 
+                      onClick={handleSaveNotes}
+                      disabled={!canWriteNotes() || actionLoading || notesInput === (selectedBooking.notes || "")}
+                      className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-600/30 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors"
+                    >
+                      {actionLoading ? <Loader2 size={14} className="animate-spin" /> : "Save Notes"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 1. GUEST IDENTITY (The Magic Link) */}
+                <div className="space-y-3 pt-6 border-t border-white/[0.04]">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                      <ShieldCheck size={14} className="text-indigo-400" /> Guest Identity
+                    </h3>
+                    {selectedBooking.id_verified ? (
+                      <span className="text-[10px] font-black text-emerald-500 uppercase flex items-center gap-1">
+                        <CheckCircle2 size={12} /> Verified
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-black text-amber-500 uppercase flex items-center gap-1">
+                        <AlertCircle size={12} /> Pending
+                      </span>
+                    )}
+                  </div>
+
+                  {!selectedBooking.id_verified ? (
+                    <div className="bg-indigo-500/5 border border-indigo-500/10 p-4 rounded-2xl space-y-3">
+                      <p className="text-[11px] text-zinc-500">
+                        Send a secure magic link to the guest's phone. They can scan their ID and sign the RegCard instantly.
+                      </p>
+                                            <div className="flex gap-2">
+                        <button 
+                          onClick={() => {
+                            const url = window.location.origin + "/guest/regcard/" + selectedBooking.id;
+                            navigator.clipboard.writeText(url);
+                            alert("Magic Link copied to clipboard! Send this to the guest via WhatsApp/SMS.");
+                          }}
+                          className="flex-[2] bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 border border-indigo-500/20 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all"
+                        >
+                          <Link2 size={14} /> Send Link
+                        </button>
+                        <button 
+                          onClick={() => setShowQrCode(true)}
+                          className="flex-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-500 border border-amber-500/20 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all"
+                        >
+                          <Camera size={14} /> QR Scan
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      
+                      <div className="flex justify-end mb-1">
+                        <button 
+                          onClick={handleRetakeIdentity}
+                          disabled={actionLoading}
+                          className="text-[9px] font-black text-rose-500 hover:text-rose-400 uppercase flex items-center gap-1 transition-colors px-2 py-1 rounded bg-rose-500/5 hover:bg-rose-500/10"
+                        >
+                          <RotateCcw size={10} /> Retake / Void
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="aspect-[3/2] bg-black/40 border border-white/5 rounded-xl overflow-hidden relative group">
+                           <img src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/guest-ids/${selectedBooking.id_photo_url}`} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
+                           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              <p className="text-[8px] font-black text-white/40 uppercase tracking-tighter">Guest ID Scan</p>
+                           </div>
+                        </div>
+                        <div className="aspect-[3/2] bg-white rounded-xl overflow-hidden flex items-center justify-center p-2">
+                           <img src={selectedBooking.signature_url} className="max-h-full max-w-full" />
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => window.open("/guest/print-regcard/" + selectedBooking.id, "_blank")}
+                        className="w-full bg-indigo-600/20 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/30 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg"
+                      >
+                        <Printer size={16} /> Print Official Form F / RegCard
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. ROOM UPGRADE */}
+                <div className="space-y-3 pt-6 border-t border-white/[0.04]">
+                  <h3 className="text-xs font-bold text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+                    <ArrowRightLeft size={14} /> Room Move / Upgrade
+                  </h3>
+                  <p className="text-[11px] text-zinc-500 leading-relaxed">
+                    Moving this guest will instantly mark Room {rooms.find(r => r.id === selectedBooking.room_id)?.room_number} as "Dirty" and assign them to the new room.
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <select 
+                      value={upgradeRoomId}
+                      onChange={(e) => setUpgradeRoomId(e.target.value)}
+                      disabled={!canUpgrade() || actionLoading}
+                      className="flex-1 bg-black/40 border border-white/[0.06] text-sm text-zinc-300 rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500/50 disabled:opacity-50 appearance-none"
+                    >
+                      <option value="">Select Available Room...</option>
+                      {rooms.filter(r => r.status === "Available" && r.id !== selectedBooking.room_id).map(r => (
+                        <option key={r.id} value={r.id}>Room {r.room_number} ({r.type})</option>
+                      ))}
+                    </select>
+                    <button 
+                      onClick={handleExecuteUpgrade}
+                      disabled={!canUpgrade() || actionLoading || !upgradeRoomId}
+                      className="bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/30 disabled:opacity-30 px-4 py-2.5 rounded-xl text-xs font-bold transition-all"
+                    >
+                      Execute Move
+                    </button>
+                  </div>
+                  {!canUpgrade() && <p className="text-[10px] text-rose-500 flex items-center gap-1"><Lock size={10} /> You do not have permission to process room moves.</p>}
+                </div>
+
+                {/* 3. REFUND FOLIO */}
+                <div className="space-y-3 pt-6 border-t border-white/[0.04]">
+                  <h3 className="text-xs font-bold text-rose-400 uppercase tracking-widest flex items-center gap-2">
+                    <Activity size={14} /> Refund Folio
+                  </h3>
+                  <div className="flex items-center justify-between p-3 bg-white/[0.02] rounded-xl border border-white/[0.04]">
+                    <span className="text-xs font-bold text-zinc-400">Total Collected</span>
+                    <span className="text-sm font-black text-white">${selectedBooking.amount}</span>
+                  </div>
+                  <div className="flex items-center gap-3 mt-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-bold">$</span>
+                      <input 
+                        type="number"
+                        value={refundInput}
+                        onChange={(e) => setRefundInput(e.target.value)}
+                        disabled={!canRefund() || actionLoading}
+                        placeholder="Amount to refund"
+                        className="w-full bg-black/40 border border-white/[0.06] text-sm text-zinc-300 rounded-xl pl-7 pr-3 py-2.5 focus:outline-none focus:border-rose-500/50 disabled:opacity-50"
+                      />
+                    </div>
+                    <button 
+                      onClick={handleProcessRefund}
+                      disabled={!canRefund() || actionLoading || !refundInput}
+                      className="bg-rose-500/20 text-rose-400 border border-rose-500/30 hover:bg-rose-500/30 disabled:opacity-30 px-4 py-2.5 rounded-xl text-xs font-bold transition-all"
+                    >
+                      Issue Refund
+                    </button>
+                  </div>
+                  {!canRefund() && <p className="text-[10px] text-rose-500 flex items-center gap-1"><Lock size={10} /> You do not have permission to issue refunds.</p>}
+                </div>
+
+
+                {/* 3.5 FINAL ACTION */}
+                {selectedBooking.status === 'Confirmed' && (
+                  <div className="pt-4">
+                    <button 
+                      onClick={(e) => handleSafeCheckIn(e as any, selectedBooking.id)}
+                      disabled={!checkIdVerified || !checkRegCardSigned || !checkPaymentSecured || !checkFormFDone || guestAddress.trim().length < 5 || actionLoading || !canCheckIn()}
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-900/30 disabled:text-emerald-500/30 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs transition-all shadow-xl shadow-emerald-500/10 flex items-center justify-center gap-3"
+                    >
+                      {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <><CheckCircle2 size={16} /> Complete Final Check-In</>}
+                    </button>
+                    {!canCheckIn() && <p className="text-[10px] text-rose-500 mt-2 text-center">Unauthorized to finalize check-in.</p>}
+                  </div>
+                )}
+
+                {/* 4. DANGER ZONE */}
+                <div className="pt-6 border-t border-rose-500/20">
+                  <h3 className="text-xs font-bold text-rose-500 uppercase tracking-widest flex items-center gap-2 mb-4">
+                    <Trash2 size={14} /> Danger Zone
+                  </h3>
+                  <button 
+                    onClick={handleCancelBooking}
+                    disabled={!canCancel() || actionLoading}
+                    className="w-full bg-rose-500/10 hover:bg-rose-500 border border-rose-500/20 text-rose-500 hover:text-white py-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 disabled:opacity-30"
+                  >
+                    {actionLoading ? <Loader2 size={14} className="animate-spin" /> : "Cancel Reservation"}
+                  </button>
+                  {!canCancel() && <p className="text-[10px] text-rose-500 mt-2 flex items-center gap-1 justify-center"><Lock size={10} /> Cancellation restricted by your access level.</p>}
+                </div>
+
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
       {showBookingModal && (
         <BookingModal 
           isOpen={showBookingModal} 
-          onClose={() => setShowBookingModal(false)} 
+          onClose={() => setShowBookingModal(false)}
           propertyId={property?.id} 
-          rooms={rooms.filter(r => r.status === 'Available')} 
+          rooms={rooms}
+          bookings={bookings}
         />
+      )}
+
+      {showQrCode && selectedBooking && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-sm bg-zinc-900 border border-white/10 rounded-[32px] overflow-hidden shadow-2xl p-8 text-center"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-sm font-bold text-white uppercase tracking-widest">Phone Scanner Link</h3>
+              <button onClick={() => setShowQrCode(false)} className="text-zinc-500 hover:text-white transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="bg-white p-6 rounded-3xl inline-block mb-6 shadow-xl shadow-indigo-500/10">
+              <QRCodeSVG 
+                value={window.location.origin + "/guest/regcard/" + selectedBooking.id} 
+                size={200}
+                level="H"
+                includeMargin={false}
+              />
+            </div>
+
+            <p className="text-xs text-zinc-400 leading-relaxed mb-6">
+              Point your phone camera at this screen to open the <span className="text-indigo-400 font-bold">Identity Capture Terminal</span> for {selectedBooking.guest_name}.
+            </p>
+
+            <div className="flex items-center justify-center gap-3 py-3 px-4 bg-white/5 rounded-2xl border border-white/5">
+              <Loader2 size={16} className="animate-spin text-indigo-500" />
+              <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest animate-pulse">Waiting for phone sync...</span>
+            </div>
+          </motion.div>
+        </div>
       )}
     </div>
   );

@@ -28,6 +28,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { addStaff, getRoleTemplates, saveRoleTemplate, revokeStaffAccess } from '@/app/actions/staff';
 
+
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Overview", href: "/dashboard", active: false, module: 'analytics' },
   { icon: Activity, label: "Front Office", href: "/dashboard/front-office", active: false, module: 'front_office' },

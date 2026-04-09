@@ -9,42 +9,85 @@ interface Room {
   id: string;
   room_number: string;
   type: string;
+  status: string;
 }
 
 interface BookingModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
   propertyId: string;
   rooms: Room[];
+  bookings: any[]; // Accept all bookings to check for overlaps
 }
 
-export default function BookingModal({ isOpen, onClose, propertyId, rooms }: BookingModalProps) {
+export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, rooms, bookings }: BookingModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+
+  // Helper to format local date
+  const getLocalYYYYMMDD = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const todayStr = getLocalYYYYMMDD(new Date());
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = getLocalYYYYMMDD(tomorrow);
+
+  // Track the dates selected in the form to dynamically filter room availability
+  const [selectedCheckIn, setSelectedCheckIn] = useState(todayStr);
+  const [selectedCheckOut, setSelectedCheckOut] = useState(tomorrowStr);
+
+  // Calculate truly available rooms based on physical state AND date overlap
+  const availableRooms = rooms.filter(room => {
+    // 1. PHYSICAL BLOCK: A room MUST be 'Available' (Clean) right now to be assigned to a new Walk-In.
+    // We cannot sell a 'Dirty', 'Occupied', or 'Blocked' room.
+    if (room.status !== 'Available') return false;
+
+    // 2. TEMPORAL BLOCK: Even if it is clean today, is someone else booked into it tomorrow?
+    const hasOverlap = bookings.some(b => {
+      if (b.room_id !== room.id) return false;
+      if (b.status === 'Cancelled' || b.status === 'Checked Out') return false; 
+      
+      const bIn = b.check_in ? String(b.check_in).substring(0, 10) : '';
+      const bOut = b.check_out ? String(b.check_out).substring(0, 10) : '';
+      
+      // Overlap Formula: (StartA < EndB) AND (EndA > StartB)
+      return bIn < selectedCheckOut && bOut > selectedCheckIn;
+    });
+
+    return !hasOverlap;
+  });
 
   if (!isOpen) return null;
 
   const handleSubmit = async (formData: FormData) => {
     setIsLoading(true);
     setError('');
-    
-    // Add propertyId to the form data
+
     formData.append('propertyId', propertyId);
 
     const result = await createBooking(formData);
 
     if (result.error) {
       setError(result.error);
+      setIsLoading(false);
     } else {
       setSuccess(true);
+      if (onSuccess) {
+        onSuccess();
+      }
       setTimeout(() => {
         setSuccess(false);
         onClose();
-      }, 2000);
+        window.location.reload();
+      }, 1500);
     }
-    
-    setIsLoading(false);
   };
 
   return (
@@ -86,8 +129,10 @@ export default function BookingModal({ isOpen, onClose, propertyId, rooms }: Boo
                     required
                     className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white text-sm focus:outline-none focus:border-azure-500/50 appearance-none"
                   >
-                    <option value="">Select an available room...</option>
-                    {rooms.map(room => (
+                    <option value="">
+                      {availableRooms.length > 0 ? "Select an available room..." : "NO ROOMS AVAILABLE FOR THESE DATES"}
+                    </option>
+                    {availableRooms.map(room => (
                       <option key={room.id} value={room.id}>
                         Room {room.room_number} ({room.type})
                       </option>
@@ -137,6 +182,8 @@ export default function BookingModal({ isOpen, onClose, propertyId, rooms }: Boo
                     type="date" 
                     name="checkIn"
                     required
+                    value={selectedCheckIn}
+                    onChange={(e) => setSelectedCheckIn(e.target.value)}
                     className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-azure-500/50"
                   />
                 </div>
@@ -147,6 +194,8 @@ export default function BookingModal({ isOpen, onClose, propertyId, rooms }: Boo
                     type="date" 
                     name="checkOut"
                     required
+                    value={selectedCheckOut}
+                    onChange={(e) => setSelectedCheckOut(e.target.value)}
                     className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-azure-500/50"
                   />
                 </div>

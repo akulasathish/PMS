@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { getRevenueData } from '@/app/actions/analytics';
 
+
 import {
   TrendingUp,
   DollarSign,
@@ -531,7 +532,7 @@ export default function Tier2Dashboard() {
                   Live
                 </span>
               </div>
-              <p className="text-[11px] text-zinc-600 mt-0.5">Real-time property intelligence &bull; March 22, 2026</p>
+              <p className="text-[11px] text-zinc-600 mt-0.5">Real-time property intelligence &bull; {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
             </motion.div>
 
             <div className="flex items-center gap-3">

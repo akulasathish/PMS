@@ -197,3 +197,25 @@ export async function deleteProperty(propertyId: string) {
   console.log("-> SUCCESS: Property Deleted");
   return { success: true };
 }
+
+export async function updatePropertyGST(propertyId: string, gstNumber: string, stateCode: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user || !['owner', 'admin'].includes(user.user_metadata?.role)) {
+    return { error: 'Unauthorized.' };
+  }
+
+  const { error } = await supabaseAdmin
+    .from('properties')
+    .update({ gst_number: gstNumber, state_code: stateCode })
+    .eq('id', propertyId);
+
+  if (error) {
+    console.error("Failed to update property GST:", error);
+    return { error: error.message };
+  }
+
+  revalidatePath('/dashboard');
+  return { success: true };
+}
