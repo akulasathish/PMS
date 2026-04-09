@@ -574,7 +574,7 @@ export default function FrontOfficeTerminal() {
           </div>
 
           {/* TAB SYSTEM */}
-          <div className="flex items-center justify-between w-full">
+          <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between w-full gap-4">
             <div className="flex items-center gap-1 bg-white/[0.02] border border-white/[0.05] p-1 rounded-2xl w-fit self-center md:self-start">
               {[
                 { id: 'tape', label: 'Tape Chart', icon: Calendar },
