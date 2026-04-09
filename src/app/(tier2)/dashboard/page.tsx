@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { getRevenueData } from '@/app/actions/analytics';
 
+
 import {
   TrendingUp,
   DollarSign,
