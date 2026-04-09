@@ -168,23 +168,35 @@ export default function FrontOfficeTerminal() {
   const getAllReservations = () => {
     let filtered = bookings;
     
+    
     // 1. Apply Universal Smart Search FIRST (If they are typing, search EVERYTHING)
     if (searchQuery) {
       const lowerQuery = searchQuery.toLowerCase().trim();
       filtered = filtered.filter(b => {
         const roomNum = rooms.find(r => r.id === b.room_id)?.room_number || '';
-        const inDate = b.check_in ? String(b.check_in).substring(0, 10) : '';
-        const outDate = b.check_out ? String(b.check_out).substring(0, 10) : '';
         
-        return (
-          b.guest_name.toLowerCase().includes(lowerQuery) || 
-          b.id.toLowerCase().includes(lowerQuery) ||
-          roomNum.toLowerCase() === lowerQuery || 
-          inDate === lowerQuery ||                
-          outDate === lowerQuery                  
-        );
+        // Safety check for text search
+        const nameMatch = b.guest_name ? b.guest_name.toLowerCase().includes(lowerQuery) : false;
+        const idMatch = b.id ? b.id.toLowerCase().includes(lowerQuery) : false;
+        const roomMatch = roomNum.toLowerCase() === lowerQuery;
+        
+        // Bulletproof Date matching
+        let dateMatch = false;
+        // If the query looks like a date (e.g., contains dashes)
+        if (lowerQuery.includes('-')) {
+           // Create a safe YYYY-MM-DD string from the database dates
+           const dbInStr = b.check_in ? new Date(b.check_in).toISOString().substring(0, 10) : '';
+           const dbOutStr = b.check_out ? new Date(b.check_out).toISOString().substring(0, 10) : '';
+           
+           if (dbInStr === lowerQuery || dbOutStr === lowerQuery) {
+              dateMatch = true;
+           }
+        }
+
+        return nameMatch || idMatch || roomMatch || dateMatch;
       });
     } else {
+
       // 2. Only apply the Dropdown Filter if they ARE NOT actively searching
       if (reservationFilter !== 'All') {
         if (reservationFilter === 'Past') {
