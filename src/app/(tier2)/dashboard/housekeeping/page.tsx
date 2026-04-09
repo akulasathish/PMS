@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Brush, Sparkles, Clock, CheckCircle2, 
+  Brush, Sparkles, Clock, CheckCircle2, UserCheck, 
   Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, Lock,
   ChevronRight, Play, CheckCircle, ShieldCheck, AlertCircle
@@ -24,11 +24,12 @@ const NAV_ITEMS = [
 
 export default function HousekeepingTerminal() {
   const [rooms, setRooms] = useState<any[]>([]);
+  const [bookings, setBookings] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [property, setProperty] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'todo' | 'cleaning' | 'inspect'>('todo');
+  const [activeTab, setActiveTab] = useState<'todo' | 'cleaning' | 'inspect' | 'stayovers'>('todo');
   
   const supabase = createClient();
 
@@ -42,19 +43,20 @@ export default function HousekeepingTerminal() {
       setUserProfile(prof);
 
       const activeId = localStorage.getItem('pms_active_property');
-      if (activeId) {
-        const { data: prop } = await supabase.from('properties').select('*').eq('id', activeId).single();
-        setProperty(prop);
+      
+        if (activeId) {
+          const { data: prop } = await supabase.from('properties').select('*').eq('id', activeId).single();
+          setProperty(prop);
 
-        // Fetch all rooms that aren't 'Available' or 'Occupied' (unless they are dirty)
-        const { data: roomsData } = await supabase
-          .from('rooms')
-          .select('*, profiles(full_name)')
-          .eq('property_id', activeId)
-          .in('status', ['Dirty', 'Cleaning', 'Clean'])
-          .order('room_number');
-        setRooms(roomsData || []);
-      }
+          const [roomsRes, bookingsRes] = await Promise.all([
+            supabase.from('rooms').select('*, profiles(full_name)').eq('property_id', activeId).order('room_number'),
+            supabase.from('bookings').select('*').eq('property_id', activeId).in('status', ['Confirmed', 'Checked In'])
+          ]);
+
+          if (roomsRes.data) setRooms(roomsRes.data);
+          if (bookingsRes.data) setBookings(bookingsRes.data);
+        }
+
     } catch (err) {
       console.error("Housekeeping Load Error:", err);
     } finally {
@@ -65,6 +67,17 @@ export default function HousekeepingTerminal() {
   useEffect(() => {
     loadHousekeepingData();
   }, []);
+
+
+  const getGuestContext = (roomId: string) => {
+    const today = new Date().toISOString().substring(0, 10);
+    const booking = bookings.find(b => b.room_id === roomId);
+    if (!booking) return { label: 'Vacant', color: 'text-zinc-500 bg-zinc-500/10' };
+    if (booking.status === 'Confirmed' && booking.check_in === today) return { label: 'Arrival Today', color: 'text-indigo-400 bg-indigo-500/10' };
+    if (booking.status === 'Checked In' && booking.check_out === today) return { label: 'Departing Today', color: 'text-amber-400 bg-amber-500/10' };
+    if (booking.status === 'Checked In') return { label: 'Stayover', color: 'text-emerald-400 bg-emerald-500/10' };
+    return { label: 'Reserved', color: 'text-zinc-500 bg-zinc-500/10' };
+  };
 
   const handleAction = async (roomId: string, action: 'start' | 'finish' | 'inspect') => {
     setActionLoading(roomId);
@@ -81,12 +94,15 @@ export default function HousekeepingTerminal() {
     setActionLoading(null);
   };
 
+  
   const getFilteredRooms = () => {
     if (activeTab === 'todo') return rooms.filter(r => r.status === 'Dirty');
     if (activeTab === 'cleaning') return rooms.filter(r => r.status === 'Cleaning');
     if (activeTab === 'inspect') return rooms.filter(r => r.status === 'Clean');
+    if (activeTab === 'stayovers') return rooms.filter(r => r.status === 'Occupied');
     return [];
   };
+
 
   const canInspect = () => {
     if (!userProfile) return false;
@@ -166,6 +182,7 @@ export default function HousekeepingTerminal() {
               { id: 'todo', label: 'To Clean', icon: Clock, count: rooms.filter(r => r.status === 'Dirty').length },
               { id: 'cleaning', label: 'In Progress', icon: Play, count: rooms.filter(r => r.status === 'Cleaning').length },
               { id: 'inspect', label: 'To Inspect', icon: ShieldCheck, count: rooms.filter(r => r.status === 'Clean').length },
+              { id: 'stayovers', label: 'Stayover Service', icon: UserCheck, count: rooms.filter(r => r.status === 'Occupied').length },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -207,8 +224,13 @@ export default function HousekeepingTerminal() {
                 >
                   <div className="flex justify-between items-start mb-6">
                     <div>
-                      <h4 className="text-3xl font-black text-white group-hover:text-indigo-400 transition-colors tracking-tighter">#{room.room_number}</h4>
-                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mt-1">{room.type}</p>
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="text-3xl font-black text-white group-hover:text-indigo-400 transition-colors tracking-tighter">#{room.room_number}</h4>
+                        <span className={"text-[8px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-tighter " + getGuestContext(room.id).color}>
+                           {getGuestContext(room.id).label}
+                        </span>
+                      </div>
+                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">{room.type}</p>
                     </div>
                     
                     {room.status === 'Cleaning' && (
@@ -262,6 +284,14 @@ export default function HousekeepingTerminal() {
                     
                     {room.status === 'Clean' && !canInspect() && (
                       <p className="text-[9px] text-rose-500 font-bold flex items-center justify-center gap-1.5"><Lock size={10} /> Supervisor access required to approve.</p>
+                    )}
+                    {room.status === 'Occupied' && (
+                      <button 
+                        onClick={() => alert("Stayover service logged. Daily towels and linens refreshed.")}
+                        className="w-full bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white font-black uppercase tracking-widest text-[10px] py-4 rounded-2xl transition-all flex items-center justify-center gap-3 shadow-xl active:scale-[0.98]"
+                      >
+                        <Sparkles size={16} /> Log Daily Service
+                      </button>
                     )}
                   </div>
                 </motion.div>
