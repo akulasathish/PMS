@@ -574,7 +574,7 @@ export default function FrontOfficeTerminal() {
           </div>
 
           {/* TAB SYSTEM */}
-          <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between w-full gap-4">
+          <div className="flex flex-col w-full gap-6">
             <div className="flex items-center gap-1 bg-white/[0.02] border border-white/[0.05] p-1 rounded-2xl w-fit self-center md:self-start">
               {[
                 { id: 'tape', label: 'Tape Chart', icon: Calendar },
@@ -589,7 +589,7 @@ export default function FrontOfficeTerminal() {
                     setActiveTab(tab.id as any);
                     setSearchQuery(''); // Clear search when switching tabs
                   }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-tighter transition-all ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
                     activeTab === tab.id 
                       ? 'bg-indigo-600 text-white shadow-lg' 
                       : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5'
@@ -612,8 +612,8 @@ export default function FrontOfficeTerminal() {
                     onChange={(e) => setReservationFilter(e.target.value)}
                     className="appearance-none bg-zinc-800 border border-white/20 rounded-xl py-2 pl-4 pr-10 text-xs text-white font-bold focus:outline-none focus:border-indigo-500/50 cursor-pointer hover:bg-zinc-700 transition-colors"
                   >
-                    <option value="Confirmed">Conf.</option>
-                    <option value="Checked In">In-H.</option>
+                    <option value="Confirmed">Upcoming (Confirmed)</option>
+                    <option value="Checked In">In-House</option>
                     <option value="Past">Past (Checked Out/Cancelled)</option>
                     <option value="All">View Everything</option>
                   </select>
