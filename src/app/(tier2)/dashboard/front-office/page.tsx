@@ -620,6 +620,43 @@ export default function FrontOfficeTerminal() {
                   <ChevronsUpDown size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
                 </div>
                 
+                {/* INJECTED DATE PICKERS */}
+                <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 focus-within:border-indigo-500/50 transition-colors">
+                  <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">From</span>
+                  <input 
+                    type="date"
+                    value={filterStartDate}
+                    onChange={(e) => setFilterStartDate(e.target.value)}
+                    className="bg-transparent text-xs text-white font-bold focus:outline-none [color-scheme:dark] cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 focus-within:border-indigo-500/50 transition-colors">
+                  <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">To</span>
+                  <input 
+                    type="date"
+                    value={filterEndDate}
+                    onChange={(e) => setFilterEndDate(e.target.value)}
+                    className="bg-transparent text-xs text-white font-bold focus:outline-none [color-scheme:dark] cursor-pointer"
+                  />
+                </div>
+                
+                {/* CLEAR BUTTON */}
+                {(searchQuery || filterStartDate || filterEndDate || reservationFilter !== 'Confirmed') && (
+                  <button 
+                    onClick={() => {
+                      setSearchQuery('');
+                      setFilterStartDate('');
+                      setFilterEndDate('');
+                      setReservationFilter('Confirmed');
+                    }}
+                    className="p-2 text-zinc-500 hover:text-rose-400 bg-zinc-800 hover:bg-rose-500/10 border border-white/5 rounded-xl transition-all"
+                    title="Clear All Filters"
+                  >
+                    <XCircle size={14} />
+                  </button>
+                )}
+                
                 <div className="relative w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" size={14} />
                   <input 
