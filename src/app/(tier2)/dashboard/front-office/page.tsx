@@ -177,13 +177,22 @@ export default function FrontOfficeTerminal() {
       }
     }
 
-    // 2. Apply Universal Search if typing
+    // 2. Apply Universal Smart Search (Name, Room, or Date)
     if (searchQuery) {
-      const lowerQuery = searchQuery.toLowerCase();
-      filtered = filtered.filter(b => 
-        b.guest_name.toLowerCase().includes(lowerQuery) || 
-        b.id.toLowerCase().includes(lowerQuery)
-      );
+      const lowerQuery = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(b => {
+        const roomNum = rooms.find(r => r.id === b.room_id)?.room_number || '';
+        const inDate = b.check_in ? String(b.check_in).substring(0, 10) : '';
+        const outDate = b.check_out ? String(b.check_out).substring(0, 10) : '';
+        
+        return (
+          b.guest_name.toLowerCase().includes(lowerQuery) || 
+          b.id.toLowerCase().includes(lowerQuery) ||
+          roomNum.toLowerCase() === lowerQuery || 
+          inDate === lowerQuery ||                
+          outDate === lowerQuery                  
+        );
+      });
     }
 
     // 3. Sort Chronologically
@@ -598,7 +607,7 @@ export default function FrontOfficeTerminal() {
                   <select 
                     value={reservationFilter}
                     onChange={(e) => setReservationFilter(e.target.value)}
-                    className="appearance-none bg-black/40 border border-white/10 rounded-xl py-2 pl-4 pr-10 text-xs text-indigo-400 font-bold focus:outline-none focus:border-indigo-500/50 cursor-pointer"
+                    className="appearance-none bg-zinc-800 border border-white/20 rounded-xl py-2 pl-4 pr-10 text-xs text-white font-bold focus:outline-none focus:border-indigo-500/50 cursor-pointer hover:bg-zinc-700 transition-colors"
                   >
                     <option value="Confirmed">Upcoming (Confirmed)</option>
                     <option value="Checked In">In-House</option>
