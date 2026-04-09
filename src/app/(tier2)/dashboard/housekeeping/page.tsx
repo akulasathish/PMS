@@ -29,7 +29,7 @@ export default function HousekeepingTerminal() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [property, setProperty] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'todo' | 'cleaning' | 'inspect' | 'stayovers'>('todo');
+  const [activeTab, setActiveTab] = useState<'todo' | 'cleaning' | 'inspect' | 'stayovers' | 'all'>('todo');
   
   const supabase = createClient();
 
@@ -95,13 +95,16 @@ export default function HousekeepingTerminal() {
   };
 
   
+  
   const getFilteredRooms = () => {
     if (activeTab === 'todo') return rooms.filter(r => r.status === 'Dirty');
     if (activeTab === 'cleaning') return rooms.filter(r => r.status === 'Cleaning');
     if (activeTab === 'inspect') return rooms.filter(r => r.status === 'Clean');
     if (activeTab === 'stayovers') return rooms.filter(r => r.status === 'Occupied');
+    if (activeTab === 'all') return rooms;
     return [];
   };
+
 
 
   const canInspect = () => {
@@ -183,6 +186,7 @@ export default function HousekeepingTerminal() {
               { id: 'cleaning', label: 'In Progress', icon: Play, count: rooms.filter(r => r.status === 'Cleaning').length },
               { id: 'inspect', label: 'To Inspect', icon: ShieldCheck, count: rooms.filter(r => r.status === 'Clean').length },
               { id: 'stayovers', label: 'Stayover Service', icon: UserCheck, count: rooms.filter(r => r.status === 'Occupied').length },
+              { id: 'all', label: 'All Rooms', icon: Activity, count: rooms.length },
             ].map((tab) => (
               <button
                 key={tab.id}
