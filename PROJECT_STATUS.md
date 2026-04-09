@@ -72,9 +72,10 @@ The project implements a strict 3-tier Role-Based Access Control (RBAC) architec
 
 ## 4. Next Implementation Steps
 
-1. **Housekeeping Evolution:**
-   - Add the **"Inspect"** button for supervisors to move rooms from Clean ➡️ Ready.
-   - Implement **Minibar Posting** and cleaning timers in the mobile view.
+1. **Housekeeping Evolution (Master Board):**
+   - Transform the queue into an **Enterprise Master Board** featuring Guest Context ("X-Ray Vision" for stayovers vs. check-outs).
+   - Implement the 3-step Quality Control loop (`Dirty` ➡️ `Clean` ➡️ `Inspected`).
+   - Add **Stayover Service** tracking and **Minibar Posting** in the mobile cleaner view.
 2. **Indian Financial Suite:**
    - Implement **GST-compliant folios** (CGST/SGST splitting based on slab).
    - Generate **Razorpay UPI** dynamic QR codes at the Front Desk.

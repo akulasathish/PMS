@@ -38,10 +38,12 @@ This document defines the Minimum Viable Product (MVP) requirements for the comm
 - [ ] **Night Audit & Room Blocking:**
     *   **Room Blocking:** Administrative lock on rooms for maintenance or events.
     *   **Night Audit:** "End of Day" logic to lock revenue and generate daily reports.
-- [ ] **Housekeeping Web Terminal:** 
-    *   **Cleaner View:** Mobile task list with "Start/Finish" timers and Minibar posting.
-    *   **Supervisor View:** Dedicated "Inspect" button to move rooms from Clean ➡️ Ready/Inspected.
-    *   **Ops Management:** Assigning "Boards" or room sections to specific staff members.
+- [ ] **Housekeeping Web Terminal (Master Board):** 
+    *   **The QC Loop:** Move from a linear Clean/Dirty toggle to a 3-step workflow: `Dirty` ➡️ `Clean` ➡️ `Inspected` (Ready for Sale).
+    *   **Guest Context (X-Ray Vision):** Room cards must display real-time guest status (e.g., "Departing Today", "Arriving Soon", "Stayover") to prioritize cleaning order.
+    *   **Stayover Service:** A dedicated view for occupied rooms requiring daily light cleaning/towel changes.
+    *   **Cleaner View:** Mobile task list with "Start/Finish" timers.
+    *   **Minibar Posting:** A button on the cleaner's mobile view to add extra charges directly to a guest's folio.
 
 ## Pillar 3: Guest Journey & Automation
 - [x] **Smart Communications:** Automated n8n emails for Confirmation and Smart Check-In.
