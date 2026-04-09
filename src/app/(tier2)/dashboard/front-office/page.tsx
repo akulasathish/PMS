@@ -589,7 +589,7 @@ export default function FrontOfficeTerminal() {
                     setActiveTab(tab.id as any);
                     setSearchQuery(''); // Clear search when switching tabs
                   }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-tight transition-all ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-tighter transition-all ${
                     activeTab === tab.id 
                       ? 'bg-indigo-600 text-white shadow-lg' 
                       : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5'
@@ -612,8 +612,8 @@ export default function FrontOfficeTerminal() {
                     onChange={(e) => setReservationFilter(e.target.value)}
                     className="appearance-none bg-zinc-800 border border-white/20 rounded-xl py-2 pl-4 pr-10 text-xs text-white font-bold focus:outline-none focus:border-indigo-500/50 cursor-pointer hover:bg-zinc-700 transition-colors"
                   >
-                    <option value="Confirmed">Confirmed</option>
-                    <option value="Checked In">In-House</option>
+                    <option value="Confirmed">Conf.</option>
+                    <option value="Checked In">In-H.</option>
                     <option value="Past">Past (Checked Out/Cancelled)</option>
                     <option value="All">View Everything</option>
                   </select>
