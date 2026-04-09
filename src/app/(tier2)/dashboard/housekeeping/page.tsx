@@ -69,14 +69,44 @@ export default function HousekeepingTerminal() {
   }, []);
 
 
-  const getGuestContext = (roomId: string) => {
+  const getGuestContext = (room: any): { label: string, color: string, condition: string } => {
     const today = new Date().toISOString().substring(0, 10);
-    const booking = bookings.find(b => b.room_id === roomId);
-    if (!booking) return { label: 'Vacant', color: 'text-zinc-500 bg-zinc-500/10' };
-    if (booking.status === 'Confirmed' && booking.check_in === today) return { label: 'Arrival Today', color: 'text-indigo-400 bg-indigo-500/10' };
-    if (booking.status === 'Checked In' && booking.check_out === today) return { label: 'Departing Today', color: 'text-amber-400 bg-amber-500/10' };
-    if (booking.status === 'Checked In') return { label: 'Stayover', color: 'text-emerald-400 bg-emerald-500/10' };
-    return { label: 'Reserved', color: 'text-zinc-500 bg-zinc-500/10' };
+    const booking = bookings.find(b => b.room_id === room.id);
+    
+    // Determine Guest Situation
+    let label = 'Vacant';
+    let color = 'text-zinc-500 bg-zinc-500/10';
+    
+    if (booking) {
+      if (booking.status === 'Confirmed' && booking.check_in === today) {
+         label = 'Arrival Today';
+         color = 'text-indigo-400 bg-indigo-500/10';
+      } else if (booking.status === 'Checked In' && booking.check_out === today) {
+         label = 'Departing Today';
+         color = 'text-amber-400 bg-amber-500/10';
+      } else if (booking.status === 'Checked In') {
+         label = 'Stayover';
+         color = 'text-emerald-400 bg-emerald-500/10';
+      } else {
+         label = 'Reserved';
+      }
+    }
+    
+    if (room.status === 'Blocked') {
+       label = 'Blocked';
+       color = 'text-rose-500 bg-rose-500/10';
+    }
+
+    // Determine Physical Condition
+    let condition = '';
+    if (room.status === 'Dirty') condition = 'Needs Deep Clean';
+    if (room.status === 'Cleaning') condition = 'Cleaning in Progress...';
+    if (room.status === 'Clean') condition = 'Ready for Inspection';
+    if (room.status === 'Available') condition = 'Ready for Guest';
+    if (room.status === 'Occupied') condition = 'Service Required';
+    if (room.status === 'Blocked') condition = 'Under Maintenance';
+
+    return { label, color, condition };
   };
 
   const handleAction = async (roomId: string, action: 'start' | 'finish' | 'inspect') => {
@@ -230,11 +260,16 @@ export default function HousekeepingTerminal() {
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <h4 className="text-3xl font-black text-white group-hover:text-indigo-400 transition-colors tracking-tighter">#{room.room_number}</h4>
-                        <span className={"text-[8px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-tighter " + getGuestContext(room.id).color}>
-                           {getGuestContext(room.id).label}
+                        <span className={"text-[8px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-tighter " + getGuestContext(room).color}>
+                           {getGuestContext(room).label}
                         </span>
                       </div>
-                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">{room.type}</p>
+                      <div className="flex flex-col gap-1 mt-1">
+                        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">{room.type}</p>
+                        <p className="text-[9px] font-black text-indigo-500/80 uppercase tracking-widest italic flex items-center gap-1">
+                           <Sparkles size={10} /> {getGuestContext(room).condition}
+                        </p>
+                      </div>
                     </div>
                     
                     {room.status === 'Cleaning' && (
