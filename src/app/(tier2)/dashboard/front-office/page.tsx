@@ -53,6 +53,7 @@ export default function FrontOfficeTerminal() {
   // Tabs State
   const [activeTab, setActiveTab] = useState<'tape' | 'arrivals' | 'departures' | 'house' | 'all'>('tape');
   const [searchQuery, setSearchQuery] = useState('');
+  const [reservationFilter, setReservationFilter] = useState('Confirmed');
 
   // Action Drawer State
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
@@ -163,28 +164,42 @@ export default function FrontOfficeTerminal() {
     return bookings.filter(b => b.status === 'Checked In');
   };
 
+  
   const getAllReservations = () => {
     let filtered = bookings;
     
+    // 1. Apply the Dropdown Status Filter first (unless it's 'All')
+    if (reservationFilter !== 'All') {
+      if (reservationFilter === 'Past') {
+        filtered = filtered.filter(b => b.status === 'Checked Out' || b.status === 'Cancelled');
+      } else {
+        filtered = filtered.filter(b => b.status === reservationFilter);
+      }
+    }
+
+    // 2. Apply Universal Search if typing
     if (searchQuery) {
-      // UNIVERSAL SEARCH: If they are searching, look through EVERYTHING (Past, Present, Cancelled)
       const lowerQuery = searchQuery.toLowerCase();
-      filtered = bookings.filter(b => 
+      filtered = filtered.filter(b => 
         b.guest_name.toLowerCase().includes(lowerQuery) || 
         b.id.toLowerCase().includes(lowerQuery)
       );
-    } else {
-      // DEFAULT VIEW: If not searching, ONLY show upcoming 'Confirmed' reservations to prevent clutter
-      filtered = bookings.filter(b => b.status === 'Confirmed');
     }
 
-    // Sort chronologically by check-in date
+    // 3. Sort Chronologically
     return filtered.sort((a, b) => {
       const dateA = new Date(a.check_in).getTime();
       const dateB = new Date(b.check_in).getTime();
+      
+      if (reservationFilter === 'Past') {
+         const outA = new Date(a.check_out || a.created_at).getTime();
+         const outB = new Date(b.check_out || b.created_at).getTime();
+         return outB - outA;
+      }
       return dateA - dateB;
     });
   };
+
 
   const hasAccess = (moduleName: string) => {
     if (!userProfile) return true;
@@ -575,19 +590,37 @@ export default function FrontOfficeTerminal() {
               ))}
             </div>
 
-            {/* SEARCH BAR (Only visible on All Reservations) */}
+            
+            {/* RESERVATIONS MASTER CONTROLS */}
             {activeTab === 'all' && (
-              <div className="relative w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" size={14} />
-                <input 
-                  type="text" 
-                  placeholder="Search guest or ID..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-xs text-white focus:outline-none focus:border-indigo-500/50 transition-all"
-                />
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <select 
+                    value={reservationFilter}
+                    onChange={(e) => setReservationFilter(e.target.value)}
+                    className="appearance-none bg-black/40 border border-white/10 rounded-xl py-2 pl-4 pr-10 text-xs text-indigo-400 font-bold focus:outline-none focus:border-indigo-500/50 cursor-pointer"
+                  >
+                    <option value="Confirmed">Upcoming (Confirmed)</option>
+                    <option value="Checked In">In-House</option>
+                    <option value="Past">Past (Checked Out/Cancelled)</option>
+                    <option value="All">View Everything</option>
+                  </select>
+                  <ChevronsUpDown size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none" />
+                </div>
+                
+                <div className="relative w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" size={14} />
+                  <input 
+                    type="text" 
+                    placeholder="Search guest or ID..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-xs text-white focus:outline-none focus:border-indigo-500/50 transition-all"
+                  />
+                </div>
               </div>
             )}
+
           </div>
         </header>
 
