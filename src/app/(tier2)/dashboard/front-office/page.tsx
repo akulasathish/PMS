@@ -152,6 +152,15 @@ export default function FrontOfficeTerminal() {
     };
   }, [property?.id, supabase]);
 
+  // Self-Healing Status Logic: If a guest is Checked In, the room MUST be Occupied, even if the DB room status says Available
+  const getTrueRoomStatus = (room: any) => {
+    const activeBooking = bookings.find(b => b.room_id === room.id && b.status === 'Checked In');
+    if (activeBooking && room.status !== 'Blocked') {
+      return 'Occupied';
+    }
+    return room.status;
+  };
+
   const getBookingForRoom = (roomId: string) => {
     return bookings.find(b => b.room_id === roomId && (b.status === 'Confirmed' || b.status === 'Checked In'));
   };
@@ -738,12 +747,16 @@ export default function FrontOfficeTerminal() {
                               
                               {/* Housekeeping Badges (Requested Colors) */}
                               <div className="flex flex-col gap-1 items-start">
-                                {room.status?.toLowerCase() === 'available' && <span className="bg-emerald-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(16,185,129,0.4)]">Ready</span>}
-                                {room.status?.toLowerCase() === 'dirty' && <span className="bg-rose-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(244,63,94,0.4)]">Dirty</span>}
-                                {room.status?.toLowerCase() === 'cleaning' && <span className="bg-amber-500 text-black px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(245,158,11,0.4)]">Cleaning</span>}
-                                {room.status?.toLowerCase() === 'clean' && <span className="bg-cyan-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(6,182,212,0.4)]">Inspect</span>}
-                                {room.status?.toLowerCase() === 'blocked' && <span className="bg-red-600 text-white px-2 py-0.5 rounded flex items-center gap-1 text-[9px] font-black uppercase tracking-widest animate-pulse shadow-[0_0_10px_rgba(220,38,38,0.6)]"><Lock size={10}/> Maint</span>}
-                                {room.status?.toLowerCase() === 'occupied' && <span className="bg-indigo-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(99,102,241,0.4)]">Occupied</span>}
+                                {(() => {
+                                  const s = getTrueRoomStatus(room)?.toLowerCase();
+                                  if (s === 'available') return <span className="bg-emerald-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(16,185,129,0.4)]">Ready</span>;
+                                  if (s === 'dirty') return <span className="bg-rose-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(244,63,94,0.4)]">Dirty</span>;
+                                  if (s === 'cleaning') return <span className="bg-amber-500 text-black px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(245,158,11,0.4)]">Cleaning</span>;
+                                  if (s === 'clean') return <span className="bg-cyan-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(6,182,212,0.4)]">Inspect</span>;
+                                  if (s === 'blocked') return <span className="bg-red-600 text-white px-2 py-0.5 rounded flex items-center gap-1 text-[9px] font-black uppercase tracking-widest animate-pulse shadow-[0_0_10px_rgba(220,38,38,0.6)]"><Lock size={10}/> Maint</span>;
+                                  if (s === 'occupied') return <span className="bg-indigo-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(99,102,241,0.4)]">Occupied</span>;
+                                  return null;
+                                })()}
                               </div>
                               <p className="text-[10px] text-zinc-500 uppercase font-medium">{room.type}</p>
                             </div>
