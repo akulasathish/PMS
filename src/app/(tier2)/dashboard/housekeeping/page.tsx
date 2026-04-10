@@ -57,7 +57,7 @@ export default function HousekeepingTerminal() {
           setProperty(prop);
 
           const [roomsRes, bookingsRes] = await Promise.all([
-            supabase.from('rooms').select('*, profiles(full_name)').eq('property_id', activeId).order('room_number'),
+            supabase.from('rooms').select('*, profiles:assigned_staff_id(full_name)').eq('property_id', activeId).order('room_number'),
             supabase.from('bookings').select('*').eq('property_id', activeId).in('status', ['Confirmed', 'Checked In'])
           ]);
 
@@ -79,8 +79,7 @@ export default function HousekeepingTerminal() {
 
   // Global Realtime listener for ROOM status changes
   useEffect(() => {
-    const activeId = localStorage.getItem('pms_active_property');
-    if (!activeId) return;
+    if (!property?.id) return;
 
     const roomChannel = supabase
       .channel('rooms-sync-hk')
@@ -90,7 +89,7 @@ export default function HousekeepingTerminal() {
           event: 'UPDATE',
           schema: 'public',
           table: 'rooms',
-          filter: 'property_id=eq.' + activeId
+          filter: 'property_id=eq.' + property.id
         },
         (payload) => {
           setRooms((prevRooms) => 
@@ -251,10 +250,10 @@ export default function HousekeepingTerminal() {
           {/* SUB-TABS */}
           <div className="flex items-center gap-1 bg-white/[0.02] border border-white/[0.05] p-1 rounded-2xl w-fit">
             {[
-              { id: 'todo', label: 'To Clean', icon: Clock, count: rooms.filter(r => r.status === 'Dirty').length },
-              { id: 'cleaning', label: 'In Progress', icon: Play, count: rooms.filter(r => r.status === 'Cleaning').length },
-              { id: 'inspect', label: 'To Inspect', icon: ShieldCheck, count: rooms.filter(r => r.status === 'Clean').length },
-              { id: 'stayovers', label: 'Stayover Service', icon: UserCheck, count: rooms.filter(r => r.status === 'Occupied').length },
+              { id: 'todo', label: 'To Clean', icon: Clock, count: rooms.filter(r => r.status?.toLowerCase() === 'dirty').length },
+              { id: 'cleaning', label: 'In Progress', icon: Play, count: rooms.filter(r => r.status?.toLowerCase() === 'cleaning').length },
+              { id: 'inspect', label: 'To Inspect', icon: ShieldCheck, count: rooms.filter(r => r.status?.toLowerCase() === 'clean').length },
+              { id: 'stayovers', label: 'Stayover Service', icon: UserCheck, count: rooms.filter(r => r.status?.toLowerCase() === 'occupied').length },
               { id: 'all', label: 'All Rooms', icon: Activity, count: rooms.length },
             ].map((tab) => (
               <button
