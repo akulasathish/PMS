@@ -108,7 +108,7 @@ export default function FrontOfficeTerminal() {
 
         // Fetch rooms and bookings, explicitly bypassing browser cache
         const [roomsRes, bookingsRes] = await Promise.all([
-          supabase.from('rooms').select('*').eq('property_id', activeId).order('room_number'),
+          supabase.from('rooms').select('*').eq('property_id', activeId).eq('is_deleted', false).order('room_number'),
           supabase.from('bookings').select('*').eq('property_id', activeId).order('created_at', { ascending: false })
         ]);
 

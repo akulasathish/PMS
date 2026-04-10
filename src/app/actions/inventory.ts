@@ -92,10 +92,10 @@ export async function deleteRoom(roomId: string) {
      return { error: 'Cannot delete this room because there are active reservations (Confirmed or Checked In) assigned to it. Please reassign the guests to another room first.' };
   }
 
-  // Delete the room
+  // 3. SOFT DELETE: Never hard delete a room to protect historical folios
   const { error } = await supabaseAdmin
     .from('rooms')
-    .delete()
+    .update({ is_deleted: true })
     .eq('id', roomId);
 
   if (error) {

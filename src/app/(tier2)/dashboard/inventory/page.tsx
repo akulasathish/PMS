@@ -145,6 +145,7 @@ import {
               .from('rooms')
               .select('*')
               .eq('property_id', propData.id)
+              .eq('is_deleted', false)
               .order('room_number', { ascending: true });
 
             if (roomsData) setRooms(roomsData);

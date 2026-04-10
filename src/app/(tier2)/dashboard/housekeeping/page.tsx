@@ -61,7 +61,7 @@ export default function HousekeepingTerminal() {
           setProperty(prop);
 
           const [roomsRes, bookingsRes] = await Promise.all([
-            supabase.from('rooms').select('*, profiles:assigned_staff_id(full_name)').eq('property_id', activeId).order('room_number'),
+            supabase.from('rooms').select('*, profiles:assigned_staff_id(full_name)').eq('property_id', activeId).eq('is_deleted', false).order('room_number'),
             supabase.from('bookings').select('*').eq('property_id', activeId).in('status', ['Confirmed', 'Checked In'])
           ]);
 
