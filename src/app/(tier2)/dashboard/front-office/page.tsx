@@ -117,19 +117,39 @@ export default function FrontOfficeTerminal() {
            finalRoomsQuery = supabase.from('rooms').select('*').or('is_deleted.eq.false,is_deleted.is.null').order('room_number');
         }
 
-        const [roomsRes, bookingsRes] = await Promise.all([
-          finalRoomsQuery,
-          supabase.from('bookings').select('*').order('created_at', { ascending: false })
-        ]);
+        const executedRoomsRes = await finalRoomsQuery;
+        const executedBookingsRes = await supabase.from('bookings').select('*').order('created_at', { ascending: false });
+
+        let roomsRes = executedRoomsRes;
+        let bookingsRes = executedBookingsRes;
 
         if (!roomsRes.data || roomsRes.data.length === 0) {
-            console.error("🚨 EMERGENCY TRUTH LOG: ZERO ROOMS FETCHED!", roomsRes.error);
-            alert("Database returned 0 rooms. Check console. ActiveID: " + activeId);
+            console.error("🚨 EMERGENCY TRUTH LOG: ZERO ROOMS FETCHED FOR PROPERTY!", activeId);
+            
+            // The browser is stuck on a zombie ID. We MUST find the real property ID from the database.
+            // Since the fallback query might ALSO fail if it uses the wrong ActiveID somewhere else in the chain,
+            // we explicitly find the first property this user actually owns, and force the app to restart completely.
+            
+            const { data: realPropAccess } = await supabase.from('property_access').select('property_id').eq('user_id', auth.user.id);
+            let realPropId = realPropAccess?.[0]?.property_id;
+            
+            if (!realPropId && prof?.property_id) {
+                realPropId = prof.property_id;
+            }
+            
+            if (realPropId) {
+                console.log("🩹 Auto-Repair: Zombie ID detected. Erasing cache and rebooting app to:", realPropId);
+                localStorage.setItem('pms_active_property', realPropId);
+                window.location.reload(); // Force a hard reboot so React drops all corrupted state
+                return; // Stop rendering
+            } else {
+               // They literally own zero properties
+               console.error("🚨 CRITICAL: User has NO properties assigned to them!");
+            }
         }
 
         setRooms(roomsRes.data || []);
-        setBookings(bookingsRes.data || []);
-      }
+        setBookings(bookingsRes.data || []);      }
     } catch (err) {
       console.error("Dashboard Load Error:", err);
     } finally {

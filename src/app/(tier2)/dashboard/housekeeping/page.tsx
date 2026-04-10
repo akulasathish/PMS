@@ -70,23 +70,32 @@ export default function HousekeepingTerminal() {
              finalRoomsQuery = supabase.from('rooms').select('*, profiles:assigned_staff_id(full_name)').or('is_deleted.eq.false,is_deleted.is.null').order('room_number');
           }
 
-          const [roomsRes, bookingsRes] = await Promise.all([
-            finalRoomsQuery,
-            supabase.from('bookings').select('*').in('status', ['Confirmed', 'Checked In'])
-          ]);
+          const executedRoomsRes = await finalRoomsQuery;
+          const executedBookingsRes = await supabase.from('bookings').select('*').in('status', ['Confirmed', 'Checked In']);
 
-          console.log("🔥 THE ABSOLUTE TRUTH: FETCHED ROOMS:", roomsRes.data);
-          console.log("🔥 FETCH ERROR:", roomsRes.error);
-          console.log("🔥 LOCAL STORAGE ID WAS:", activeId);
-          
+          let roomsRes = executedRoomsRes;
+          let bookingsRes = executedBookingsRes;
+
           if (!roomsRes.data || roomsRes.data.length === 0) {
-              console.error("🚨 EMERGENCY TRUTH LOG: ZERO ROOMS FETCHED!", roomsRes.error);
-              alert("Housekeeping Database returned 0 rooms. Check console. ActiveID: " + activeId);
+              console.error("🚨 EMERGENCY TRUTH LOG: ZERO ROOMS FETCHED FOR PROPERTY!", activeId);
+              
+              const { data: realPropAccess } = await supabase.from('property_access').select('property_id').eq('user_id', auth.user.id);
+              let realPropId = realPropAccess?.[0]?.property_id;
+              
+              if (!realPropId && prof?.property_id) {
+                  realPropId = prof.property_id;
+              }
+              
+              if (realPropId) {
+                  console.log("🩹 Auto-Repair: Zombie ID detected. Erasing cache and rebooting app to:", realPropId);
+                  localStorage.setItem('pms_active_property', realPropId);
+                  window.location.reload(); // Force a hard reboot so React drops all corrupted state
+                  return; // Stop rendering
+              }
           }
 
           if (roomsRes.data) setRooms(roomsRes.data);
-          if (bookingsRes.data) setBookings(bookingsRes.data);
-        }
+          if (bookingsRes.data) setBookings(bookingsRes.data);        }
 
     } catch (err) {
       console.error("Housekeeping Load Error:", err);
