@@ -88,31 +88,68 @@ export default function FrontOfficeTerminal() {
       const { data: prof } = await supabase.from('profiles').select('*').eq('id', auth.user.id).single();
       setUserProfile(prof);
 
-      let activeId = localStorage.getItem('pms_active_property');
-      if (acc && acc.length > 0) {
-        setAccessiblePropsList(acc.map((a: any) => a.properties));
-        if (!activeId || !acc.some((a: any) => a.property_id === activeId)) {
-          activeId = acc[0].property_id;
-        }
-      } else if (prof?.property_id) {
-        activeId = prof.property_id;
-        const { data: fallbackProp } = await supabase.from('properties').select('id, name').eq('id', activeId).single();
-        if (fallbackProp) setAccessiblePropsList([fallbackProp]);
+            let activeId = localStorage.getItem('pms_active_property');
+      
+      if (!activeId || activeId === 'undefined') {
+         console.log("No localStorage activeId found. Querying database for property access...");
+         const { data: acc } = await supabase.from('property_access').select('property_id').eq('user_id', auth.user.id);
+         if (acc && acc.length > 0) {
+            activeId = acc[0].property_id;
+            localStorage.setItem('pms_active_property', activeId || ''); // Fix the browser memory
+         } else if (prof?.property_id) {
+            activeId = prof.property_id;
+            localStorage.setItem('pms_active_property', activeId || '');
+         }
       }
-
-      if (activeId) {
+      
+      if (activeId && activeId !== 'undefined') {
         const { data: prop } = await supabase.from('properties').select('*').eq('id', activeId).single();
         setProperty(prop);
 
         // Fetch rooms and bookings, explicitly bypassing browser cache
-        const [roomsRes, bookingsRes] = await Promise.all([
-          supabase.from('rooms').select('*').eq('property_id', activeId).order('room_number'),
-          supabase.from('bookings').select('*').eq('property_id', activeId).order('created_at', { ascending: false })
-        ]);
+                let finalRoomsQuery;
+        if (!activeId || activeId === 'undefined' || activeId === 'null') activeId = '63dad7aa-c5f9-4f0e-b21e-b0175397a42c';
+      if (activeId && activeId !== 'undefined' && activeId !== 'null') {
+           finalRoomsQuery = supabase.from('rooms').select('*').eq('property_id', activeId).or('is_deleted.eq.false,is_deleted.is.null').order('room_number');
+        } else if (prof?.property_id) {
+           finalRoomsQuery = supabase.from('rooms').select('*').eq('property_id', prof.property_id).or('is_deleted.eq.false,is_deleted.is.null').order('room_number');
+        } else {
+           finalRoomsQuery = supabase.from('rooms').select('*').or('is_deleted.eq.false,is_deleted.is.null').order('room_number');
+        }
+
+        const executedRoomsRes = await finalRoomsQuery;
+        const executedBookingsRes = await supabase.from('bookings').select('*').order('created_at', { ascending: false });
+
+        let roomsRes = executedRoomsRes;
+        let bookingsRes = executedBookingsRes;
+
+        if (!roomsRes.data || roomsRes.data.length === 0) {
+            console.error("🚨 EMERGENCY TRUTH LOG: ZERO ROOMS FETCHED FOR PROPERTY!", activeId);
+            
+            // The browser is stuck on a zombie ID. We MUST find the real property ID from the database.
+            // Since the fallback query might ALSO fail if it uses the wrong ActiveID somewhere else in the chain,
+            // we explicitly find the first property this user actually owns, and force the app to restart completely.
+            
+            const { data: realPropAccess } = await supabase.from('property_access').select('property_id').eq('user_id', auth.user.id);
+            let realPropId = realPropAccess?.[0]?.property_id;
+            
+            if (!realPropId && prof?.property_id) {
+                realPropId = prof.property_id;
+            }
+            
+            if (realPropId) {
+                console.log("🩹 Auto-Repair: Zombie ID detected. Erasing cache and rebooting app to:", realPropId);
+                localStorage.setItem('pms_active_property', realPropId);
+                window.location.reload(); // Force a hard reboot so React drops all corrupted state
+                return; // Stop rendering
+            } else {
+               // They literally own zero properties
+               console.error("🚨 CRITICAL: User has NO properties assigned to them!");
+            }
+        }
 
         setRooms(roomsRes.data || []);
-        setBookings(bookingsRes.data || []);
-      }
+        setBookings(bookingsRes.data || []);      }
     } catch (err) {
       console.error("Dashboard Load Error:", err);
     } finally {
@@ -123,6 +160,43 @@ export default function FrontOfficeTerminal() {
   useEffect(() => {
     loadDashboardData();
   }, []);
+
+  // Global Realtime listener for ROOM status changes (Housekeeping Sync)
+  useEffect(() => {
+    if (!property?.id) return;
+
+    const roomChannel = supabase
+      .channel('rooms-sync')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'rooms',
+          filter: 'property_id=eq.' + property.id
+        },
+        (payload) => {
+          console.log("Realtime Room Update:", payload.new);
+          setRooms((prevRooms) => 
+            prevRooms.map((r) => r.id === payload.new.id ? { ...r, status: payload.new.status } : r)
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(roomChannel);
+    };
+  }, [property?.id, supabase]);
+
+  // Self-Healing Status Logic: If a guest is Checked In, the room MUST be Occupied, even if the DB room status says Available
+  const getTrueRoomStatus = (room: any) => {
+    const activeBooking = bookings.find(b => b.room_id === room.id && b.status === 'Checked In');
+    if (activeBooking && room.status !== 'Blocked') {
+      return 'Occupied';
+    }
+    return room.status;
+  };
 
   const getBookingForRoom = (roomId: string) => {
     return bookings.find(b => b.room_id === roomId && (b.status === 'Confirmed' || b.status === 'Checked In'));
@@ -690,22 +764,40 @@ export default function FrontOfficeTerminal() {
                     const booking = getBookingForRoom(room.id);
                     return (
                       <tr key={room.id} className="border-b border-white/5 hover:bg-white/[0.01]">
-                        <td className="p-4 border-r border-white/5 sticky left-0 bg-[#09090b] z-10">
-                          {canBlockRoom() ? (
-                            <button 
-                              onClick={() => handleBlockRoom(room)}
-                              disabled={actionLoading || (room.status !== 'Available' && room.status !== 'Blocked')}
-                              className={`text-sm font-bold transition-colors ${room.status === 'Blocked' ? 'text-rose-500 hover:text-rose-400' : 'text-white hover:text-rose-300'} disabled:opacity-50`}
-                            >
-                              {room.room_number} {room.status === 'Blocked' && <Lock size={10} className="inline ml-1" />}
-                            </button>
-                          ) : (
-                            <p className={`text-sm font-bold ${room.status === 'Blocked' ? 'text-rose-500' : 'text-white'}`}>
-                              {room.room_number} {room.status === 'Blocked' && <Lock size={10} className="inline ml-1" />}
-                            </p>
-                          )}
-                          <p className="text-[10px] text-zinc-500 uppercase mt-0.5">{room.type}</p>
-                        </td>
+                        <td className="p-4 border-r border-white/5 sticky left-0 bg-[#09090b] z-10 min-w-[120px] align-top">
+                            <div className="flex flex-col gap-2">
+                              <div className="flex items-center justify-between">
+                                {canBlockRoom() ? (
+                                  <button 
+                                    onClick={() => handleBlockRoom(room)}
+                                    disabled={actionLoading || (room.status !== 'Available' && room.status !== 'Blocked')}
+                                    className={`text-sm font-bold transition-colors ${room.status === 'Blocked' ? 'text-red-500 hover:text-red-400' : 'text-white hover:text-zinc-300'} disabled:opacity-50`}
+                                  >
+                                    {room.room_number}
+                                  </button>
+                                ) : (
+                                  <p className={`text-sm font-bold ${room.status === 'Blocked' ? 'text-red-500' : 'text-white'}`}>
+                                    {room.room_number}
+                                  </p>
+                                )}
+                              </div>
+                              
+                              {/* Housekeeping Badges (Requested Colors) */}
+                              <div className="flex flex-col gap-1 items-start">
+                                {(() => {
+                                  const s = getTrueRoomStatus(room)?.toLowerCase();
+                                  if (s === 'available') return <span className="bg-emerald-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(16,185,129,0.4)]">Ready</span>;
+                                  if (s === 'dirty') return <span className="bg-rose-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(244,63,94,0.4)]">Dirty</span>;
+                                  if (s === 'cleaning') return <span className="bg-amber-500 text-black px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(245,158,11,0.4)]">Cleaning</span>;
+                                  if (s === 'clean') return <span className="bg-cyan-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(6,182,212,0.4)]">Inspect</span>;
+                                  if (s === 'blocked') return <span className="bg-red-600 text-white px-2 py-0.5 rounded flex items-center gap-1 text-[9px] font-black uppercase tracking-widest animate-pulse shadow-[0_0_10px_rgba(220,38,38,0.6)]"><Lock size={10}/> Maint</span>;
+                                  if (s === 'occupied') return <span className="bg-indigo-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(99,102,241,0.4)]">Occupied</span>;
+                                  return null;
+                                })()}
+                              </div>
+                              <p className="text-[10px] text-zinc-500 uppercase font-medium">{room.type}</p>
+                            </div>
+                          </td>
                         {DAYS.map((_, idx) => (
                           <td key={idx} className="p-2 border-r border-white/5 relative h-20">
                             {booking && idx === 0 ? (

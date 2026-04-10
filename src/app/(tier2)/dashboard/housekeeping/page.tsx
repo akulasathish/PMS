@@ -6,7 +6,7 @@ import {
   Brush, Sparkles, Clock, CheckCircle2, UserCheck, 
   Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, Lock,
-  ChevronRight, Play, CheckCircle, ShieldCheck, AlertCircle
+  ChevronRight, Play, CheckCircle, ShieldCheck, AlertCircle, ShieldAlert
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -29,7 +29,7 @@ export default function HousekeepingTerminal() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [property, setProperty] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'todo' | 'cleaning' | 'inspect' | 'stayovers'>('todo');
+  const [activeTab, setActiveTab] = useState<'todo' | 'cleaning' | 'inspect' | 'stayovers' | 'all'>('todo');
   
   const supabase = createClient();
 
@@ -42,20 +42,60 @@ export default function HousekeepingTerminal() {
       const { data: prof } = await supabase.from('profiles').select('*').eq('id', auth.user.id).single();
       setUserProfile(prof);
 
-      const activeId = localStorage.getItem('pms_active_property');
+            let activeId = localStorage.getItem('pms_active_property');
       
-        if (activeId) {
+      if (!activeId || activeId === 'undefined') {
+         console.log("No localStorage activeId found. Querying database for property access...");
+         const { data: acc } = await supabase.from('property_access').select('property_id').eq('user_id', auth.user.id);
+         if (acc && acc.length > 0) {
+            activeId = acc[0].property_id;
+            localStorage.setItem('pms_active_property', activeId || ''); // Fix the browser memory
+         } else if (prof?.property_id) {
+            activeId = prof.property_id;
+            localStorage.setItem('pms_active_property', activeId || '');
+         }
+      }
+      
+      if (activeId && activeId !== 'undefined') {
           const { data: prop } = await supabase.from('properties').select('*').eq('id', activeId).single();
           setProperty(prop);
 
-          const [roomsRes, bookingsRes] = await Promise.all([
-            supabase.from('rooms').select('*, profiles(full_name)').eq('property_id', activeId).order('room_number'),
-            supabase.from('bookings').select('*').eq('property_id', activeId).in('status', ['Confirmed', 'Checked In'])
-          ]);
+                    let finalRoomsQuery;
+          if (!activeId || activeId === 'undefined' || activeId === 'null') activeId = '63dad7aa-c5f9-4f0e-b21e-b0175397a42c';
+      if (activeId && activeId !== 'undefined' && activeId !== 'null') {
+             finalRoomsQuery = supabase.from('rooms').select('*, profiles:assigned_staff_id(full_name)').eq('property_id', activeId).or('is_deleted.eq.false,is_deleted.is.null').order('room_number');
+          } else if (prof?.property_id) {
+             finalRoomsQuery = supabase.from('rooms').select('*, profiles:assigned_staff_id(full_name)').eq('property_id', prof.property_id).or('is_deleted.eq.false,is_deleted.is.null').order('room_number');
+          } else {
+             finalRoomsQuery = supabase.from('rooms').select('*, profiles:assigned_staff_id(full_name)').or('is_deleted.eq.false,is_deleted.is.null').order('room_number');
+          }
+
+          const executedRoomsRes = await finalRoomsQuery;
+          const executedBookingsRes = await supabase.from('bookings').select('*').in('status', ['Confirmed', 'Checked In']);
+
+          let roomsRes = executedRoomsRes;
+          let bookingsRes = executedBookingsRes;
+
+          if (!roomsRes.data || roomsRes.data.length === 0) {
+              console.error("🚨 EMERGENCY TRUTH LOG: ZERO ROOMS FETCHED FOR PROPERTY!", activeId);
+              
+              const { data: realPropAccess } = await supabase.from('property_access').select('property_id').eq('user_id', auth.user.id);
+              let realPropId = realPropAccess?.[0]?.property_id;
+              
+              if (!realPropId && prof?.property_id) {
+                  realPropId = prof.property_id;
+              }
+              
+              if (realPropId) {
+                  console.log("🩹 Auto-Repair: Zombie ID detected. Erasing cache and rebooting app to:", realPropId);
+                  localStorage.setItem('pms_active_property', realPropId);
+                  window.location.reload(); // Force a hard reboot so React drops all corrupted state
+                  return; // Stop rendering
+              }
+          }
 
           if (roomsRes.data) setRooms(roomsRes.data);
-          if (bookingsRes.data) setBookings(bookingsRes.data);
-        }
+          if (bookingsRes.data) setBookings(bookingsRes.data);        }
 
     } catch (err) {
       console.error("Housekeeping Load Error:", err);
@@ -69,14 +109,72 @@ export default function HousekeepingTerminal() {
   }, []);
 
 
-  const getGuestContext = (roomId: string) => {
+  // Global Realtime listener for ROOM status changes
+  useEffect(() => {
+    if (!property?.id) return;
+
+    const roomChannel = supabase
+      .channel('rooms-sync-hk')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'rooms',
+          filter: 'property_id=eq.' + property.id
+        },
+        (payload) => {
+          setRooms((prevRooms) => 
+            prevRooms.map((r) => r.id === payload.new.id ? { ...r, status: payload.new.status } : r)
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(roomChannel);
+    };
+  }, [supabase]);
+
+
+  const getGuestContext = (room: any): { label: string, color: string, condition: string } => {
     const today = new Date().toISOString().substring(0, 10);
-    const booking = bookings.find(b => b.room_id === roomId);
-    if (!booking) return { label: 'Vacant', color: 'text-zinc-500 bg-zinc-500/10' };
-    if (booking.status === 'Confirmed' && booking.check_in === today) return { label: 'Arrival Today', color: 'text-indigo-400 bg-indigo-500/10' };
-    if (booking.status === 'Checked In' && booking.check_out === today) return { label: 'Departing Today', color: 'text-amber-400 bg-amber-500/10' };
-    if (booking.status === 'Checked In') return { label: 'Stayover', color: 'text-emerald-400 bg-emerald-500/10' };
-    return { label: 'Reserved', color: 'text-zinc-500 bg-zinc-500/10' };
+    const booking = bookings.find(b => b.room_id === room.id);
+    
+    // Determine Guest Situation
+    let label = 'Vacant';
+    let color = 'text-zinc-500 bg-zinc-500/10';
+    
+    if (booking) {
+      if (booking.status === 'Confirmed' && booking.check_in === today) {
+         label = 'Arrival Today';
+         color = 'text-indigo-400 bg-indigo-500/10';
+      } else if (booking.status === 'Checked In' && booking.check_out === today) {
+         label = 'Departing Today';
+         color = 'text-amber-400 bg-amber-500/10';
+      } else if (booking.status === 'Checked In') {
+         label = 'Stayover';
+         color = 'text-emerald-400 bg-emerald-500/10';
+      } else {
+         label = 'Reserved';
+      }
+    }
+    
+    if (room.status === 'Blocked') {
+       label = 'Blocked';
+       color = 'text-rose-500 bg-rose-500/10';
+    }
+
+    // Determine Physical Condition
+    let condition = '';
+    if (room.status === 'Dirty') condition = 'Needs Deep Clean';
+    if (room.status === 'Cleaning') condition = 'Cleaning in Progress...';
+    if (room.status === 'Clean') condition = 'Ready for Inspection';
+    if (room.status === 'Available') condition = 'Ready for Guest';
+    if (room.status === 'Occupied') condition = 'Service Required';
+    if (room.status === 'Blocked') condition = 'Under Maintenance';
+
+    return { label, color, condition };
   };
 
   const handleAction = async (roomId: string, action: 'start' | 'finish' | 'inspect') => {
@@ -95,13 +193,18 @@ export default function HousekeepingTerminal() {
   };
 
   
-  const getFilteredRooms = () => {
-    if (activeTab === 'todo') return rooms.filter(r => r.status === 'Dirty');
-    if (activeTab === 'cleaning') return rooms.filter(r => r.status === 'Cleaning');
-    if (activeTab === 'inspect') return rooms.filter(r => r.status === 'Clean');
-    if (activeTab === 'stayovers') return rooms.filter(r => r.status === 'Occupied');
+  
+  
+      const getFilteredRooms = () => {
+    if (activeTab === 'todo') return rooms.filter(r => r.status?.toLowerCase() === 'dirty');
+    if (activeTab === 'cleaning') return rooms.filter(r => r.status?.toLowerCase() === 'cleaning');
+    if (activeTab === 'inspect') return rooms.filter(r => r.status?.toLowerCase() === 'clean');
+    if (activeTab === 'stayovers') return rooms.filter(r => r.status?.toLowerCase() === 'occupied');
+    if (activeTab === 'all') return rooms;
     return [];
   };
+
+
 
 
   const canInspect = () => {
@@ -179,10 +282,11 @@ export default function HousekeepingTerminal() {
           {/* SUB-TABS */}
           <div className="flex items-center gap-1 bg-white/[0.02] border border-white/[0.05] p-1 rounded-2xl w-fit">
             {[
-              { id: 'todo', label: 'To Clean', icon: Clock, count: rooms.filter(r => r.status === 'Dirty').length },
-              { id: 'cleaning', label: 'In Progress', icon: Play, count: rooms.filter(r => r.status === 'Cleaning').length },
-              { id: 'inspect', label: 'To Inspect', icon: ShieldCheck, count: rooms.filter(r => r.status === 'Clean').length },
-              { id: 'stayovers', label: 'Stayover Service', icon: UserCheck, count: rooms.filter(r => r.status === 'Occupied').length },
+              { id: 'todo', label: 'To Clean', icon: Clock, count: rooms.filter(r => r.status?.toLowerCase() === 'dirty').length },
+              { id: 'cleaning', label: 'In Progress', icon: Play, count: rooms.filter(r => r.status?.toLowerCase() === 'cleaning').length },
+              { id: 'inspect', label: 'To Inspect', icon: ShieldCheck, count: rooms.filter(r => r.status?.toLowerCase() === 'clean').length },
+              { id: 'stayovers', label: 'Stayover Service', icon: UserCheck, count: rooms.filter(r => r.status?.toLowerCase() === 'occupied').length },
+              { id: 'all', label: 'All Rooms', icon: Activity, count: rooms.length },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -224,13 +328,26 @@ export default function HousekeepingTerminal() {
                 >
                   <div className="flex justify-between items-start mb-6">
                     <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="text-3xl font-black text-white group-hover:text-indigo-400 transition-colors tracking-tighter">#{room.room_number}</h4>
-                        <span className={"text-[8px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-tighter " + getGuestContext(room.id).color}>
-                           {getGuestContext(room.id).label}
-                        </span>
+                      <div className="flex items-center gap-2 mb-2">
+                        <h4 className="text-3xl font-black text-white tracking-tighter">#{room.room_number}</h4>
+                        
+                        {/* THE REQUESTED HOUSEKEEPING STATUS BADGES */}
+                        <div className="flex items-center gap-1">
+                          {room.status?.toLowerCase() === 'dirty' && <span className="bg-rose-500 text-white px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(244,63,94,0.4)]">Dirty</span>}
+                          {room.status?.toLowerCase() === 'available' && <span className="bg-emerald-500 text-white px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(16,185,129,0.4)]">Ready</span>}
+                          {room.status?.toLowerCase() === 'cleaning' && <span className="bg-amber-500 text-black px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(245,158,11,0.4)]">Cleaning</span>}
+                          {room.status?.toLowerCase() === 'clean' && <span className="bg-cyan-500 text-white px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(6,182,212,0.4)]">Inspect</span>}
+                          {room.status?.toLowerCase() === 'blocked' && <span className="bg-red-600 text-white px-2 py-1 rounded flex items-center gap-1 text-[9px] font-black uppercase tracking-widest animate-pulse shadow-[0_0_10px_rgba(220,38,38,0.6)]"><ShieldAlert size={10}/> Maintenance</span>}
+                          {room.status?.toLowerCase() === 'occupied' && <span className="bg-indigo-500 text-white px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(99,102,241,0.4)]">Occupied</span>}
+                        </div>
                       </div>
-                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">{room.type}</p>
+
+                      <div className="flex flex-col gap-1">
+                        <span className={"text-[8px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-tighter w-fit " + getGuestContext(room).color}>
+                           Guest Context: {getGuestContext(room).label}
+                        </span>
+                        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">{room.type}</p>
+                      </div>
                     </div>
                     
                     {room.status === 'Cleaning' && (
