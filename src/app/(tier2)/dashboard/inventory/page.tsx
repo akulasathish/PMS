@@ -20,12 +20,13 @@ import {
   ChevronsUpDown,
   Activity,
   Brush,
-  Lock
+  Lock,
+  Trash2
   } from 'lucide-react';
   import { useRouter } from 'next/navigation';
   import Link from 'next/link';
   import { createClient } from '@/lib/supabase/client';
-  import { addRoom } from '@/app/actions/inventory';
+  import { addRoom, deleteRoom } from '@/app/actions/inventory';
 
 
   const NAV_ITEMS = [
@@ -181,6 +182,23 @@ import {
       return false;
     }
     return true;
+  };
+
+  
+  const handleDeleteRoom = async (roomId: string, roomNumber: string) => {
+    if (!window.confirm(`CRITICAL WARNING: Are you absolutely sure you want to permanently delete Room ${roomNumber}? This action cannot be undone.`)) {
+      return;
+    }
+    
+    setActionLoading(true);
+    const result = await deleteRoom(roomId);
+    
+    if (result?.error) {
+      alert(result.error);
+      setActionLoading(false);
+    } else {
+      window.location.reload();
+    }
   };
 
   const handleAddRoom = async (formData: FormData) => {
@@ -376,9 +394,18 @@ import {
                         </div>
                         <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 uppercase tracking-widest">{room.status}</span>
                       </div>
-                      <div>
-                        <h4 className="text-xl font-bold text-white tracking-tight mb-1">{room.room_number}</h4>
-                        <p className="text-[11px] font-medium text-zinc-500 uppercase tracking-widest">{room.type}</p>
+                      <div className="flex justify-between items-end">
+                        <div>
+                          <h4 className="text-xl font-bold text-white tracking-tight mb-1">{room.room_number}</h4>
+                          <p className="text-[11px] font-medium text-zinc-500 uppercase tracking-widest">{room.type}</p>
+                        </div>
+                        <button 
+                          onClick={() => handleDeleteRoom(room.id, room.room_number)}
+                          className="p-2 text-zinc-600 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors"
+                          title="Delete Room"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </div>
                     </motion.div>
                   ))}

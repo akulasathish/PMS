@@ -88,19 +88,21 @@ export default function FrontOfficeTerminal() {
       const { data: prof } = await supabase.from('profiles').select('*').eq('id', auth.user.id).single();
       setUserProfile(prof);
 
-      let activeId = localStorage.getItem('pms_active_property');
-      if (acc && acc.length > 0) {
-        setAccessiblePropsList(acc.map((a: any) => a.properties));
-        if (!activeId || !acc.some((a: any) => a.property_id === activeId)) {
-          activeId = acc[0].property_id;
-        }
-      } else if (prof?.property_id) {
-        activeId = prof.property_id;
-        const { data: fallbackProp } = await supabase.from('properties').select('id, name').eq('id', activeId).single();
-        if (fallbackProp) setAccessiblePropsList([fallbackProp]);
+            let activeId = localStorage.getItem('pms_active_property');
+      
+      if (!activeId || activeId === 'undefined') {
+         console.log("No localStorage activeId found. Querying database for property access...");
+         const { data: acc } = await supabase.from('property_access').select('property_id').eq('user_id', auth.user.id);
+         if (acc && acc.length > 0) {
+            activeId = acc[0].property_id;
+            localStorage.setItem('pms_active_property', activeId || ''); // Fix the browser memory
+         } else if (prof?.property_id) {
+            activeId = prof.property_id;
+            localStorage.setItem('pms_active_property', activeId || '');
+         }
       }
-
-      if (activeId) {
+      
+      if (activeId && activeId !== 'undefined') {
         const { data: prop } = await supabase.from('properties').select('*').eq('id', activeId).single();
         setProperty(prop);
 

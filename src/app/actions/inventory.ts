@@ -59,3 +59,53 @@ export async function addRoom(formData: FormData) {
   
   return { success: true };
 }
+
+
+/**
+ * Delete a room from a property
+ */
+export async function deleteRoom(roomId: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) return { error: 'Unauthorized. No session found.' };
+  
+  // Only owners or admins can delete rooms
+  let role = user.user_metadata?.role;
+  if (!role) {
+    const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', user.id).single();
+    role = profile?.role;
+  }
+
+  if (!['owner', 'admin'].includes(role)) {
+    return { error: 'Unauthorized. Role: ' + role };
+  }
+
+  // Safety check: Don't delete a room if it has active bookings!
+  const { data: activeBookings } = await supabaseAdmin
+    .from('bookings')
+    .select('id')
+    .eq('room_id', roomId)
+    .in('status', ['Confirmed', 'Checked In']);
+    
+  if (activeBookings && activeBookings.length > 0) {
+     return { error: 'Cannot delete this room because there are active reservations (Confirmed or Checked In) assigned to it. Please reassign the guests to another room first.' };
+  }
+
+  // Delete the room
+  const { error } = await supabaseAdmin
+    .from('rooms')
+    .delete()
+    .eq('id', roomId);
+
+  if (error) {
+    console.error("Supabase Error deleting room:", error);
+    return { error: `Database Error: ${error.message}` };
+  }
+
+  revalidatePath('/dashboard/inventory');
+  revalidatePath('/dashboard/front-office');
+  revalidatePath('/dashboard/housekeeping');
+  
+  return { success: true };
+}
