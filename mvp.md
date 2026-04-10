@@ -38,11 +38,11 @@ This document defines the Minimum Viable Product (MVP) requirements for the comm
 - [ ] **Night Audit & Room Blocking:**
     *   **Room Blocking:** Administrative lock on rooms for maintenance or events.
     *   **Night Audit:** "End of Day" logic to lock revenue and generate daily reports.
-- [ ] **Housekeeping Web Terminal (Master Board):** 
-    *   **The QC Loop:** Move from a linear Clean/Dirty toggle to a 3-step workflow: `Dirty` ➡️ `Clean` ➡️ `Inspected` (Ready for Sale).
-    *   **Guest Context (X-Ray Vision):** Room cards must display real-time guest status (e.g., "Departing Today", "Arriving Soon", "Stayover") to prioritize cleaning order.
-    *   **Stayover Service:** A dedicated view for occupied rooms requiring daily light cleaning/towel changes.
-    *   **Cleaner View:** Mobile task list with "Start/Finish" timers.
+- [x] **Housekeeping Web Terminal (Master Board):** 
+    *   [x] **The QC Loop:** Move from a linear Clean/Dirty toggle to a 3-step workflow: `Dirty` ➡️ `Clean` ➡️ `Inspected` (Ready for Sale).
+    *   [x] **Guest Context (X-Ray Vision):** Room cards must display real-time guest status (e.g., "Departing Today", "Arriving Soon", "Stayover") to prioritize cleaning order.
+    *   [x] **Stayover Service:** A dedicated view for occupied rooms requiring daily light cleaning/towel changes.
+    *   [x] **Cleaner View:** Mobile task list with "Start/Finish" timers.
     *   **Minibar Posting:** A button on the cleaner's mobile view to add extra charges directly to a guest's folio.
 
 ## Pillar 3: Guest Journey & Automation
@@ -52,8 +52,8 @@ This document defines the Minimum Viable Product (MVP) requirements for the comm
     *   **Mobile ID Upload:** Guest captures Aadhar/Passport directly to secure Supabase storage.
     *   **Digital Signature:** React Canvas integration for legal terms agreement.
     *   **Real-Time Sync:** Auto-ticks the Front Desk's Check-In checklist upon completion.
-- [ ] **Guest Identity (Receptionist Hardware):**
-    *   **Mobile QR Handshake:** Receptionist uses their own smartphone to scan physical IDs directly into the desktop PMS.
+- [x] **Guest Identity (Receptionist Hardware):**
+    *   [x] **Mobile QR Handshake:** Receptionist uses their own smartphone to scan physical IDs directly into the desktop PMS.
     *   **Master Guest Profiles:** Linking isolated bookings to a unified, permanent CRM guest record.
 - [ ] **The Professional Folio:**
     *   **Balance Enforcement:** Physically block "Check-Out" button if Folio balance is not $0.00.
@@ -65,7 +65,7 @@ This document defines the Minimum Viable Product (MVP) requirements for the comm
 - [ ] **GST-Compliant Invoicing:**
     *   Auto-calculation of CGST, SGST, and IGST based on room price slabs.
     *   HSN/SAC code (9963) and Hotel GSTIN on invoice.
-- [ ] **Police Register (Digital Form F):** One-click export of daily arrivals for local authority compliance.
+- [x] **Police Register (Digital Form F):** One-click export of daily arrivals for local authority compliance.
 - [ ] **Razorpay & UPI Integration:** 
     *   Dynamic QR codes for UPI (GPay/PhonePe) at the Front Desk.
     *   Native Razorpay checkout for Credit/Debit cards.
