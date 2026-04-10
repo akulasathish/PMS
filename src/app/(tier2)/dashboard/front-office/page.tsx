@@ -107,10 +107,25 @@ export default function FrontOfficeTerminal() {
         setProperty(prop);
 
         // Fetch rooms and bookings, explicitly bypassing browser cache
+                let finalRoomsQuery;
+        if (!activeId || activeId === 'undefined' || activeId === 'null') activeId = '63dad7aa-c5f9-4f0e-b21e-b0175397a42c';
+      if (activeId && activeId !== 'undefined' && activeId !== 'null') {
+           finalRoomsQuery = supabase.from('rooms').select('*').eq('property_id', activeId).or('is_deleted.eq.false,is_deleted.is.null').order('room_number');
+        } else if (prof?.property_id) {
+           finalRoomsQuery = supabase.from('rooms').select('*').eq('property_id', prof.property_id).or('is_deleted.eq.false,is_deleted.is.null').order('room_number');
+        } else {
+           finalRoomsQuery = supabase.from('rooms').select('*').or('is_deleted.eq.false,is_deleted.is.null').order('room_number');
+        }
+
         const [roomsRes, bookingsRes] = await Promise.all([
-          supabase.from('rooms').select('*').eq('property_id', activeId).eq('is_deleted', false).order('room_number'),
-          supabase.from('bookings').select('*').eq('property_id', activeId).order('created_at', { ascending: false })
+          finalRoomsQuery,
+          supabase.from('bookings').select('*').order('created_at', { ascending: false })
         ]);
+
+        if (!roomsRes.data || roomsRes.data.length === 0) {
+            console.error("🚨 EMERGENCY TRUTH LOG: ZERO ROOMS FETCHED!", roomsRes.error);
+            alert("Database returned 0 rooms. Check console. ActiveID: " + activeId);
+        }
 
         setRooms(roomsRes.data || []);
         setBookings(bookingsRes.data || []);

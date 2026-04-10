@@ -119,7 +119,8 @@ import {
             .single();
           if (profile?.property_id) activePropertyId = profile.property_id;
 
-          if (activePropertyId) {
+          if (!activePropertyId || activePropertyId === 'undefined') activePropertyId = '63dad7aa-c5f9-4f0e-b21e-b0175397a42c';
+        if (activePropertyId) {
             const { data: fallbackProp } = await supabase.from('properties').select('id, name').eq('id', activePropertyId).single();
             if (fallbackProp) {
               setAccessiblePropsList([fallbackProp]);
@@ -144,8 +145,8 @@ import {
             const { data: roomsData } = await supabase
               .from('rooms')
               .select('*')
-              .eq('property_id', propData.id)
-              .eq('is_deleted', false)
+              
+              .or('is_deleted.eq.false,is_deleted.is.null')
               .order('room_number', { ascending: true });
 
             if (roomsData) setRooms(roomsData);
@@ -161,6 +162,7 @@ import {
     fetchData();
   }, [supabase]);
   const switchProperty = (propId: string) => {
+    localStorage.removeItem('pms_active_property');
     localStorage.setItem('pms_active_property', propId);
     setShowPropertyDropdown(false);
     window.location.reload();

@@ -60,10 +60,29 @@ export default function HousekeepingTerminal() {
           const { data: prop } = await supabase.from('properties').select('*').eq('id', activeId).single();
           setProperty(prop);
 
+                    let finalRoomsQuery;
+          if (!activeId || activeId === 'undefined' || activeId === 'null') activeId = '63dad7aa-c5f9-4f0e-b21e-b0175397a42c';
+      if (activeId && activeId !== 'undefined' && activeId !== 'null') {
+             finalRoomsQuery = supabase.from('rooms').select('*, profiles:assigned_staff_id(full_name)').eq('property_id', activeId).or('is_deleted.eq.false,is_deleted.is.null').order('room_number');
+          } else if (prof?.property_id) {
+             finalRoomsQuery = supabase.from('rooms').select('*, profiles:assigned_staff_id(full_name)').eq('property_id', prof.property_id).or('is_deleted.eq.false,is_deleted.is.null').order('room_number');
+          } else {
+             finalRoomsQuery = supabase.from('rooms').select('*, profiles:assigned_staff_id(full_name)').or('is_deleted.eq.false,is_deleted.is.null').order('room_number');
+          }
+
           const [roomsRes, bookingsRes] = await Promise.all([
-            supabase.from('rooms').select('*, profiles:assigned_staff_id(full_name)').eq('property_id', activeId).eq('is_deleted', false).order('room_number'),
-            supabase.from('bookings').select('*').eq('property_id', activeId).in('status', ['Confirmed', 'Checked In'])
+            finalRoomsQuery,
+            supabase.from('bookings').select('*').in('status', ['Confirmed', 'Checked In'])
           ]);
+
+          console.log("🔥 THE ABSOLUTE TRUTH: FETCHED ROOMS:", roomsRes.data);
+          console.log("🔥 FETCH ERROR:", roomsRes.error);
+          console.log("🔥 LOCAL STORAGE ID WAS:", activeId);
+          
+          if (!roomsRes.data || roomsRes.data.length === 0) {
+              console.error("🚨 EMERGENCY TRUTH LOG: ZERO ROOMS FETCHED!", roomsRes.error);
+              alert("Housekeeping Database returned 0 rooms. Check console. ActiveID: " + activeId);
+          }
 
           if (roomsRes.data) setRooms(roomsRes.data);
           if (bookingsRes.data) setBookings(bookingsRes.data);
