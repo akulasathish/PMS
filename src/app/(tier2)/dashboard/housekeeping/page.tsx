@@ -6,7 +6,7 @@ import {
   Brush, Sparkles, Clock, CheckCircle2, UserCheck, 
   Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, Lock,
-  ChevronRight, Play, CheckCircle, ShieldCheck, AlertCircle
+  ChevronRight, Play, CheckCircle, ShieldCheck, AlertCircle, ShieldAlert
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -42,9 +42,17 @@ export default function HousekeepingTerminal() {
       const { data: prof } = await supabase.from('profiles').select('*').eq('id', auth.user.id).single();
       setUserProfile(prof);
 
-      const activeId = localStorage.getItem('pms_active_property');
+      let activeId = localStorage.getItem('pms_active_property');
       
-        if (activeId) {
+      if (!activeId) {
+         // Fallback 1: Property Access Table
+         const { data: acc } = await supabase.from('property_access').select('property_id').eq('user_id', auth.user.id);
+         if (acc && acc.length > 0) activeId = acc[0].property_id;
+         // Fallback 2: Profile Table
+         else if (prof?.property_id) activeId = prof.property_id;
+      }
+      
+      if (activeId) {
           const { data: prop } = await supabase.from('properties').select('*').eq('id', activeId).single();
           setProperty(prop);
 
@@ -67,6 +75,35 @@ export default function HousekeepingTerminal() {
   useEffect(() => {
     loadHousekeepingData();
   }, []);
+
+
+  // Global Realtime listener for ROOM status changes
+  useEffect(() => {
+    const activeId = localStorage.getItem('pms_active_property');
+    if (!activeId) return;
+
+    const roomChannel = supabase
+      .channel('rooms-sync-hk')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'rooms',
+          filter: 'property_id=eq.' + activeId
+        },
+        (payload) => {
+          setRooms((prevRooms) => 
+            prevRooms.map((r) => r.id === payload.new.id ? { ...r, status: payload.new.status } : r)
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(roomChannel);
+    };
+  }, [supabase]);
 
 
   const getGuestContext = (room: any): { label: string, color: string, condition: string } => {
@@ -126,14 +163,16 @@ export default function HousekeepingTerminal() {
 
   
   
-  const getFilteredRooms = () => {
-    if (activeTab === 'todo') return rooms.filter(r => r.status === 'Dirty');
-    if (activeTab === 'cleaning') return rooms.filter(r => r.status === 'Cleaning');
-    if (activeTab === 'inspect') return rooms.filter(r => r.status === 'Clean');
-    if (activeTab === 'stayovers') return rooms.filter(r => r.status === 'Occupied');
+  
+      const getFilteredRooms = () => {
+    if (activeTab === 'todo') return rooms.filter(r => r.status?.toLowerCase() === 'dirty');
+    if (activeTab === 'cleaning') return rooms.filter(r => r.status?.toLowerCase() === 'cleaning');
+    if (activeTab === 'inspect') return rooms.filter(r => r.status?.toLowerCase() === 'clean');
+    if (activeTab === 'stayovers') return rooms.filter(r => r.status?.toLowerCase() === 'occupied');
     if (activeTab === 'all') return rooms;
     return [];
   };
+
 
 
 
@@ -258,17 +297,25 @@ export default function HousekeepingTerminal() {
                 >
                   <div className="flex justify-between items-start mb-6">
                     <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="text-3xl font-black text-white group-hover:text-indigo-400 transition-colors tracking-tighter">#{room.room_number}</h4>
-                        <span className={"text-[8px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-tighter " + getGuestContext(room).color}>
-                           {getGuestContext(room).label}
-                        </span>
+                      <div className="flex items-center gap-2 mb-2">
+                        <h4 className="text-3xl font-black text-white tracking-tighter">#{room.room_number}</h4>
+                        
+                        {/* THE REQUESTED HOUSEKEEPING STATUS BADGES */}
+                        <div className="flex items-center gap-1">
+                          {room.status?.toLowerCase() === 'dirty' && <span className="bg-rose-500 text-white px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(244,63,94,0.4)]">Dirty</span>}
+                          {room.status?.toLowerCase() === 'available' && <span className="bg-emerald-500 text-white px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(16,185,129,0.4)]">Ready</span>}
+                          {room.status?.toLowerCase() === 'cleaning' && <span className="bg-amber-500 text-black px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(245,158,11,0.4)]">Cleaning</span>}
+                          {room.status?.toLowerCase() === 'clean' && <span className="bg-cyan-500 text-white px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(6,182,212,0.4)]">Inspect</span>}
+                          {room.status?.toLowerCase() === 'blocked' && <span className="bg-red-600 text-white px-2 py-1 rounded flex items-center gap-1 text-[9px] font-black uppercase tracking-widest animate-pulse shadow-[0_0_10px_rgba(220,38,38,0.6)]"><ShieldAlert size={10}/> Maintenance</span>}
+                          {room.status?.toLowerCase() === 'occupied' && <span className="bg-indigo-500 text-white px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(99,102,241,0.4)]">Occupied</span>}
+                        </div>
                       </div>
-                      <div className="flex flex-col gap-1 mt-1">
+
+                      <div className="flex flex-col gap-1">
+                        <span className={"text-[8px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-tighter w-fit " + getGuestContext(room).color}>
+                           Guest Context: {getGuestContext(room).label}
+                        </span>
                         <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">{room.type}</p>
-                        <p className="text-[9px] font-black text-indigo-500/80 uppercase tracking-widest italic flex items-center gap-1">
-                           <Sparkles size={10} /> {getGuestContext(room).condition}
-                        </p>
                       </div>
                     </div>
                     

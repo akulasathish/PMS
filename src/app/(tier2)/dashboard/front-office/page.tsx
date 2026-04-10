@@ -124,6 +124,34 @@ export default function FrontOfficeTerminal() {
     loadDashboardData();
   }, []);
 
+  // Global Realtime listener for ROOM status changes (Housekeeping Sync)
+  useEffect(() => {
+    if (!property?.id) return;
+
+    const roomChannel = supabase
+      .channel('rooms-sync')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'rooms',
+          filter: 'property_id=eq.' + property.id
+        },
+        (payload) => {
+          console.log("Realtime Room Update:", payload.new);
+          setRooms((prevRooms) => 
+            prevRooms.map((r) => r.id === payload.new.id ? { ...r, status: payload.new.status } : r)
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(roomChannel);
+    };
+  }, [property?.id, supabase]);
+
   const getBookingForRoom = (roomId: string) => {
     return bookings.find(b => b.room_id === roomId && (b.status === 'Confirmed' || b.status === 'Checked In'));
   };
@@ -690,22 +718,36 @@ export default function FrontOfficeTerminal() {
                     const booking = getBookingForRoom(room.id);
                     return (
                       <tr key={room.id} className="border-b border-white/5 hover:bg-white/[0.01]">
-                        <td className="p-4 border-r border-white/5 sticky left-0 bg-[#09090b] z-10">
-                          {canBlockRoom() ? (
-                            <button 
-                              onClick={() => handleBlockRoom(room)}
-                              disabled={actionLoading || (room.status !== 'Available' && room.status !== 'Blocked')}
-                              className={`text-sm font-bold transition-colors ${room.status === 'Blocked' ? 'text-rose-500 hover:text-rose-400' : 'text-white hover:text-rose-300'} disabled:opacity-50`}
-                            >
-                              {room.room_number} {room.status === 'Blocked' && <Lock size={10} className="inline ml-1" />}
-                            </button>
-                          ) : (
-                            <p className={`text-sm font-bold ${room.status === 'Blocked' ? 'text-rose-500' : 'text-white'}`}>
-                              {room.room_number} {room.status === 'Blocked' && <Lock size={10} className="inline ml-1" />}
-                            </p>
-                          )}
-                          <p className="text-[10px] text-zinc-500 uppercase mt-0.5">{room.type}</p>
-                        </td>
+                        <td className="p-4 border-r border-white/5 sticky left-0 bg-[#09090b] z-10 min-w-[120px] align-top">
+                            <div className="flex flex-col gap-2">
+                              <div className="flex items-center justify-between">
+                                {canBlockRoom() ? (
+                                  <button 
+                                    onClick={() => handleBlockRoom(room)}
+                                    disabled={actionLoading || (room.status !== 'Available' && room.status !== 'Blocked')}
+                                    className={`text-sm font-bold transition-colors ${room.status === 'Blocked' ? 'text-red-500 hover:text-red-400' : 'text-white hover:text-zinc-300'} disabled:opacity-50`}
+                                  >
+                                    {room.room_number}
+                                  </button>
+                                ) : (
+                                  <p className={`text-sm font-bold ${room.status === 'Blocked' ? 'text-red-500' : 'text-white'}`}>
+                                    {room.room_number}
+                                  </p>
+                                )}
+                              </div>
+                              
+                              {/* Housekeeping Badges (Requested Colors) */}
+                              <div className="flex flex-col gap-1 items-start">
+                                {room.status?.toLowerCase() === 'available' && <span className="bg-emerald-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(16,185,129,0.4)]">Ready</span>}
+                                {room.status?.toLowerCase() === 'dirty' && <span className="bg-rose-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(244,63,94,0.4)]">Dirty</span>}
+                                {room.status?.toLowerCase() === 'cleaning' && <span className="bg-amber-500 text-black px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(245,158,11,0.4)]">Cleaning</span>}
+                                {room.status?.toLowerCase() === 'clean' && <span className="bg-cyan-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(6,182,212,0.4)]">Inspect</span>}
+                                {room.status?.toLowerCase() === 'blocked' && <span className="bg-red-600 text-white px-2 py-0.5 rounded flex items-center gap-1 text-[9px] font-black uppercase tracking-widest animate-pulse shadow-[0_0_10px_rgba(220,38,38,0.6)]"><Lock size={10}/> Maint</span>}
+                                {room.status?.toLowerCase() === 'occupied' && <span className="bg-indigo-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(99,102,241,0.4)]">Occupied</span>}
+                              </div>
+                              <p className="text-[10px] text-zinc-500 uppercase font-medium">{room.type}</p>
+                            </div>
+                          </td>
                         {DAYS.map((_, idx) => (
                           <td key={idx} className="p-2 border-r border-white/5 relative h-20">
                             {booking && idx === 0 ? (
