@@ -64,7 +64,7 @@ export async function createBooking(formData: FormData) {
 
   // Revalidate the front-desk dashboard path
   revalidatePath('/dashboard/front-office');
-  revalidatePath('/(tier3)/dashboard/front-office', 'page');
+  revalidatePath('/dashboard/front-office', 'layout');
   
   return { success: true, bookingId: bookingData.id };
 }

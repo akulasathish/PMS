@@ -111,7 +111,6 @@ export async function getOwnersList() {
       full_name,
       role,
       property_id,
-      legacy_property:properties ( name ),
       property_access (
         property_id,
         properties ( name )
@@ -124,25 +123,8 @@ export async function getOwnersList() {
     return [];
   }
 
-  // Normalize the data so the frontend just sees a flat array of properties per owner
-  return data.map(owner => {
-    const assignedProps = [];
-    
-    // Legacy single-property assignment
-    const legacyProp = owner.legacy_property as any;
-    if (legacyProp && legacyProp.name) {
-      assignedProps.push({
-        property_id: owner.property_id,
-        properties: { name: legacyProp.name }
-      });
-    }
-
-    // New multi-property assignments
-    if (owner.property_access && Array.isArray(owner.property_access)) {
-      assignedProps.push(...owner.property_access);
-    }
-
-    // Return flattened structure
+  return (data || []).map(owner => {
+    const assignedProps = (owner.property_access as any[]) || [];
     return {
       ...owner,
       property_access: assignedProps
