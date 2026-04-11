@@ -6,6 +6,7 @@ import {
   Camera, PenTool, CheckCircle2, Loader2, ShieldCheck 
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { processGuestRegistration } from '@/app/actions/guest';
 
 interface GuestRegistrationFormProps {
   bookingId: string;
@@ -87,6 +88,9 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
     try {
       const fileExt = idPhoto.name.split('.').pop();
       const fileName = `${bookingId}_id.${fileExt}`;
+      
+      // Upload the ID Photo directly to storage (This bucket must be open to Anon, or the Action must handle it)
+      // Since it's a file, we send it from the client
       const { error: uploadError } = await supabase.storage
         .from('guest-ids')
         .upload(fileName, idPhoto, { upsert: true });
@@ -95,32 +99,17 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
 
       const signatureData = canvasRef.current.toDataURL('image/png');
 
-      // ATOMIC GUEST REGISTRATION: Insert into 'guests' and update 'bookings'
-      const { error: guestError } = await supabase
-        .from('guests')
-        .insert([{
-          booking_id: bookingId,
-          property_id: activePropertyId, // MANDATORY PROP
-          full_name: guestName,
-          email: guestEmail,
-          id_photo_url: fileName,
-          signature_url: signatureData
-        }]);
+      // Call the secure Server Action to bypass Postgres RLS for the anonymous guest
+      const result = await processGuestRegistration(
+        bookingId,
+        activePropertyId,
+        guestName,
+        guestEmail,
+        fileName,
+        signatureData
+      );
 
-      if (guestError) throw guestError;
-
-      const { error: updateError } = await supabase
-        .from('bookings')
-        .update({ 
-          id_verified: true,
-          id_photo_url: fileName,
-          signature_url: signatureData,
-          status: 'Confirmed'
-        })
-        .eq('id', bookingId)
-        .eq('property_id', activePropertyId); // MANDATORY RLS GUARD
-
-      if (updateError) throw updateError;
+      if (result.error) throw new Error(result.error);
       
       setStep(3);
     } catch (err: any) {
