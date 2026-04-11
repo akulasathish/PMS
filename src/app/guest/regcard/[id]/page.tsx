@@ -119,14 +119,28 @@ export default function GuestRegCard() {
       // 2. Capture Signature as DataURL
       const signatureData = canvasRef.current.toDataURL('image/png');
 
-      // 3. Update Booking Table
+      // 3. ATOMIC GUEST REGISTRATION: Insert into 'guests' and update 'bookings'
+      // We must explicitly include property_id for RLS compliance
+      const { error: guestError } = await supabase
+        .from('guests')
+        .insert([{
+          booking_id: bookingId,
+          property_id: booking.property_id, // Mandatory for RLS
+          full_name: booking.guest_name,
+          email: booking.guest_email,
+          id_photo_url: fileName,
+          signature_url: signatureData
+        }]);
+
+      if (guestError) throw guestError;
+
       const { error: updateError } = await supabase
         .from('bookings')
         .update({ 
           id_verified: true,
           id_photo_url: fileName,
           signature_url: signatureData,
-          status: 'Confirmed' // Ensure it's ready for check-in
+          status: 'Confirmed'
         })
         .eq('id', bookingId);
 
