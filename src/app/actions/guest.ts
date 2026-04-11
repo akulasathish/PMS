@@ -26,7 +26,7 @@ export async function processGuestRegistration(
       full_name: guestName,
       email: guestEmail,
       id_photo_url: fileName,
-      signature_url: signatureData
+      signature_url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/guest-ids/${signatureData}`
     }]);
 
   if (guestError) {
@@ -40,7 +40,7 @@ export async function processGuestRegistration(
     .update({ 
       id_verified: true,
       id_photo_url: fileName,
-      signature_url: signatureData,
+      signature_url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/guest-ids/${signatureData}`,
       status: 'Confirmed'
     })
     .eq('id', bookingId)

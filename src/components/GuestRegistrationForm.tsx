@@ -89,27 +89,75 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
       const fileExt = idPhoto.name.split('.').pop();
       const fileName = `${bookingId}_id.${fileExt}`;
       
-      // Upload the ID Photo directly to storage (This bucket must be open to Anon, or the Action must handle it)
-      // Since it's a file, we send it from the client
+      console.log("Step 1: Uploading Image...");
       const { error: uploadError } = await supabase.storage
         .from('guest-ids')
         .upload(fileName, idPhoto, { upsert: true });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+          console.error("❌ Step 1 Failed (Storage):", uploadError);
+          throw uploadError;
+      }
+      console.log("✅ Step 1 Completed.");
 
       const signatureData = canvasRef.current.toDataURL('image/png');
+      
+      // FIX: Payload Size Error. Upload signature to Storage first!
+      const sigFileName = `${bookingId}_sig.png`;
+      
+      // Convert base64 to Blob
+      const fetchResponse = await fetch(signatureData);
+      const blob = await fetchResponse.blob();
+      
+      const { error: sigUploadError } = await supabase.storage
+        .from('guest-ids')
+        .upload(sigFileName, blob, { upsert: true, contentType: 'image/png' });
 
-      // Call the secure Server Action to bypass Postgres RLS for the anonymous guest
+      if (sigUploadError) {
+          console.error("❌ Step 1.5 Failed (Signature Storage):", sigUploadError);
+          throw sigUploadError;
+      }
+      console.log("✅ Step 1.5 Completed.");
+
+      // FALLBACK: If activePropertyId is missing from props, try localStorage
+      let safePropertyId = activePropertyId;
+      if (!safePropertyId || safePropertyId === 'undefined') {
+         console.log("Prop missing. Trying localStorage fallback...");
+         safePropertyId = localStorage.getItem('pms_active_property') || '';
+      }
+
+      const guestDataWithPropertyId = {
+        booking_id: bookingId,
+        property_id: safePropertyId,
+        full_name: guestName,
+        email: guestEmail,
+        id_photo_url: fileName,
+        signature_url: signatureData
+      };
+      
+      alert("Sending Property ID: " + safePropertyId);
+      console.log("Step 2: Preparing to Save Guest & Update Booking via Server Action...");
+      console.log("SUBMITTING GUEST DATA:", guestDataWithPropertyId);
+      
+      if (!safePropertyId || safePropertyId === 'undefined') {
+          console.error("❌ Step 2 Failed: Missing safePropertyId");
+          throw new Error("CRITICAL RLS ERROR: The safePropertyId is missing entirely!");
+      }
+
       const result = await processGuestRegistration(
         bookingId,
-        activePropertyId,
+        safePropertyId,
         guestName,
         guestEmail,
         fileName,
-        signatureData
+        sigFileName // Pass the file name, not the massive base64 string
       );
 
-      if (result.error) throw new Error(result.error);
+      if (result.error) {
+          console.error("❌ Step 2 Failed (Server Action / DB):", result.error);
+          throw new Error(result.error);
+      }
+      console.log("✅ Step 2 Completed.");
       
       setStep(3);
     } catch (err: any) {
