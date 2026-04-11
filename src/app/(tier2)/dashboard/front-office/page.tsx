@@ -119,7 +119,7 @@ export default function FrontOfficeTerminal() {
         const executedRoomsRes = await finalRoomsQuery;
         
         // FIX: Add property_id filter to bookings to ensure we see our data
-        let bookingsQuery = supabase.from('bookings').select('*');
+        let bookingsQuery = supabase.from('bookings').select('*').eq('property_id', currentActiveId || '00000000-0000-0000-0000-000000000000');
         if (currentActiveId) {
           bookingsQuery = bookingsQuery.eq('property_id', currentActiveId);
         }
@@ -142,19 +142,19 @@ export default function FrontOfficeTerminal() {
                 realPropId = prof.property_id;
             }
             
-            if (realPropId) {
+            if (realPropId && realPropId !== activeId) { // ONLY reload if the ID actually changed!
                 console.log("🩹 Auto-Repair: Zombie ID detected. Erasing cache and rebooting app to:", realPropId);
                 localStorage.setItem('pms_active_property', realPropId);
                 window.location.reload(); // Force a hard reboot so React drops all corrupted state
                 return; // Stop rendering
             } else {
-               // They literally own zero properties
-               console.error("🚨 CRITICAL: User has NO properties assigned to them!");
+               console.log("Hotel legitimately has 0 rooms, or user has no properties.");
             }
         }
 
         setRooms(roomsRes.data || []);
-        setBookings(bookingsRes.data || []);      }
+        setBookings(bookingsRes.data || []);
+      }
     } catch (err) {
       console.error("Dashboard Load Error:", err);
     } finally {

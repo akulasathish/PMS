@@ -71,7 +71,7 @@ export default function HousekeepingTerminal() {
           }
 
           const executedRoomsRes = await finalRoomsQuery;
-          const executedBookingsRes = await supabase.from('bookings').select('*').in('status', ['Confirmed', 'Checked In']);
+          const executedBookingsRes = await supabase.from('bookings').select('*').eq('property_id', activeId).in('status', ['Confirmed', 'Checked In']);
 
           let roomsRes = executedRoomsRes;
           let bookingsRes = executedBookingsRes;
@@ -86,7 +86,7 @@ export default function HousekeepingTerminal() {
                   realPropId = prof.property_id;
               }
               
-              if (realPropId) {
+              if (realPropId && realPropId !== activeId) {
                   console.log("🩹 Auto-Repair: Zombie ID detected. Erasing cache and rebooting app to:", realPropId);
                   localStorage.setItem('pms_active_property', realPropId);
                   window.location.reload(); // Force a hard reboot so React drops all corrupted state
