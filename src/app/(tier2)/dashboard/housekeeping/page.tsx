@@ -118,15 +118,23 @@ export default function HousekeepingTerminal() {
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: '*', // Listen to ALL changes (UPDATE, INSERT, DELETE)
           schema: 'public',
           table: 'rooms',
           filter: 'property_id=eq.' + property.id
         },
         (payload) => {
-          setRooms((prevRooms) => 
-            prevRooms.map((r) => r.id === payload.new.id ? { ...r, status: payload.new.status } : r)
-          );
+          console.log("Housekeeping Realtime Sync:", payload.eventType, payload.new);
+          
+          if (payload.eventType === 'UPDATE') {
+            setRooms((prevRooms) => 
+              prevRooms.map((r) => r.id === payload.new.id ? { ...r, ...payload.new } : r)
+            );
+          } else if (payload.eventType === 'INSERT') {
+            setRooms((prevRooms) => [...prevRooms, payload.new]);
+          } else if (payload.eventType === 'DELETE') {
+            setRooms((prevRooms) => prevRooms.filter((r) => r.id !== payload.old.id));
+          }
         }
       )
       .subscribe();
@@ -134,7 +142,7 @@ export default function HousekeepingTerminal() {
     return () => {
       supabase.removeChannel(roomChannel);
     };
-  }, [supabase]);
+  }, [property?.id, supabase]);
 
 
   const getGuestContext = (room: any): { label: string, color: string, condition: string } => {

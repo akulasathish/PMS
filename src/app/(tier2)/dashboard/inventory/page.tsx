@@ -161,6 +161,42 @@ import {
 
     fetchData();
   }, [supabase]);
+
+  // Global Realtime listener for ROOM status changes
+  React.useEffect(() => {
+    if (!propertyId) return;
+
+    const roomChannel = supabase
+      .channel('rooms-sync-inventory')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen to ALL changes (UPDATE, INSERT, DELETE)
+          schema: 'public',
+          table: 'rooms',
+          filter: 'property_id=eq.' + propertyId
+        },
+        (payload) => {
+          console.log("Inventory Realtime Sync:", payload.eventType, payload.new);
+          
+          if (payload.eventType === 'UPDATE') {
+            setRooms((prevRooms) => 
+              prevRooms.map((r) => r.id === payload.new.id ? { ...r, ...payload.new } : r)
+            );
+          } else if (payload.eventType === 'INSERT') {
+            setRooms((prevRooms) => [...prevRooms, payload.new]);
+          } else if (payload.eventType === 'DELETE') {
+            setRooms((prevRooms) => prevRooms.filter((r) => r.id !== payload.old.id));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(roomChannel);
+    };
+  }, [propertyId, supabase]);
+
   const switchProperty = (propId: string) => {
     localStorage.removeItem('pms_active_property');
     localStorage.setItem('pms_active_property', propId);

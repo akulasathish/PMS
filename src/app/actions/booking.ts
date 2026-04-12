@@ -81,23 +81,43 @@ export async function checkInGuest(bookingId: string) {
     return { error: 'Unauthorized. Only authorized personnel can check-in guests.' };
   }
 
-  // Update the booking status to 'Checked In'
-  const { error } = await supabaseAdmin
+  // Fetch the booking to get the roomId and propertyId
+  const { data: booking, error: fetchError } = await supabaseAdmin
     .from('bookings')
-    .update({ status: 'Checked In' })
-    .eq('id', bookingId);
+    .select('room_id, property_id')
+    .eq('id', bookingId)
+    .single();
 
-  if (error) {
-    console.error("Failed to check-in guest:", error);
-    return { error: `Database Error: ${error.message}` };
+  if (fetchError || !booking) {
+    console.error("Failed to fetch booking for check-in:", fetchError);
+    return { error: "Booking not found." };
+  }
+
+  // Update the booking status to 'Checked In' AND mark the room as 'Occupied'
+  const [bookingRes, roomRes] = await Promise.all([
+    supabaseAdmin
+      .from('bookings')
+      .update({ status: 'Checked In' })
+      .eq('id', bookingId),
+    supabaseAdmin
+      .from('rooms')
+      .update({ status: 'Occupied' })
+      .eq('id', booking.room_id)
+      .eq('property_id', booking.property_id)
+  ]);
+
+  if (bookingRes.error || roomRes.error) {
+    console.error("Check-in Error:", bookingRes.error || roomRes.error);
+    return { error: `Check-in Failed: ${bookingRes.error?.message || roomRes.error?.message}` };
   }
 
   // Revalidate the tape chart so the status changes instantly
   revalidatePath('/dashboard/front-office');
   revalidatePath('/dashboard/front-office', 'page');
+  revalidatePath('/dashboard/housekeeping');
 
   return { success: true };
-  }
+}
 
   /**
   * Reset guest identity (Void the ID capture) to allow retaking.
