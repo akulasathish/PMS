@@ -15,9 +15,9 @@ export async function getRevenueData(propertyId: string) {
   }
 
   // Ensure dates are string formatted and parse numerics correctly for the frontend chart
-  const formattedData = data.map((row: any) => ({
+  const formattedData = data.map((row: { daily_date: string; revenue: string | number }) => ({
     date: row.daily_date,
-    revenue: parseFloat(row.revenue) || 0
+    revenue: parseFloat(row.revenue as string) || 0
   }))
 
   return { success: true, data: formattedData }

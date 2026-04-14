@@ -4,22 +4,39 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Loader2 } from 'lucide-react';
+import Image from 'next/image';
+
+interface BookingData {
+  id: string;
+  guest_name: string;
+  guest_address?: string;
+  id_verified: boolean;
+  id_photo_url?: string;
+  signature_url?: string;
+  check_in: string;
+  check_out: string;
+  room_id?: string;
+  properties: {
+    name: string;
+    gst_number?: string;
+  };
+}
 
 export default function PrintRegCard() {
   const { id } = useParams();
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<BookingData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const supabase = createClient();
 
   useEffect(() => {
     async function fetchData() {
-      const { data: booking, error } = await supabase
+      const { data: booking } = await supabase
         .from('bookings')
         .select('*, properties(*)')
         .eq('id', id)
         .single();
       
-      if (booking) setData(booking);
+      if (booking) setData(booking as BookingData);
       setIsLoading(false);
       
       // Auto-trigger print dialog after data loads
@@ -30,7 +47,7 @@ export default function PrintRegCard() {
       }
     }
     fetchData();
-  }, [id]);
+  }, [id, supabase]);
 
   if (isLoading) return <div className="flex items-center justify-center min-h-screen"><Loader2 className="animate-spin" /></div>;
   if (!data) return <div className="p-10 text-center">Registration Card Not Found.</div>;
@@ -100,18 +117,20 @@ export default function PrintRegCard() {
         <div className="space-y-4">
            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] border-l-4 border-black pl-3 mb-4">Identity Verification Proof</h3>
            <div className="grid grid-cols-1 gap-6">
-              <div className="aspect-[3/2] w-full max-w-[300px] border-2 border-black/10 rounded-lg overflow-hidden flex items-center justify-center bg-zinc-50">
+              <div className="aspect-[3/2] w-full max-w-[300px] border-2 border-black/10 rounded-lg overflow-hidden flex items-center justify-center bg-zinc-50 relative">
                 {data.id_photo_url ? (
-                  <img 
+                  <Image 
                     src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/guest-ids/${data.id_photo_url}`} 
-                    className="w-full h-full object-cover grayscale contrast-125" 
+                    className="object-cover grayscale contrast-125" 
                     alt="ID Proof" 
+                    fill
+                    sizes="(max-width: 768px) 100vw, 300px"
                   />
                 ) : (
                   <p className="text-[10px] font-black text-zinc-300 uppercase tracking-widest italic">Physical ID Scan Required</p>
                 )}
               </div>
-              <p className="text-[8px] text-zinc-400 font-bold uppercase italic mt-1">* This image is a digital capture of the guest's original identity document.</p>
+              <p className="text-[8px] text-zinc-400 font-bold uppercase italic mt-1">* This image is a digital capture of the guest&apos;s original identity document.</p>
            </div>
         </div>
 
@@ -120,8 +139,8 @@ export default function PrintRegCard() {
         <div className="w-1/2">
           <p className="text-[9px] font-black uppercase text-zinc-400 mb-4">Guest Digital Signature</p>
           {data.signature_url ? (
-            <div className="bg-zinc-50 border border-black/5 p-2 rounded inline-block">
-              <img src={data.signature_url} className="max-h-24 grayscale contrast-125" alt="Signature" />
+            <div className="bg-zinc-50 border border-black/5 p-2 rounded inline-block relative h-24 w-64">
+              <Image src={data.signature_url} className="object-contain grayscale contrast-125" alt="Signature" fill sizes="256px" />
             </div>
           ) : (
              <div className="h-24 w-64 border-b-2 border-dotted border-black/20 flex items-end pb-2">

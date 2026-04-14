@@ -4,9 +4,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard,
-  BookOpen,
   DoorOpen,
-  DollarSign,
   Users,
   Settings,
   Building2,
@@ -26,7 +24,8 @@ import {
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { addStaff, getRoleTemplates, saveRoleTemplate, revokeStaffAccess } from '@/app/actions/staff';
+import { addStaff, getRoleTemplates, revokeStaffAccess } from '@/app/actions/staff';
+import { UserProfile, Property } from '@/lib/types';
 
 
 const NAV_ITEMS = [
@@ -44,23 +43,30 @@ const GlassCard = ({ children, className = "" }: { children: React.ReactNode, cl
   </div>
 );
 
+interface RoleTemplate {
+  id: string;
+  name: string;
+  permissions: Record<string, Record<string, string>>;
+  property_id?: string | null;
+}
+
 export default function StaffManagement() {
   const [isLoading, setIsLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState('');
   const [staffCredentials, setStaffCredentials] = useState<{email: string, password: string} | null>(null);
   
-  const [staffList, setStaffList] = useState<any[]>([]);
-  const [property, setProperty] = useState<any | null>(null);
-  const [userProfile, setUserProfile] = useState<any>(null);
+  const [staffList, setStaffList] = useState<UserProfile[]>([]);
+  const [property, setProperty] = useState<Property | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [accessiblePropsList, setAccessiblePropsList] = useState<{id: string, name: string}[]>([]);
   const [showPropertyDropdown, setShowPropertyDropdown] = useState(false);
 
   // IAM Architect State
-  const [templates, setTemplates] = useState<any[]>([]);
-  const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
-  const [permissionsMatrix, setPermissionsMatrix] = useState<any>({
-    front_office: 'none', housekeeping: 'none', analytics: 'none', inventory: 'none', staff_management: 'none'
+  const [templates, setTemplates] = useState<RoleTemplate[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<RoleTemplate | null>(null);
+  const [permissionsMatrix, setPermissionsMatrix] = useState<Record<string, Record<string, string>>>({
+    front_office: {}, housekeeping: {}, analytics: {}, inventory: {}, staff_management: {}
   });
 
   const supabase = createClient();
@@ -77,7 +83,7 @@ export default function StaffManagement() {
 
         // Fetch user profile for RBAC permissions
         const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-        setUserProfile(prof);
+        setUserProfile(prof as UserProfile);
 
         const { data: accessibleProperties } = await supabase
           .from('property_access')
@@ -91,7 +97,7 @@ export default function StaffManagement() {
         let parsedPropsList: {id: string, name: string}[] = [];
         
         if (accessibleProperties && accessibleProperties.length > 0) {
-          parsedPropsList = accessibleProperties.map((p: any) => p.properties);
+          parsedPropsList = (accessibleProperties as unknown as { properties: { id: string, name: string } }[]).map((p) => p.properties).filter(Boolean);
           setAccessiblePropsList(parsedPropsList);
           
           // Try to get saved property from localStorage
@@ -112,7 +118,7 @@ export default function StaffManagement() {
           if (activePropertyId) {
             const { data: fallbackProp } = await supabase.from('properties').select('id, name').eq('id', activePropertyId).single();
             if (fallbackProp) {
-              setAccessiblePropsList([fallbackProp]);
+              setAccessiblePropsList([fallbackProp as {id: string, name: string}]);
             }
           }
         }
@@ -125,16 +131,16 @@ export default function StaffManagement() {
             .single();
 
           if (propData) {
-            setProperty(propData);
+            setProperty(propData as Property);
 
-            if (prof && (prof.role === 'owner' || prof.role === 'admin' || (prof.permissions && prof.permissions.staff_management !== 'none'))) {
+            if (prof && (prof.role === 'owner' || prof.role === 'admin' || (prof.permissions && (prof.permissions as Record<string, Record<string, string> | string>).staff_management !== 'none'))) {
               const { data: staffData } = await supabase
                 .from('profiles')
                 .select('*')
                 .eq('property_id', activePropertyId)
                 .in('role', ['staff', 'Guest Journey', 'Night Auditor', 'Room Attendant', 'Supervisor']);
                 
-              if (staffData) setStaffList(staffData);
+              if (staffData) setStaffList(staffData as UserProfile[]);
             }
 
             // Fetch Role Templates for IAM Architect
@@ -193,7 +199,7 @@ const handleAddStaff = async (formData: FormData) => {
 
 const [saveTemplateName, setSaveTemplateName] = useState('');
 const [isSavingTemplate, setIsSavingTemplate] = useState(false);
-const [staffToDelete, setStaffToDelete] = useState<any>(null);
+const [staffToDelete, setStaffToDelete] = useState<UserProfile | null>(null);
 const [isDeleting, setIsDeleting] = useState(false);
 
 const FEATURE_MAP = {  front_office: {
@@ -238,7 +244,7 @@ const FEATURE_MAP = {  front_office: {
 };
 
 const handlePermissionChange = (module: string, feature: string, level: string) => {
-  setPermissionsMatrix((prev: any) => ({
+  setPermissionsMatrix((prev) => ({
     ...prev,
     [module]: {
       ...(prev[module] || {}),
@@ -350,7 +356,6 @@ const handleSaveTemplate = async () => {
           <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-[0.2em] px-3 mb-3">Navigation</p>
           {NAV_ITEMS.map((item) => {
             const locked = !hasAccess(item.module);
-            if (isLoading) return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
 
   return (
               <Link
@@ -547,7 +552,6 @@ const handleSaveTemplate = async () => {
                           <div className="space-y-1.5 pl-3 border-l-2 border-white/5">
                             {modData.features.map(feat => {
                               const currentLevel = (permissionsMatrix[modKey] && permissionsMatrix[modKey][feat.key]) || 'none';
-                              if (isLoading) return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
 
   return (
                                 <div key={feat.key} className="flex items-center justify-between bg-zinc-900/30 p-2 rounded-lg">
@@ -555,7 +559,6 @@ const handleSaveTemplate = async () => {
                                   <div className="flex bg-black/50 rounded-md p-0.5 border border-white/5">
                                     {['full', 'read', 'none'].map((level) => {
                                       const isActive = currentLevel === level;
-                                      if (isLoading) return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
 
   return (
                                         <button

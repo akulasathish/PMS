@@ -1,20 +1,8 @@
 'use server';
 
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { createClient as createSSRClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
-
-// Initialize Supabase admin client
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-);
 
 /**
  * Provision a new Owner and assign them to properties
@@ -34,6 +22,8 @@ export async function provisionOwner(formData: FormData) {
   if (!email || !fullName || propertyIds.length === 0) {
     return { error: 'Email, Full Name, and at least one Property are required.' };
   }
+
+  const supabaseAdmin = getSupabaseAdmin();
 
   // 1. Generate a temporary password
   const tempPassword = Math.random().toString(36).slice(-10) + 'A1!';
@@ -103,6 +93,7 @@ export async function provisionOwner(formData: FormData) {
  * Fetch all owners and their assigned properties
  */
 export async function getOwnersList() {
+  const supabaseAdmin = getSupabaseAdmin();
   const { data, error } = await supabaseAdmin
     .from('profiles')
     .select(`
@@ -124,7 +115,7 @@ export async function getOwnersList() {
   }
 
   return (data || []).map(owner => {
-    const assignedProps = (owner.property_access as any[]) || [];
+    const assignedProps = (owner.property_access as unknown as { property_id: string; properties: { name: string } | null }[]) || [];
     return {
       ...owner,
       property_access: assignedProps
@@ -136,6 +127,7 @@ export async function getOwnersList() {
  * Fetch all properties for the Admin dropdown
  */
 export async function getAdminProperties() {
+  const supabaseAdmin = getSupabaseAdmin();
   const { data, error } = await supabaseAdmin
     .from('properties')
     .select('*')

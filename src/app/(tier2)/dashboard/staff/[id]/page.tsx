@@ -4,14 +4,15 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ArrowLeft, Search, Save, Trash2, 
-  ShieldCheck, Loader2, ShieldAlert,
-  Mail, Building2, Code, Settings,
-  Activity, CheckCircle2, X
+  Loader2, ShieldAlert,
+  Building2, Code, Settings,
+  Activity
 } from 'lucide-react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { updateStaffPermissions, revokeStaffAccess } from '@/app/actions/staff';
+import { UserProfile } from '@/lib/types';
 
 const FEATURE_MAP = {
   front_office: {
@@ -67,6 +68,12 @@ const FEATURE_MAP = {
   }
 };
 
+interface StaffWithProperty extends UserProfile {
+  properties?: {
+    name: string;
+  };
+}
+
 export default function StaffProfile() {
   const params = useParams();
   const staffId = params.id as string;
@@ -78,30 +85,30 @@ export default function StaffProfile() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'matrix' | 'json'>('matrix');
-  const [staff, setStaff] = useState<any>(null);
-  const [permissions, setPermissions] = useState<any>({});
+  const [staff, setStaff] = useState<StaffWithProperty | null>(null);
+  const [permissions, setPermissions] = useState<Record<string, Record<string, string>>>({});
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   useEffect(() => {
     async function loadStaff() {
       setIsLoading(true);
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('profiles')
         .select('*, properties(name)')
         .eq('id', staffId)
         .single();
       
       if (data) {
-        setStaff(data);
+        setStaff(data as unknown as StaffWithProperty);
         setPermissions(data.permissions || {});
       }
       setIsLoading(false);
     }
     loadStaff();
-  }, [staffId]);
+  }, [staffId, supabase]);
 
   const handleLevelChange = (modKey: string, featKey: string, level: string) => {
-    setPermissions((prev: any) => ({
+    setPermissions((prev: Record<string, Record<string, string>>) => ({
       ...prev,
       [modKey]: {
         ...(prev[modKey] || {}),
@@ -262,7 +269,7 @@ export default function StaffProfile() {
                     <textarea 
                       value={JSON.stringify(permissions, null, 2)}
                       onChange={(e) => {
-                        try { setPermissions(JSON.parse(e.target.value)); } catch(e) {}
+                        try { setPermissions(JSON.parse(e.target.value)); } catch { /* ignore parse error */ }
                       }}
                       className="w-full h-[400px] bg-transparent text-indigo-300 focus:outline-none scrollbar-hide resize-none"
                     />

@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Camera, PenTool, CheckCircle2, Loader2, ShieldCheck 
 } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
+import Image from 'next/image';
 import { processGuestRegistration } from '@/app/actions/guest';
 
 interface GuestRegistrationFormProps {
@@ -25,7 +25,6 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const supabase = createClient();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -39,7 +38,7 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
     }
   };
 
-  const startDrawing = (e: any) => {
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     setIsDrawing(true);
     draw(e);
   };
@@ -53,7 +52,7 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
     }
   };
 
-  const draw = (e: any) => {
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     if (!isDrawing || !canvasRef.current) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
@@ -64,8 +63,8 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
     ctx.strokeStyle = '#6366f1';
 
     const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX || e.touches[0].clientX) - rect.left;
-    const y = (e.clientY || e.touches[0].clientY) - rect.top;
+    const x = ('clientX' in e ? e.clientX : e.touches[0].clientX) - rect.left;
+    const y = ('clientY' in e ? e.clientY : e.touches[0].clientY) - rect.top;
 
     ctx.lineTo(x, y);
     ctx.stroke();
@@ -86,38 +85,10 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
     setIsSubmitting(true);
     
     try {
-      const fileExt = idPhoto.name.split('.').pop();
-      const fileName = `${bookingId}_id.${fileExt}`;
-      
-      console.log("Step 1: Uploading Image...");
-      const { error: uploadError } = await supabase.storage
-        .from('guest-ids')
-        .upload(fileName, idPhoto, { upsert: true });
-
-      if (uploadError) {
-          console.error("❌ Step 1 Failed (Storage):", uploadError);
-          throw uploadError;
-      }
-      console.log("✅ Step 1 Completed.");
-
+      // Convert signature base64 to Blob
       const signatureData = canvasRef.current.toDataURL('image/png');
-      
-      // FIX: Payload Size Error. Upload signature to Storage first!
-      const sigFileName = `${bookingId}_sig.png`;
-      
-      // Convert base64 to Blob
       const fetchResponse = await fetch(signatureData);
-      const blob = await fetchResponse.blob();
-      
-      const { error: sigUploadError } = await supabase.storage
-        .from('guest-ids')
-        .upload(sigFileName, blob, { upsert: true, contentType: 'image/png' });
-
-      if (sigUploadError) {
-          console.error("❌ Step 1.5 Failed (Signature Storage):", sigUploadError);
-          throw sigUploadError;
-      }
-      console.log("✅ Step 1.5 Completed.");
+      const signatureBlob = await fetchResponse.blob();
 
       // FALLBACK: If activePropertyId is missing from props, try localStorage
       let safePropertyId = activePropertyId;
@@ -125,43 +96,37 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
          console.log("Prop missing. Trying localStorage fallback...");
          safePropertyId = localStorage.getItem('pms_active_property') || '';
       }
-
-      const guestDataWithPropertyId = {
-        booking_id: bookingId,
-        property_id: safePropertyId,
-        full_name: guestName,
-        email: guestEmail,
-        id_photo_url: fileName,
-        signature_url: signatureData
-      };
-      
-      alert("Sending Property ID: " + safePropertyId);
-      console.log("Step 2: Preparing to Save Guest & Update Booking via Server Action...");
-      console.log("SUBMITTING GUEST DATA:", guestDataWithPropertyId);
       
       if (!safePropertyId || safePropertyId === 'undefined') {
           console.error("❌ Step 2 Failed: Missing safePropertyId");
-          throw new Error("CRITICAL RLS ERROR: The safePropertyId is missing entirely!");
+          throw new Error("CRITICAL ERROR: The active property ID is missing!");
       }
 
-      const result = await processGuestRegistration(
-        bookingId,
-        safePropertyId,
-        guestName,
-        guestEmail,
-        fileName,
-        sigFileName // Pass the file name, not the massive base64 string
-      );
+      console.log("Preparing to Save Guest & Upload files via Server Action...");
+      
+      const formData = new FormData();
+      formData.append('bookingId', bookingId);
+      formData.append('propertyId', safePropertyId);
+      formData.append('guestName', guestName);
+      formData.append('guestEmail', guestEmail);
+      formData.append('idPhoto', idPhoto);
+      formData.append('signature', signatureBlob, 'signature.png');
+
+      const result = await processGuestRegistration(formData);
 
       if (result.error) {
-          console.error("❌ Step 2 Failed (Server Action / DB):", result.error);
+          console.error("❌ Submission Failed (Server Action):", result.error);
           throw new Error(result.error);
       }
-      console.log("✅ Step 2 Completed.");
+      console.log("✅ Submission Completed.");
       
       setStep(3);
-    } catch (err: any) {
-      alert("Submission failed: " + err.message);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        alert("Submission failed: " + err.message);
+      } else {
+        alert("Submission failed: An unknown error occurred");
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -181,13 +146,13 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
             <h2 className="text-sm font-bold text-indigo-400 flex items-center gap-2">
               <ShieldCheck size={18} /> Identity Verification
             </h2>
-            <p className="text-[11px] text-zinc-400 mt-1">Please provide a clear photo of your Aadhar, Passport, or Driver's License.</p>
+            <p className="text-[11px] text-zinc-400 mt-1">Please provide a clear photo of your Aadhar, Passport, or Driver&apos;s License.</p>
           </div>
 
           <div className="relative group">
-            <div className={`aspect-[3/2] rounded-3xl border-2 border-dashed flex flex-col items-center justify-center transition-all ${idPreview ? 'border-emerald-500/50' : 'border-white/10'}`}>
+            <div className={`aspect-[3/2] rounded-3xl border-2 border-dashed flex flex-col items-center justify-center transition-all overflow-hidden relative ${idPreview ? 'border-emerald-500/50' : 'border-white/10'}`}>
               {idPreview ? (
-                <img src={idPreview} className="w-full h-full object-cover rounded-[22px]" alt="ID Preview" />
+                <Image src={idPreview} alt="ID Preview" fill className="object-cover rounded-[22px]" />
               ) : (
                 <>
                   <Camera size={32} className="text-zinc-700 mb-2" />
@@ -225,7 +190,7 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
             <h2 className="text-sm font-bold text-indigo-400 flex items-center justify-center gap-2">
               <PenTool size={18} /> Sign Registration Card
             </h2>
-            <p className="text-[11px] text-zinc-400 mt-1">By signing, you agree to the hotel's terms and conditions.</p>
+            <p className="text-[11px] text-zinc-400 mt-1">By signing, you agree to the hotel&apos;s terms and conditions.</p>
           </div>
 
           <div className="bg-white rounded-3xl overflow-hidden touch-none shadow-2xl">

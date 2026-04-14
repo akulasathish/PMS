@@ -1,17 +1,22 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Brush, Sparkles, Clock, CheckCircle2, UserCheck, 
   Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, Lock,
-  ChevronRight, Play, CheckCircle, ShieldCheck, AlertCircle, ShieldAlert
+  Play, CheckCircle, ShieldCheck, ShieldAlert
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { startCleaning, finishCleaning, inspectRoom } from '@/app/actions/housekeeping';
+import { Property, Room, Booking, UserProfile } from '@/lib/types';
+
+interface RoomWithProfile extends Room {
+  profiles?: { full_name: string };
+  cleaning_started_at?: string;
+}
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Overview", href: "/dashboard", active: false, module: 'analytics' },
@@ -23,17 +28,17 @@ const NAV_ITEMS = [
 ];
 
 export default function HousekeepingTerminal() {
-  const [rooms, setRooms] = useState<any[]>([]);
-  const [bookings, setBookings] = useState<any[]>([]);
+  const [rooms, setRooms] = useState<RoomWithProfile[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [property, setProperty] = useState<any>(null);
-  const [userProfile, setUserProfile] = useState<any>(null);
+  const [property, setProperty] = useState<Property | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [activeTab, setActiveTab] = useState<'todo' | 'cleaning' | 'inspect' | 'stayovers' | 'all'>('todo');
   
   const supabase = createClient();
 
-  const loadHousekeepingData = async () => {
+  const loadHousekeepingData = useCallback(async () => {
     setIsLoading(true);
     try {
       const { data: auth } = await supabase.auth.getUser();
@@ -73,8 +78,8 @@ export default function HousekeepingTerminal() {
           const executedRoomsRes = await finalRoomsQuery;
           const executedBookingsRes = await supabase.from('bookings').select('*').eq('property_id', activeId).in('status', ['Confirmed', 'Checked In']);
 
-          let roomsRes = executedRoomsRes;
-          let bookingsRes = executedBookingsRes;
+          const roomsRes = executedRoomsRes;
+          const bookingsRes = executedBookingsRes;
 
           if (!roomsRes.data || roomsRes.data.length === 0) {
               console.error("🚨 EMERGENCY TRUTH LOG: ZERO ROOMS FETCHED FOR PROPERTY!", activeId);
@@ -102,11 +107,11 @@ export default function HousekeepingTerminal() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [supabase]);
 
   useEffect(() => {
     loadHousekeepingData();
-  }, []);
+  }, [loadHousekeepingData]);
 
 
   // Global Realtime listener for ROOM status changes
@@ -131,7 +136,7 @@ export default function HousekeepingTerminal() {
               prevRooms.map((r) => r.id === payload.new.id ? { ...r, ...payload.new } : r)
             );
           } else if (payload.eventType === 'INSERT') {
-            setRooms((prevRooms) => [...prevRooms, payload.new]);
+            setRooms((prevRooms) => [...prevRooms, payload.new as RoomWithProfile]);
           } else if (payload.eventType === 'DELETE') {
             setRooms((prevRooms) => prevRooms.filter((r) => r.id !== payload.old.id));
           }
@@ -145,7 +150,7 @@ export default function HousekeepingTerminal() {
   }, [property?.id, supabase]);
 
 
-  const getGuestContext = (room: any): { label: string, color: string, condition: string } => {
+  const getGuestContext = (room: RoomWithProfile): { label: string, color: string, condition: string } => {
     const today = new Date().toISOString().substring(0, 10);
     const booking = bookings.find(b => b.room_id === room.id);
     
@@ -224,10 +229,14 @@ export default function HousekeepingTerminal() {
     if (!userProfile) return true;
     if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
     const perms = userProfile.permissions || {};
-    return perms[moduleName] && perms[moduleName] !== 'deny';
+    const modPerms = perms[moduleName];
+    if (!modPerms || Object.values(modPerms).every(v => v === 'none')) {
+      return false;
+    }
+    return true;
   };
 
-  const calculateDuration = (startTime: string) => {
+  const calculateDuration = (startTime: string | undefined) => {
     if (!startTime) return '0m';
     const start = new Date(startTime).getTime();
     const now = new Date().getTime();
@@ -298,7 +307,7 @@ export default function HousekeepingTerminal() {
             ].map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => setActiveTab(tab.id as 'todo' | 'cleaning' | 'inspect' | 'stayovers' | 'all')}
                 className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
                   activeTab === tab.id 
                     ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' 
@@ -324,7 +333,7 @@ export default function HousekeepingTerminal() {
                   <CheckCircle2 size={48} className="text-zinc-800 mb-4" />
                   <p className="text-zinc-500 font-bold uppercase tracking-[0.2em] text-[10px]">No Rooms in this queue</p>
                 </motion.div>
-              ) : getFilteredRooms().map((room, i) => (
+              ) : getFilteredRooms().map((room) => (
                 <motion.div
                   key={room.id}
                   layout

@@ -1,22 +1,10 @@
 'use server';
 
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { createClient as createSSRClient } from '@/lib/supabase/server';
 
 // Revalidate path is needed to refresh the admin dashboard
 import { revalidatePath } from 'next/cache';
-
-// Initialize the Supabase admin client using the service role key to bypass RLS and use Auth Admin API
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-);
 
 /**
  * Register a new property and owner
@@ -44,6 +32,8 @@ export async function registerProperty(formData: FormData) {
     console.log("-> FAILED: Missing fields.");
     return { error: 'Property Name and Owner Email are required.' };
   }
+
+  const supabaseAdmin = getSupabaseAdmin();
 
   // 1. Generate a dummy password (e.g. 8 random characters)
   const dummyPassword = Math.random().toString(36).slice(-8);
@@ -127,6 +117,7 @@ export async function togglePropertyStatus(propertyId: string, currentStatus: st
     return { error: 'Unauthorized. Only admins can toggle property status.' };
   }
 
+  const supabaseAdmin = getSupabaseAdmin();
   const newStatus = currentStatus === 'Active' ? 'Suspended' : 'Active';
 
   const { error } = await supabaseAdmin
@@ -157,6 +148,8 @@ export async function deleteProperty(propertyId: string) {
   if (!user || user.user_metadata?.role !== 'admin') {
     return { error: 'Unauthorized. Only admins can delete properties.' };
   }
+
+  const supabaseAdmin = getSupabaseAdmin();
 
   // 1. Find all users associated with this property
   const { data: profiles, error: fetchError } = await supabaseAdmin
@@ -206,6 +199,7 @@ export async function updatePropertyGST(propertyId: string, gstNumber: string, s
     return { error: 'Unauthorized.' };
   }
 
+  const supabaseAdmin = getSupabaseAdmin();
   const { error } = await supabaseAdmin
     .from('properties')
     .update({ gst_number: gstNumber, state_code: stateCode })

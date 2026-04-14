@@ -4,16 +4,13 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard,
-  BookOpen,
   DoorOpen,
-  DollarSign,
   Users,
   Settings,
   Building2,
   LogOut,
   Search,
   Bell,
-  BarChart3,
   Plus,
   Loader2,
   ShieldAlert,
@@ -22,45 +19,29 @@ import {
   Brush,
   Lock,
   Trash2
-  } from 'lucide-react';
-  import { useRouter } from 'next/navigation';
-  import Link from 'next/link';
-  import { createClient } from '@/lib/supabase/client';
-  import { addRoom, deleteRoom } from '@/app/actions/inventory';
+} from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { createClient } from '@/lib/supabase/client';
+import { addRoom, deleteRoom } from '@/app/actions/inventory';
+import { Property, Room, UserProfile } from '@/lib/types';
 
-
-  const NAV_ITEMS = [
+const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Overview", href: "/dashboard", active: false, module: 'analytics' },
   { icon: Activity, label: "Front Office", href: "/dashboard/front-office", active: false, module: 'front_office' },
   { icon: Brush, label: "Housekeeping", href: "/dashboard/housekeeping", active: false, module: 'housekeeping' },
   { icon: DoorOpen, label: "Inventory", href: "/dashboard/inventory", active: true, module: 'inventory' },
   { icon: Users, label: "Staff", href: "/dashboard/staff", active: false, module: 'staff_management' },
   { icon: Settings, label: "Settings", href: "#", active: false, module: 'settings' },
-  ];
+];
 
-  interface Property {
-  id: string;
-  name: string;
-  tier: string;
-  location?: string;
-  }
-
-  interface Room {
-  id: string;
-  property_id: string;
-  room_number: string;
-  type: string;
-  status: string;
-  }
-
-  // --- PREMIUM UI COMPONENTS ---
-  const GlassCard = ({ children, className = "" }: { children: React.ReactNode, className?: string }) => (
+const GlassCard = ({ children, className = "" }: { children: React.ReactNode, className?: string }) => (
   <div className={`bg-zinc-900/60 backdrop-blur-xl border border-white/[0.06] rounded-2xl p-6 hover:border-white/[0.12] transition-all duration-500 ${className}`}>
     {children}
   </div>
-  );
+);
 
-  export default function Tier2Inventory() {
+export default function Tier2Inventory() {
   const [isLoading, setIsLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState('');
@@ -68,9 +49,9 @@ import {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [property, setProperty] = useState<Property | null>(null);
   const [propertyId, setPropertyId] = useState<string | null>(null);
-  const [accessiblePropsList, setAccessiblePropsList] = useState<{id: string, name: string}[]>([]);
+  const [accessiblePropsList, setAccessiblePropsList] = useState<{ id: string, name: string }[]>([]);
   const [showPropertyDropdown, setShowPropertyDropdown] = useState(false);
-  const [userProfile, setUserProfile] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
   const supabase = createClient();
   const router = useRouter();
@@ -84,11 +65,9 @@ import {
 
         if (!user) return;
 
-        // Fetch user profile for RBAC
         const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-        setUserProfile(prof);
+        setUserProfile(prof as UserProfile);
 
-        // Fetch the owner's profile to get their specific property_id
         const { data: accessibleProperties } = await supabase
           .from('property_access')
           .select(`
@@ -98,13 +77,12 @@ import {
           .eq('user_id', user.id);
 
         let activePropertyId = null;
-        let parsedPropsList: {id: string, name: string}[] = [];
+        let parsedPropsList: { id: string, name: string }[] = [];
 
         if (accessibleProperties && accessibleProperties.length > 0) {
-          parsedPropsList = accessibleProperties.map((p: any) => p.properties);
+          parsedPropsList = accessibleProperties.map((p) => p.properties as unknown as { id: string, name: string });
           setAccessiblePropsList(parsedPropsList);
 
-          // Try to get saved property from localStorage
           const savedId = localStorage.getItem('pms_active_property');
           if (savedId && parsedPropsList.some(p => p.id === savedId)) {
             activePropertyId = savedId;
@@ -120,7 +98,7 @@ import {
           if (profile?.property_id) activePropertyId = profile.property_id;
 
           if (!activePropertyId || activePropertyId === 'undefined') activePropertyId = '63dad7aa-c5f9-4f0e-b21e-b0175397a42c';
-        if (activePropertyId) {
+          if (activePropertyId) {
             const { data: fallbackProp } = await supabase.from('properties').select('id, name').eq('id', activePropertyId).single();
             if (fallbackProp) {
               setAccessiblePropsList([fallbackProp]);
@@ -131,7 +109,6 @@ import {
         if (activePropertyId) {
           setPropertyId(activePropertyId);
 
-          // Fetch property details
           const { data: propData } = await supabase
             .from('properties')
             .select('*')
@@ -140,12 +117,10 @@ import {
 
           if (propData) {
             setProperty(propData);
-
-            // Fetch rooms for THIS property
             const { data: roomsData } = await supabase
               .from('rooms')
               .select('*')
-              
+              .eq('property_id', activePropertyId)
               .or('is_deleted.eq.false,is_deleted.is.null')
               .order('room_number', { ascending: true });
 
@@ -162,7 +137,6 @@ import {
     fetchData();
   }, [supabase]);
 
-  // Global Realtime listener for ROOM status changes
   React.useEffect(() => {
     if (!propertyId) return;
 
@@ -171,22 +145,20 @@ import {
       .on(
         'postgres_changes',
         {
-          event: '*', // Listen to ALL changes (UPDATE, INSERT, DELETE)
+          event: '*',
           schema: 'public',
           table: 'rooms',
           filter: 'property_id=eq.' + propertyId
         },
         (payload) => {
-          console.log("Inventory Realtime Sync:", payload.eventType, payload.new);
-          
           if (payload.eventType === 'UPDATE') {
-            setRooms((prevRooms) => 
-              prevRooms.map((r) => r.id === payload.new.id ? { ...r, ...payload.new } : r)
+            setRooms((prevRooms) =>
+              prevRooms.map((r) => r.id === (payload.new as Room).id ? { ...r, ...(payload.new as Room) } : r)
             );
           } else if (payload.eventType === 'INSERT') {
-            setRooms((prevRooms) => [...prevRooms, payload.new]);
+            setRooms((prevRooms) => [...prevRooms, payload.new as Room]);
           } else if (payload.eventType === 'DELETE') {
-            setRooms((prevRooms) => prevRooms.filter((r) => r.id !== payload.old.id));
+            setRooms((prevRooms) => prevRooms.filter((r) => r.id !== (payload.old as Room).id));
           }
         }
       )
@@ -209,34 +181,25 @@ import {
     router.refresh();
   };
 
-  // --- ACCESS CONTROL HELPER ---
   const hasAccess = (moduleName: string) => {
-    if (!userProfile) return true; // Loading state
+    if (!userProfile) return true;
     if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
-    
     const perms = userProfile.permissions || {};
     const modPerms = perms[moduleName];
-    
-    if (!modPerms || Object.values(modPerms).every(v => v === 'none')) {
-      return false;
-    }
+    if (!modPerms || Object.values(modPerms).every(v => v === 'none')) return false;
     return true;
   };
 
-  
   const handleDeleteRoom = async (roomId: string, roomNumber: string) => {
-    if (!window.confirm(`CRITICAL WARNING: Are you absolutely sure you want to permanently delete Room ${roomNumber}? This action cannot be undone.`)) {
-      return;
-    }
-    
+    if (!window.confirm(`CRITICAL WARNING: Are you absolutely sure you want to permanently delete Room ${roomNumber}? This action cannot be undone.`)) return;
     setActionLoading(true);
     const result = await deleteRoom(roomId);
-    
     if (result?.error) {
       alert(result.error);
       setActionLoading(false);
     } else {
-      window.location.reload();
+      setRooms(prev => prev.filter(r => r.id !== roomId));
+      setActionLoading(false);
     }
   };
 
@@ -249,21 +212,10 @@ import {
       return;
     }
     formData.append('propertyId', property.id);
-
     const result = await addRoom(formData);
-    
     if (result?.error) {
       setActionError(result.error);
-    } else {
-      // Refresh rooms list
-      const { data: roomsData } = await supabase
-        .from('rooms')
-        .select('*')
-        .eq('property_id', property.id)
-        .order('room_number', { ascending: true });
-      if (roomsData) setRooms(roomsData);
     }
-    
     setActionLoading(false);
   };
 
@@ -271,7 +223,6 @@ import {
 
   return (
     <div className="flex min-h-screen bg-[#08080a]">
-      {/* SIDEBAR */}
       <aside className="hidden lg:flex flex-col w-[260px] border-r border-white/[0.06] bg-[#0a0a0c]/80 backdrop-blur-xl">
         <div className="p-6 pb-4 relative">
           <button 
@@ -290,7 +241,6 @@ import {
             <ChevronsUpDown size={14} className="text-zinc-600 group-hover:text-white transition-colors" />
           </button>
 
-          {/* Dropdown Menu */}
           {showPropertyDropdown && accessiblePropsList.length > 1 && (
             <div className="absolute top-full left-4 right-4 mt-2 bg-[#121214] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden">
               <div className="px-3 py-2 border-b border-white/5">
@@ -302,9 +252,7 @@ import {
                     key={p.id}
                     onClick={() => switchProperty(p.id)}
                     className={`w-full text-left px-3 py-2.5 text-xs font-medium transition-colors ${
-                      p.id === property?.id 
-                        ? 'bg-indigo-500/10 text-indigo-400' 
-                        : 'text-zinc-400 hover:bg-white/5 hover:text-white'
+                      p.id === property?.id ? 'bg-indigo-500/10 text-indigo-400' : 'text-zinc-400 hover:bg-white/5 hover:text-white'
                     }`}
                   >
                     {p.name}
@@ -319,9 +267,7 @@ import {
           <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-[0.2em] px-3 mb-3">Navigation</p>
           {NAV_ITEMS.map((item) => {
             const locked = !hasAccess(item.module);
-            if (isLoading) return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
-
-  return (
+            return (
               <Link
                 key={item.label}
                 href={locked ? "#" : item.href}
@@ -334,9 +280,7 @@ import {
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-300 ${
                   item.active
                     ? 'bg-white/[0.06] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]'
-                    : locked 
-                      ? 'text-zinc-700 cursor-not-allowed'
-                      : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.02]'
+                    : locked ? 'text-zinc-700 cursor-not-allowed' : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.02]'
                 }`}
               >
                 <item.icon size={17} className={item.active ? 'text-indigo-400' : ''} />
@@ -356,10 +300,7 @@ import {
               <p className="text-[12px] font-semibold text-zinc-300 truncate">Owner</p>
               <p className="text-[10px] text-zinc-600 truncate">Property Admin</p>
             </div>
-            <button 
-              onClick={handleLogout}
-              className="group flex items-center gap-2 text-zinc-600 hover:text-rose-400 transition-all px-2 py-1.5 rounded-lg hover:bg-rose-500/5"
-            >
+            <button onClick={handleLogout} className="group flex items-center gap-2 text-zinc-600 hover:text-rose-400 transition-all px-2 py-1.5 rounded-lg hover:bg-rose-500/5">
               <LogOut size={16} />
               <span className="text-[11px] font-bold uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity">Logout</span>
             </button>
@@ -367,7 +308,6 @@ import {
         </div>
       </aside>
 
-      {/* ===== MAIN CONTENT ===== */}
       <main className="flex-1 overflow-y-auto">
         <header className="sticky top-0 z-30 backdrop-blur-xl bg-[#08080a]/80 border-b border-white/[0.04] px-8 py-4">
           <div className="flex justify-between items-center">
@@ -394,8 +334,6 @@ import {
         </header>
 
         <div className="p-8 grid grid-cols-12 gap-8">
-          
-          {/* LEFT: ROOMS LIST */}
           <div className="col-span-12 lg:col-span-8">
             <GlassCard>
               <div className="flex justify-between items-center mb-6">
@@ -409,9 +347,7 @@ import {
                 </div>
               </div>
 
-              {isLoading ? (
-                 <div className="py-20 flex justify-center"><Loader2 className="animate-spin text-indigo-500" size={24} /></div>
-              ) : rooms.length === 0 ? (
+              {rooms.length === 0 ? (
                 <div className="py-20 text-center border-2 border-dashed border-white/5 rounded-2xl bg-white/[0.02]">
                   <DoorOpen size={32} className="mx-auto text-zinc-600 mb-3" />
                   <p className="text-zinc-400 font-medium mb-1">No rooms added yet.</p>
@@ -440,7 +376,8 @@ import {
                         </div>
                         <button 
                           onClick={() => handleDeleteRoom(room.id, room.room_number)}
-                          className="p-2 text-zinc-600 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors"
+                          disabled={actionLoading}
+                          className="p-2 text-zinc-600 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors disabled:opacity-50"
                           title="Delete Room"
                         >
                           <Trash2 size={16} />
@@ -453,7 +390,6 @@ import {
             </GlassCard>
           </div>
 
-          {/* RIGHT: ADD ROOM FORM */}
           <div className="col-span-12 lg:col-span-4">
             <GlassCard>
               <div className="mb-6">
@@ -508,11 +444,10 @@ import {
                 <LayoutDashboard size={14} /> Note for Owners
               </h4>
               <p className="text-[11px] text-zinc-400 leading-relaxed">
-                When you add a room here, it becomes instantly available in your Tier 3 Front Desk terminal and is exclusively isolated to your property.
+                When you add a room here, it becomes instantly available in your Front Desk terminal and is exclusively isolated to your property.
               </p>
             </div>
           </div>
-
         </div>
       </main>
     </div>

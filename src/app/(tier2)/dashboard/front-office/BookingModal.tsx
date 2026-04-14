@@ -4,13 +4,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { X, Loader2, Bed, Calendar, User, Mail, DollarSign, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import { createBooking } from '@/app/actions/booking';
-
-interface Room {
-  id: string;
-  room_number: string;
-  type: string;
-  status: string;
-}
+import { Room, Booking } from '@/lib/types';
 
 interface BookingModalProps {
   isOpen: boolean;
@@ -18,7 +12,7 @@ interface BookingModalProps {
   onSuccess?: () => void;
   propertyId: string;
   rooms: Room[];
-  bookings: any[]; // Accept all bookings to check for overlaps
+  bookings: Booking[]; // Accept all bookings to check for overlaps
 }
 
 export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, rooms, bookings }: BookingModalProps) {

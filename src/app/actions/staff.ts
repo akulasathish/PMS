@@ -1,20 +1,8 @@
 'use server';
 
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { createClient as createSSRClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
-
-// Initialize Supabase admin client to bypass RLS
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-);
 
 /**
  * Generate a random 8-character dummy password
@@ -32,6 +20,7 @@ function generateDummyPassword() {
  * Provision a new staff account
  */
 export async function getRoleTemplates(propertyId: string | null) {
+  const supabaseAdmin = getSupabaseAdmin();
   let query = supabaseAdmin.from('role_templates').select('*');
   
   if (propertyId) {
@@ -48,7 +37,7 @@ export async function getRoleTemplates(propertyId: string | null) {
   return data;
 }
 
-export async function saveRoleTemplate(propertyId: string, name: string, permissions: any) {
+export async function saveRoleTemplate(propertyId: string, name: string, permissions: Record<string, Record<string, string>>) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -56,6 +45,7 @@ export async function saveRoleTemplate(propertyId: string, name: string, permiss
     return { error: 'Unauthorized.' };
   }
 
+  const supabaseAdmin = getSupabaseAdmin();
   const { error } = await supabaseAdmin.from('role_templates').insert([{
     property_id: propertyId,
     name,
@@ -81,6 +71,8 @@ export async function revokeStaffAccess(staffId: string) {
   if (!user || (user.user_metadata?.role !== 'owner' && user.user_metadata?.role !== 'admin')) {
     return { error: 'Unauthorized. Only executives can revoke staff access.' };
   }
+
+  const supabaseAdmin = getSupabaseAdmin();
 
   // 1. Verify the target is actually a staff member (prevent deleting other owners/admins)
   const { data: targetProfile } = await supabaseAdmin
@@ -109,7 +101,7 @@ export async function revokeStaffAccess(staffId: string) {
 /**
  * Update granular permissions for a staff member
  */
-export async function updateStaffPermissions(staffId: string, permissions: any) {
+export async function updateStaffPermissions(staffId: string, permissions: Record<string, Record<string, string>>) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -117,6 +109,7 @@ export async function updateStaffPermissions(staffId: string, permissions: any) 
     return { error: 'Unauthorized.' };
   }
 
+  const supabaseAdmin = getSupabaseAdmin();
   const { error } = await supabaseAdmin
     .from('profiles')
     .update({ permissions })
@@ -157,6 +150,8 @@ export async function addStaff(formData: FormData) {
     return { error: 'Email and Property ID are required.' };
   }
 
+  const supabaseAdmin = getSupabaseAdmin();
+
   let permissions = null;
   if (permissionsStr) {
     try {
@@ -188,7 +183,13 @@ export async function addStaff(formData: FormData) {
 
   console.log("4. Linking staff profile to property...");
   
-  const profileData: any = {
+  const profileData: {
+    id: string;
+    email: string;
+    role: string;
+    property_id: string;
+    permissions?: Record<string, Record<string, string>>;
+  } = {
     id: authData.user.id,
     email: email,
     role: safeDatabaseRole,

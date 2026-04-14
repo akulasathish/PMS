@@ -1,20 +1,8 @@
 'use server';
 
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { createClient as createSSRClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
-
-// Initialize Supabase admin client to bypass RLS if needed, or normal client.
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-);
 
 /**
  * Create a new booking for a room
@@ -40,6 +28,8 @@ export async function createBooking(formData: FormData) {
   if (!propertyId || !roomId || !guestName || !guestEmail || !checkIn || !checkOut || isNaN(amount)) {
     return { error: 'All fields (Property, Room, Guest Name, Email, Check In/Out, Amount) are required.' };
   }
+
+  const supabaseAdmin = getSupabaseAdmin();
 
   // Insert the booking
   const { data: bookingData, error: bookingError } = await supabaseAdmin
@@ -80,6 +70,8 @@ export async function checkInGuest(bookingId: string) {
   if (!user || !['staff', 'front-desk', 'owner'].includes(user.user_metadata?.role)) {
     return { error: 'Unauthorized. Only authorized personnel can check-in guests.' };
   }
+
+  const supabaseAdmin = getSupabaseAdmin();
 
   // Fetch the booking to get the roomId and propertyId
   const { data: booking, error: fetchError } = await supabaseAdmin
@@ -130,6 +122,8 @@ export async function checkInGuest(bookingId: string) {
     return { error: 'Unauthorized.' };
   }
 
+  const supabaseAdmin = getSupabaseAdmin();
+
   const { error } = await supabaseAdmin
     .from('bookings')
     .update({ 
@@ -157,6 +151,8 @@ export async function checkInGuest(bookingId: string) {
   if (!user || !['staff', 'front-desk', 'owner', 'admin'].includes(user.user_metadata?.role)) {
     return { error: 'Unauthorized.' };
   }
+
+  const supabaseAdmin = getSupabaseAdmin();
 
   // 1. Update booking status to Cancelled
   const { error: bookingError } = await supabaseAdmin
@@ -194,6 +190,8 @@ export async function updateGuestNotes(bookingId: string, notes: string) {
     return { error: 'Unauthorized.' };
   }
 
+  const supabaseAdmin = getSupabaseAdmin();
+
   const { error } = await supabaseAdmin
     .from('bookings')
     .update({ notes })
@@ -219,6 +217,7 @@ export async function toggleRoomBlock(roomId: string, currentStatus: string) {
     return { error: 'Unauthorized. Only management can block physical inventory.' };
   }
 
+  const supabaseAdmin = getSupabaseAdmin();
   const newStatus = currentStatus === 'Blocked' ? 'Available' : 'Blocked';
 
   const { error } = await supabaseAdmin
@@ -246,6 +245,8 @@ export async function upgradeRoom(bookingId: string, oldRoomId: string, newRoomI
   if (!user || !['staff', 'front-desk', 'owner', 'admin'].includes(user.user_metadata?.role)) {
     return { error: 'Unauthorized.' };
   }
+
+  const supabaseAdmin = getSupabaseAdmin();
 
   // 1. Mark the OLD room as Dirty (since they were likely in it)
   await supabaseAdmin.from('rooms').update({ status: 'Dirty' }).eq('id', oldRoomId);
@@ -282,6 +283,8 @@ export async function issueRefund(bookingId: string, currentAmount: number, refu
     return { error: 'Invalid refund amount.' };
   }
 
+  const supabaseAdmin = getSupabaseAdmin();
+
   const newAmount = currentAmount - refundAmount;
 
   // Ideally, this would write to a transaction ledger. For MVP, we update the total.
@@ -306,6 +309,8 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
   if (!user || !['staff', 'front-desk', 'owner'].includes(user.user_metadata?.role)) {
     return { error: 'Unauthorized. Only authorized personnel can check-out guests.' };
   }
+
+  const supabaseAdmin = getSupabaseAdmin();
 
   // 1. Update the booking status
   const { error: bookingError } = await supabaseAdmin
@@ -336,4 +341,3 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
 
   return { success: true };
   }
-

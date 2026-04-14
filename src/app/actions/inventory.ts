@@ -1,21 +1,8 @@
 'use server';
 
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { createClient as createSSRClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
-
-// Initialize Supabase admin client to bypass RLS if needed, or normal client.
-// Since server actions run on the server, we use the service role key to insert.
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-);
 
 /**
  * Add a new room to a property
@@ -26,6 +13,8 @@ export async function addRoom(formData: FormData) {
 
   if (!user) return { error: 'Unauthorized. No session found.' };
   
+  const supabaseAdmin = getSupabaseAdmin();
+
   let role = user.user_metadata?.role;
   if (!role) {
     const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', user.id).single();
@@ -97,6 +86,8 @@ export async function deleteRoom(roomId: string) {
 
   if (!user) return { error: 'Unauthorized. No session found.' };
   
+  const supabaseAdmin = getSupabaseAdmin();
+
   // Only owners or admins can delete rooms
   let role = user.user_metadata?.role;
   if (!role) {
