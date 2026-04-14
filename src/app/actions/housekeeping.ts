@@ -1,13 +1,8 @@
 'use server';
 
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { createClient as createSSRClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 /**
  * Start cleaning a room (Timer begins)
@@ -18,6 +13,7 @@ export async function startCleaning(roomId: string) {
 
   if (!user) return { error: 'Unauthorized.' };
 
+  const supabaseAdmin = getSupabaseAdmin();
   const { error } = await supabaseAdmin
     .from('rooms')
     .update({ 
@@ -37,6 +33,7 @@ export async function startCleaning(roomId: string) {
  * Finish cleaning a room (Move to Clean but not yet Inspected)
  */
 export async function finishCleaning(roomId: string) {
+  const supabaseAdmin = getSupabaseAdmin();
   const { error } = await supabaseAdmin
     .from('rooms')
     .update({ 
@@ -54,6 +51,7 @@ export async function finishCleaning(roomId: string) {
  * Supervisor approval (Move to Available/Inspected)
  */
 export async function inspectRoom(roomId: string) {
+  const supabaseAdmin = getSupabaseAdmin();
   const { error } = await supabaseAdmin
     .from('rooms')
     .update({ 

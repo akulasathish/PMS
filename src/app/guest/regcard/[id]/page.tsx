@@ -8,8 +8,8 @@ import GuestRegistrationForm from '@/components/GuestRegistrationForm';
 
 export default function GuestRegCard() {
   const { id: bookingId } = useParams();
-  const [booking, setBooking] = useState<any>(null);
-  const [property, setProperty] = useState<any>(null);
+  const [booking, setBooking] = useState<unknown>(null);
+  const [property, setProperty] = useState<unknown>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   
@@ -27,14 +27,14 @@ export default function GuestRegCard() {
         if (error) throw error;
         setBooking(data);
         setProperty(data.properties);
-      } catch (err: any) {
+      } catch {
         setError("Invalid link or booking not found.");
       } finally {
         setIsLoading(false);
       }
     }
     fetchBooking();
-  }, [bookingId]);
+  }, [bookingId, supabase]);
 
   if (isLoading) return <div className="min-h-screen bg-[#08080a] flex items-center justify-center p-6"><Loader2 className="animate-spin text-indigo-500" /></div>;
   if (error) return <div className="min-h-screen bg-[#08080a] flex flex-col items-center justify-center p-6 text-center"><AlertCircle size={48} className="text-rose-500 mb-4" /><p className="text-white font-bold">{error}</p></div>;
@@ -44,16 +44,16 @@ export default function GuestRegCard() {
       {/* HEADER */}
       <header className="p-6 border-b border-white/[0.05] bg-zinc-900/20 backdrop-blur-xl flex flex-col items-center text-center">
         <Building2 className="text-indigo-500 mb-2" size={32} />
-        <h1 className="text-lg font-black uppercase tracking-widest">{property?.name}</h1>
+        <h1 className="text-lg font-black uppercase tracking-widest">{(property as Record<string, unknown>)?.name as string}</h1>
         <p className="text-xs text-zinc-500 font-bold mt-1">Digital Registration Card</p>
       </header>
 
       <main className="p-6 max-w-md mx-auto">
          <GuestRegistrationForm 
-            bookingId={booking.id} 
-            activePropertyId={property.id} 
-            guestName={booking.guest_name} 
-            guestEmail={booking.guest_email} 
+            bookingId={(booking as Record<string, unknown>).id as string} 
+            activePropertyId={(property as Record<string, unknown>).id as string} 
+            guestName={(booking as Record<string, unknown>).guest_name as string} 
+            guestEmail={(booking as Record<string, unknown>).guest_email as string} 
          />
       </main>
 

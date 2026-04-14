@@ -23,7 +23,7 @@ const GlassCard = ({ children, className = "" }: { children: React.ReactNode, cl
   </div>
 );
 
-const StatCard = ({ title, value, icon: Icon, trend, color = "indigo" }: { title: string, value: string, icon: React.ElementType, trend: string, color?: string }) => (
+const StatCard = ({ title, value, icon: Icon, trend }: { title: string, value: string, icon: React.ElementType, trend: string, color?: string }) => (
   <motion.div
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
@@ -53,7 +53,6 @@ interface Property {
 }
 
 export default function Tier1Admin() {
-  const [showBroadcast, setShowBroadcast] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [registerLoading, setRegisterLoading] = useState(false);
   const [registerError, setRegisterError] = useState('');
@@ -71,7 +70,7 @@ export default function Tier1Admin() {
     async function fetchProperties() {
       setIsLoading(true);
       const props = await getAdminProperties();
-      if (props) setProperties(props as any[]);
+      if (props) setProperties(props);
       setIsLoading(false);
     }
     fetchProperties();
@@ -79,7 +78,7 @@ export default function Tier1Admin() {
 
   // Close dropdown if clicking outside
   React.useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = () => {
       // Small delay prevents instant closing on the initial toggle click
       setTimeout(() => setActiveMenu(null), 10);
     };
@@ -126,7 +125,7 @@ export default function Tier1Admin() {
       });
       // Refresh the property list natively
       const props = await getAdminProperties();
-      if (props) setProperties(props as any[]);
+      if (props) setProperties(props as Property[]);
     }
     setRegisterLoading(false);
   };
@@ -150,8 +149,7 @@ export default function Tier1Admin() {
         <div className="flex gap-3">
           {/* NOTIFICATION BELL */}
           <button 
-            onClick={() => setShowBroadcast(true)}
-            className="p-2 relative hover:bg-zinc-800 rounded-lg border border-white/5 transition-colors text-zinc-400 hover:text-indigo-400"
+            className="p-2 relative hover:bg-zinc-800 rounded-lg border border-white/5 transition-colors text-zinc-400 hover:text-white"
           >
             <Bell size={20} />
             <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-[#09090b]"></span>

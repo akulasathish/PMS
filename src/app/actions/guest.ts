@@ -1,23 +1,48 @@
 'use server';
 
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { revalidatePath } from 'next/cache';
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-);
+export async function processGuestRegistration(formData: FormData) {
+  // Initialize client inside the function to ensure env vars are available
+  const supabaseAdmin = getSupabaseAdmin();
 
-export async function processGuestRegistration(
-  bookingId: string, 
-  propertyId: string, 
-  guestName: string, 
-  guestEmail: string, 
-  fileName: string, 
-  signatureData: string
-) {
-  // 1. Insert the Guest PII using the Service Role Key (Bypasses RLS because the guest is not logged in)
+  const bookingId = formData.get('bookingId') as string;
+  const propertyId = formData.get('propertyId') as string;
+  const guestName = formData.get('guestName') as string;
+  const guestEmail = formData.get('guestEmail') as string;
+  const idPhoto = formData.get('idPhoto') as File;
+  const signature = formData.get('signature') as File;
+
+  if (!bookingId || !propertyId || !idPhoto || !signature) {
+    return { error: 'Missing required fields for registration' };
+  }
+
+  const idExt = idPhoto.name.split('.').pop() || 'jpg';
+  const idFileName = `${bookingId}_id.${idExt}`;
+  const sigFileName = `${bookingId}_sig.png`;
+
+  // 1. Upload ID Photo
+  const { error: idUploadError } = await supabaseAdmin.storage
+    .from('guest-ids')
+    .upload(idFileName, idPhoto, { upsert: true });
+
+  if (idUploadError) {
+    console.error("Server Action: ID Upload Error:", idUploadError);
+    return { error: `Failed to upload ID photo: ${idUploadError.message}` };
+  }
+
+  // 2. Upload Signature
+  const { error: sigUploadError } = await supabaseAdmin.storage
+    .from('guest-ids')
+    .upload(sigFileName, signature, { upsert: true, contentType: 'image/png' });
+
+  if (sigUploadError) {
+    console.error("Server Action: Signature Upload Error:", sigUploadError);
+    return { error: `Failed to upload signature: ${sigUploadError.message}` };
+  }
+
+  // 3. Insert the Guest PII using the Service Role Key (Bypasses RLS)
   const { error: guestError } = await supabaseAdmin
     .from('guests')
     .insert([{
@@ -25,8 +50,8 @@ export async function processGuestRegistration(
       property_id: propertyId,
       full_name: guestName,
       email: guestEmail,
-      id_photo_url: fileName,
-      signature_url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/guest-ids/${signatureData}`
+      id_photo_url: idFileName,
+      signature_url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/guest-ids/${sigFileName}`
     }]);
 
   if (guestError) {
@@ -34,13 +59,13 @@ export async function processGuestRegistration(
     return { error: `Database Error: ${guestError.message}` };
   }
 
-  // 2. Update the Booking
+  // 4. Update the Booking
   const { error: updateError } = await supabaseAdmin
     .from('bookings')
     .update({ 
       id_verified: true,
-      id_photo_url: fileName,
-      signature_url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/guest-ids/${signatureData}`,
+      id_photo_url: idFileName,
+      signature_url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/guest-ids/${sigFileName}`,
       status: 'Confirmed'
     })
     .eq('id', bookingId)

@@ -1,5 +1,4 @@
-import Link from 'next/link';
-import { AlertTriangle, Home, LogOut } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 
 export default function PaymentRequired() {
   return (
@@ -18,7 +17,7 @@ export default function PaymentRequired() {
         {/* Content Body */}
         <div className="p-8 space-y-6">
           <p className="text-sm text-zinc-400 text-center leading-relaxed">
-            Your property's access to the Engine has been temporarily suspended due to an outstanding balance or subscription issue. 
+            Your property&apos;s access to the Engine has been temporarily suspended due to an outstanding balance or subscription issue. 
           </p>
 
           <div className="bg-black/50 border border-white/5 rounded-xl p-4 text-center">

@@ -135,7 +135,7 @@ export default function LandingPage() {
             { icon: Globe, label: "Global Sync", sub: "100ms OTA relay" },
             { icon: Lock, label: "Secure Engine", sub: "Multi-tenant isolation" },
             { icon: LineChart, label: "Audit-Ready", sub: "Full financial tracing" },
-          ].map((feat: { icon: React.ElementType, label: string, sub: string }, i: number) => (
+          ].map((feat: { icon: React.ElementType, label: string, sub: string }) => (
             <div key={feat.label} className="text-center md:text-left">
               <div className="flex items-center justify-center md:justify-start gap-2 mb-2">
                 <feat.icon size={16} className="text-zinc-500" />

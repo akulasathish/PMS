@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { getRevenueData } from '@/app/actions/analytics';
+import { UserProfile } from '@/lib/types';
 
 
 import {
@@ -21,7 +22,6 @@ import {
   Wallet,
   Percent,
   LayoutDashboard,
-  BookOpen,
   DoorOpen,
   Settings,
   Bell,
@@ -150,8 +150,8 @@ export default function Tier2Dashboard() {
   const [property, setProperty] = useState<Property | null>(null);
   const [accessiblePropsList, setAccessiblePropsList] = useState<{id: string, name: string}[]>([]);
   const [showPropertyDropdown, setShowPropertyDropdown] = useState(false);
-  const [staffList, setStaffList] = useState<any[]>([]);
-  const [userProfile, setUserProfile] = useState<any>(null);
+  const [staffList, setStaffList] = useState<UserProfile[]>([]);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [revenueData, setRevenueData] = useState<{date: string, revenue: number}[]>([]);
   
   const supabase = createClient();
@@ -196,7 +196,7 @@ export default function Tier2Dashboard() {
         let parsedPropsList: {id: string, name: string}[] = [];
         
         if (accessibleProperties && accessibleProperties.length > 0) {
-          parsedPropsList = accessibleProperties.map((p: any) => p.properties);
+          parsedPropsList = (accessibleProperties as unknown as { properties: { id: string, name: string } }[]).map((p) => p.properties);
           setAccessiblePropsList(parsedPropsList);
           
           const savedId = localStorage.getItem('pms_active_property');
@@ -319,14 +319,14 @@ export default function Tier2Dashboard() {
   const hasAccess = (moduleName: string) => {
     if (!userProfile) return true; // Loading state
     if (userProfile.role === 'owner' || userProfile.role === 'admin') return true;
-    
+
     const perms = userProfile.permissions || {};
     const modPerms = perms[moduleName];
-    
+
     if (!modPerms || Object.values(modPerms).every(v => v === 'none')) {
       return false;
     }
-    return perms[moduleName] !== 'none';
+    return true;
     };
 
     // 1. Loading State
@@ -768,7 +768,7 @@ export default function Tier2Dashboard() {
                     {staffList.slice(0, 3).map((st) => (
                       <div key={st.id} className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-white/5 flex items-center justify-center text-[10px] font-mono text-zinc-400 uppercase">
-                          {st.email.substring(0, 2)}
+                          {st.email ? st.email.substring(0, 2) : 'NA'}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-[12px] font-medium text-white truncate">{st.email}</p>

@@ -4,10 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Users, UserPlus, ShieldCheck, Mail, 
-  Building2, X, Loader2, ShieldAlert,
-  ArrowLeft, CheckCircle2
+  X, Loader2, ShieldAlert,
+  ArrowLeft
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { provisionOwner, getOwnersList, getAdminProperties } from '@/app/actions/owner';
@@ -17,8 +16,20 @@ interface Property {
   name: string;
 }
 
+interface OwnerProfile {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  property_access: {
+    property_id: string;
+    properties: {
+      name: string;
+    } | null;
+  }[] | null;
+}
+
 export default function AdminOwners() {
-  const [owners, setOwners] = useState<any[]>([]);
+  const [owners, setOwners] = useState<OwnerProfile[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -27,7 +38,6 @@ export default function AdminOwners() {
   const [credentials, setCredentials] = useState<{email: string, password: string} | null>(null);
 
   const supabase = createClient();
-  const router = useRouter();
 
   useEffect(() => {
     async function init() {
@@ -124,7 +134,7 @@ export default function AdminOwners() {
                   <td className="py-4 text-zinc-400 font-mono text-xs">{owner.email}</td>
                   <td className="py-4">
                     <div className="flex flex-wrap gap-1.5">
-                      {owner.property_access?.map((pa: any) => (
+                      {owner.property_access?.map((pa) => (
                         <span key={pa.property_id} className="px-2 py-0.5 bg-zinc-800 border border-white/5 rounded text-[10px] text-zinc-500">
                           {pa.properties?.name}
                         </span>

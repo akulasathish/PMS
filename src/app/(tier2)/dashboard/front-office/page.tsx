@@ -1,21 +1,22 @@
 "use client";
 import { QRCodeSVG } from 'qrcode.react';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Bed, Calendar, Search, UserCheck, Clock, 
-  ArrowRightLeft, ChevronLeft, ChevronRight, 
+  Bed, Calendar, Search, UserCheck, 
+  ArrowRightLeft, ChevronRight, 
   Plus, Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, LogOut,
   ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck, RefreshCw, RotateCcw, Printer, XCircle, Link2, Camera, X, ShieldCheck, AlertCircle,
   Trash2
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import BookingModal from './BookingModal';
 import { checkInGuest, checkOutGuest, updateGuestNotes, toggleRoomBlock, upgradeRoom, issueRefund, cancelBooking, resetGuestIdentity } from '@/app/actions/booking';
+import { Property, Room, Booking, UserProfile } from '@/lib/types';
 
 
 const NAV_ITEMS = [
@@ -41,14 +42,12 @@ const generateDays = () => {
 const DAYS = generateDays();
 
 export default function FrontOfficeTerminal() {
-  const [rooms, setRooms] = useState<any[]>([]);
-  const [bookings, setBookings] = useState<any[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [property, setProperty] = useState<any>(null);
-  const [userProfile, setUserProfile] = useState<any>(null);
-  const [accessiblePropsList, setAccessiblePropsList] = useState<any[]>([]);
+  const [property, setProperty] = useState<Property | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [showBookingModal, setShowBookingModal] = useState(false);
-  const [showPropertyDropdown, setShowPropertyDropdown] = useState(false);
   
   // Tabs State
   const [activeTab, setActiveTab] = useState<'tape' | 'arrivals' | 'departures' | 'house' | 'all'>('tape');
@@ -58,7 +57,7 @@ export default function FrontOfficeTerminal() {
   const [filterEndDate, setFilterEndDate] = useState('');
 
   // Action Drawer State
-  const [selectedBooking, setSelectedBooking] = useState<any>(null);
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [notesInput, setNotesInput] = useState('');
   const [upgradeRoomId, setUpgradeRoomId] = useState('');
@@ -75,20 +74,18 @@ export default function FrontOfficeTerminal() {
   const [showQrCode, setShowQrCode] = useState(false);
   
   const supabase = createClient();
-  const router = useRouter();
 
   // Extract fetch data to a callable function to avoid window.location.reload()
-  const loadDashboardData = async () => {
+  const loadDashboardData = useCallback(async () => {
     setIsLoading(true);
     try {
       const { data: auth } = await supabase.auth.getUser();
       if (!auth.user) return;
 
-      const { data: acc } = await supabase.from('property_access').select('property_id, properties(id, name)').eq('user_id', auth.user.id);
       const { data: prof } = await supabase.from('profiles').select('*').eq('id', auth.user.id).single();
       setUserProfile(prof);
 
-            let activeId = localStorage.getItem('pms_active_property');
+      let activeId = localStorage.getItem('pms_active_property');
       
       if (!activeId || activeId === 'undefined') {
          console.log("No localStorage activeId found. Querying database for property access...");
@@ -107,7 +104,7 @@ export default function FrontOfficeTerminal() {
         setProperty(prop);
 
         // Fetch rooms and bookings, explicitly bypassing browser cache
-                        let finalRoomsQuery;
+        let finalRoomsQuery;
         const currentActiveId = activeId || prof?.property_id;
         
         if (currentActiveId && currentActiveId !== 'undefined' && currentActiveId !== 'null') {
@@ -125,8 +122,8 @@ export default function FrontOfficeTerminal() {
         }
         const executedBookingsRes = await bookingsQuery.order('created_at', { ascending: false });
 
-        let roomsRes = executedRoomsRes;
-        let bookingsRes = executedBookingsRes;
+        const roomsRes = executedRoomsRes;
+        const bookingsRes = executedBookingsRes;
 
         if (!roomsRes.data || roomsRes.data.length === 0) {
             console.error("🚨 EMERGENCY TRUTH LOG: ZERO ROOMS FETCHED FOR PROPERTY!", activeId);
@@ -160,11 +157,11 @@ export default function FrontOfficeTerminal() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [supabase]);
 
   useEffect(() => {
     loadDashboardData();
-  }, []);
+  }, [loadDashboardData]);
 
   // Global Realtime listener for ROOM status changes (Housekeeping Sync)
   useEffect(() => {
@@ -183,7 +180,7 @@ export default function FrontOfficeTerminal() {
         (payload) => {
           console.log("Realtime Room Update:", payload.new);
           setRooms((prevRooms) => 
-            prevRooms.map((r) => r.id === payload.new.id ? { ...r, status: payload.new.status } : r)
+            prevRooms.map((r) => r.id === payload.new.id ? { ...r, status: payload.new.status as Room['status'] } : r)
           );
         }
       )
@@ -195,7 +192,7 @@ export default function FrontOfficeTerminal() {
   }, [property?.id, supabase]);
 
   // Self-Healing Status Logic: If a guest is Checked In, the room MUST be Occupied, even if the DB room status says Available
-  const getTrueRoomStatus = (room: any) => {
+  const getTrueRoomStatus = (room: Room) => {
     const activeBooking = bookings.find(b => b.room_id === room.id && b.status === 'Checked In');
     if (activeBooking && room.status !== 'Blocked') {
       return 'Occupied';
@@ -282,8 +279,8 @@ export default function FrontOfficeTerminal() {
       const dateA = new Date(a.check_in).getTime();
       const dateB = new Date(b.check_in).getTime();
       if (reservationFilter === 'Past') {
-         const outA = new Date(a.check_out || a.created_at).getTime();
-         const outB = new Date(b.check_out || b.created_at).getTime();
+         const outA = new Date(a.check_out || a.created_at || '').getTime();
+         const outB = new Date(b.check_out || b.created_at || '').getTime();
          return outB - outA;
       }
       return dateA - dateB;
@@ -412,11 +409,11 @@ export default function FrontOfficeTerminal() {
     setActionLoading(false);
   };
 
-  const handleBlockRoom = async (room: any) => {
+  const handleBlockRoom = async (room: Room) => {
     setActionLoading(true);
     const res = await toggleRoomBlock(room.id, room.status);
     if (res.success && res.newStatus) {
-      setRooms(rooms.map(r => r.id === room.id ? { ...r, status: res.newStatus } : r));
+      setRooms(rooms.map(r => r.id === room.id ? { ...r, status: res.newStatus as Room['status'] } : r));
     } else {
       alert(res.error);
     }
@@ -451,7 +448,7 @@ export default function FrontOfficeTerminal() {
         },
         (payload) => {
           if (payload.new.id_verified) {
-            setSelectedBooking(payload.new);
+            setSelectedBooking(payload.new as Booking);
             setCheckIdVerified(true);
             setCheckRegCardSigned(true);
             setShowQrCode(false);
@@ -463,7 +460,7 @@ export default function FrontOfficeTerminal() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [selectedBooking]);
+  }, [selectedBooking, supabase]);
 
 
 
@@ -489,7 +486,7 @@ export default function FrontOfficeTerminal() {
     setActionLoading(true);
     const { data, error } = await supabase.from('bookings').select('*').eq('id', selectedBooking.id).single();
     if (data && !error) {
-      setSelectedBooking(data);
+      setSelectedBooking(data as Booking);
       if (data.id_verified) {
         setCheckIdVerified(true);
         setCheckRegCardSigned(true);
@@ -498,7 +495,7 @@ export default function FrontOfficeTerminal() {
     setActionLoading(false);
   };
 
-  const openActionDrawer = (booking: any) => {
+  const openActionDrawer = (booking: Booking) => {
     setSelectedBooking(booking);
     setNotesInput(booking.notes || '');
     setRefundInput('');
@@ -519,7 +516,7 @@ export default function FrontOfficeTerminal() {
   };
 
   // --- SUB-COMPONENT: LIST ITEM ---
-  const BookingRow = ({ booking }: { booking: any }) => (
+  const BookingRow = ({ booking }: { booking: Booking }) => (
     <motion.div 
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
@@ -665,7 +662,7 @@ export default function FrontOfficeTerminal() {
                 <button
                   key={tab.id}
                   onClick={() => {
-                    setActiveTab(tab.id as any);
+                    setActiveTab(tab.id as 'tape' | 'arrivals' | 'departures' | 'house' | 'all');
                     setSearchQuery(''); // Clear search when switching tabs
                   }}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
@@ -1044,7 +1041,7 @@ export default function FrontOfficeTerminal() {
                   {!selectedBooking.id_verified ? (
                     <div className="bg-indigo-500/5 border border-indigo-500/10 p-4 rounded-2xl space-y-3">
                       <p className="text-[11px] text-zinc-500">
-                        Send a secure magic link to the guest's phone. They can scan their ID and sign the RegCard instantly.
+                        Send a secure magic link to the guest&apos;s phone. They can scan their ID and sign the RegCard instantly.
                       </p>
                                             <div className="flex gap-2">
                         <button 
@@ -1079,13 +1076,13 @@ export default function FrontOfficeTerminal() {
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="aspect-[3/2] bg-black/40 border border-white/5 rounded-xl overflow-hidden relative group">
-                           <img src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/guest-ids/${selectedBooking.id_photo_url}`} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
+                           <Image src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/guest-ids/${selectedBooking.id_photo_url}`} alt="Guest ID Scan" fill className="object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                              <p className="text-[8px] font-black text-white/40 uppercase tracking-tighter">Guest ID Scan</p>
+                              <p className="text-[8px] font-black text-white/40 uppercase tracking-tighter drop-shadow-md">Guest ID Scan</p>
                            </div>
                         </div>
-                        <div className="aspect-[3/2] bg-white rounded-xl overflow-hidden flex items-center justify-center p-2">
-                           <img src={selectedBooking.signature_url} className="max-h-full max-w-full" />
+                        <div className="aspect-[3/2] bg-white rounded-xl overflow-hidden relative flex items-center justify-center p-2">
+                           {selectedBooking.signature_url && <Image src={selectedBooking.signature_url} alt="Signature" fill className="object-contain" />}
                         </div>
                       </div>
                       <button 
@@ -1104,7 +1101,7 @@ export default function FrontOfficeTerminal() {
                     <ArrowRightLeft size={14} /> Room Move / Upgrade
                   </h3>
                   <p className="text-[11px] text-zinc-500 leading-relaxed">
-                    Moving this guest will instantly mark Room {rooms.find(r => r.id === selectedBooking.room_id)?.room_number} as "Dirty" and assign them to the new room.
+                    Moving this guest will instantly mark Room {rooms.find(r => r.id === selectedBooking.room_id)?.room_number} as &quot;Dirty&quot; and assign them to the new room.
                   </p>
                   <div className="flex items-center gap-3">
                     <select 
@@ -1165,12 +1162,11 @@ export default function FrontOfficeTerminal() {
                 {/* 3.5 FINAL ACTION */}
                 {selectedBooking.status === 'Confirmed' && (
                   <div className="pt-4">
-                    <button 
-                      onClick={(e) => handleSafeCheckIn(e as any, selectedBooking.id)}
+                    <button
+                      onClick={(e) => handleSafeCheckIn(e as unknown as React.MouseEvent, selectedBooking.id)}
                       disabled={!checkIdVerified || !checkRegCardSigned || !checkPaymentSecured || !checkFormFDone || guestAddress.trim().length < 5 || actionLoading || !canCheckIn()}
                       className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-900/30 disabled:text-emerald-500/30 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs transition-all shadow-xl shadow-emerald-500/10 flex items-center justify-center gap-3"
-                    >
-                      {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <><CheckCircle2 size={16} /> Complete Final Check-In</>}
+                    >                      {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <><CheckCircle2 size={16} /> Complete Final Check-In</>}
                     </button>
                     {!canCheckIn() && <p className="text-[10px] text-rose-500 mt-2 text-center">Unauthorized to finalize check-in.</p>}
                   </div>
@@ -1200,7 +1196,7 @@ export default function FrontOfficeTerminal() {
         <BookingModal 
           isOpen={showBookingModal} 
           onClose={() => setShowBookingModal(false)}
-          propertyId={property?.id} 
+          propertyId={property?.id || ''} 
           rooms={rooms}
           bookings={bookings}
         />

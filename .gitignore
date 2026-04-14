@@ -41,3 +41,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .ai-patches/
+
+# AWS CLI installation files
+aws/
+awscliv2.zip
