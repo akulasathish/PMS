@@ -3,6 +3,7 @@
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { createClient as createSSRClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
+import { logAction } from './audit';
 
 /**
  * Create a new booking for a room
@@ -52,6 +53,13 @@ export async function createBooking(formData: FormData) {
     return { error: `Failed to create booking: ${bookingError.message}` };
   }
 
+  // Audit Log
+  await logAction({
+    propertyId,
+    action: 'BOOKING_CREATED',
+    details: { guestName, amount, checkIn, checkOut, bookingId: bookingData.id }
+  });
+
   // Revalidate the front-desk dashboard path
   revalidatePath('/dashboard/front-office');
   revalidatePath('/dashboard/front-office', 'layout');
@@ -76,7 +84,7 @@ export async function checkInGuest(bookingId: string) {
   // Fetch the booking to get the roomId and propertyId
   const { data: booking, error: fetchError } = await supabaseAdmin
     .from('bookings')
-    .select('room_id, property_id')
+    .select('room_id, property_id, guest_name')
     .eq('id', bookingId)
     .single();
 
@@ -102,6 +110,13 @@ export async function checkInGuest(bookingId: string) {
     console.error("Check-in Error:", bookingRes.error || roomRes.error);
     return { error: `Check-in Failed: ${bookingRes.error?.message || roomRes.error?.message}` };
   }
+
+  // Audit Log
+  await logAction({
+    propertyId: booking.property_id,
+    action: 'GUEST_CHECK_IN',
+    details: { guestName: booking.guest_name, bookingId }
+  });
 
   // Revalidate the tape chart so the status changes instantly
   revalidatePath('/dashboard/front-office');

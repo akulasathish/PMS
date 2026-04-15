@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Clear Cache</title>
+</head>
+<body>
+  <h2>Fixing your local environment...</h2>
+  <script>
+    localStorage.removeItem('pms_active_property');
+    setTimeout(() => {
+      window.location.href = '/dashboard';
+    }, 1000);
+  </script>
+</body>
+</html>

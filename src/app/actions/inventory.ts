@@ -3,6 +3,7 @@
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { createClient as createSSRClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
+import { logAction } from './audit';
 
 /**
  * Add a new room to a property
@@ -69,6 +70,13 @@ export async function addRoom(formData: FormData) {
     if (insertError) return { error: `Database Error: ${insertError.message}` };
   }
 
+  // Audit Log
+  await logAction({
+    propertyId,
+    action: 'ROOM_CREATED',
+    details: { roomNumber, roomType }
+  });
+
   revalidatePath('/dashboard/inventory');
   revalidatePath('/dashboard/front-office');
   revalidatePath('/dashboard/housekeeping');
@@ -102,13 +110,20 @@ export async function deleteRoom(roomId: string) {
   // Safety check: Don't delete a room if it has active bookings!
   const { data: activeBookings } = await supabaseAdmin
     .from('bookings')
-    .select('id')
+    .select('id, property_id')
     .eq('room_id', roomId)
     .in('status', ['Confirmed', 'Checked In']);
     
   if (activeBookings && activeBookings.length > 0) {
      return { error: 'Cannot delete this room because there are active reservations (Confirmed or Checked In) assigned to it. Please reassign the guests to another room first.' };
   }
+
+  // Fetch property_id and room_number for the audit log before deleting
+  const { data: roomData } = await supabaseAdmin
+    .from('rooms')
+    .select('property_id, room_number')
+    .eq('id', roomId)
+    .single();
 
   // 3. SOFT DELETE: Never hard delete a room to protect historical folios
   const { error } = await supabaseAdmin
@@ -119,6 +134,15 @@ export async function deleteRoom(roomId: string) {
   if (error) {
     console.error("Supabase Error deleting room:", error);
     return { error: `Database Error: ${error.message}` };
+  }
+
+  // Audit Log
+  if (roomData) {
+    await logAction({
+      propertyId: roomData.property_id,
+      action: 'ROOM_DELETED',
+      details: { roomNumber: roomData.room_number }
+    });
   }
 
   revalidatePath('/dashboard/inventory');
