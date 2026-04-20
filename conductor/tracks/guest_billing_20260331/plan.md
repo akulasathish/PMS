@@ -5,8 +5,8 @@
 - [x] Task: Create `payments` table migration to track guest settlements (Cash, Card, UPI). [04dcfd3]
 - [x] Task: Build `postIncidentalCharge` server action with audit logging. [3506ef3]
 - [x] Task: Build `postPayment` server action with audit logging. [04dcfd3]
-- [ ] Task: Update `checkOutGuest` to enforce the "Zero-Balance" mathematical blockade.
-- [ ] Task: Conductor - User Manual Verification 'Phase 1: Folio Engine'
+- [x] Task: Update `checkOutGuest` to enforce the "Zero-Balance" mathematical blockade. [bff1f00]
+- [x] Task: Conductor - User Manual Verification 'Phase 1: Folio Engine' [bff1f00]
 
 ## Phase 2: Professional Folio UI (Frontend)
 - [ ] Task: Build the Folio Summary Modal to replace the simple "Check Out" button.
