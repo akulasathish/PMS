@@ -321,13 +321,47 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user || !['staff', 'front-desk', 'owner'].includes(user.user_metadata?.role)) {
+  if (!user || !['staff', 'front-desk', 'owner', 'admin'].includes(user.user_metadata?.role)) {
     return { error: 'Unauthorized. Only authorized personnel can check-out guests.' };
   }
 
   const supabaseAdmin = getSupabaseAdmin();
 
-  // 1. Update the booking status
+  // 1. FOLIO AUDIT (The Financial Blockade)
+  const { data: booking, error: bookingErr } = await supabaseAdmin
+    .from('bookings')
+    .select('amount, property_id, guest_name')
+    .eq('id', bookingId)
+    .single();
+
+  if (bookingErr || !booking) return { error: 'Booking not found.' };
+
+  const { data: incidentals } = await supabaseAdmin
+    .from('incidental_charges')
+    .select('amount')
+    .eq('booking_id', bookingId);
+    
+  const totalIncidentals = incidentals?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
+
+  const { data: payments } = await supabaseAdmin
+    .from('payments')
+    .select('amount')
+    .eq('booking_id', bookingId);
+
+  const totalPayments = payments?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
+
+  // Calculate the Balance Due
+  const totalCharges = Number(booking.amount) + totalIncidentals;
+  const balanceDue = totalCharges - totalPayments;
+
+  // 2. ENFORCE ZERO BALANCE
+  if (Math.abs(balanceDue) > 0.01) {
+    return { 
+      error: `Folio has a non-zero balance. Settle the ₹${balanceDue.toFixed(2)} balance before departure.` 
+    };
+  }
+
+  // 3. EXECUTE CHECKOUT
   const { error: bookingError } = await supabaseAdmin
     .from('bookings')
     .update({ status: 'Checked Out' })
@@ -338,7 +372,6 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
     return { error: `Booking Update Error: ${bookingError.message}` };
   }
 
-  // 2. Mark the room as Dirty for housekeeping
   const { error: roomError } = await supabaseAdmin
     .from('rooms')
     .update({ status: 'Dirty' })
@@ -346,13 +379,19 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
 
   if (roomError) {
     console.error("Failed to update room status during check-out:", roomError);
-    // Note: The booking is already checked out, but room remains occupied. 
-    // This is an inconsistency we'd ideally handle in a transaction.
     return { error: `Room Update Error: ${roomError.message}` };
   }
 
+  // Audit Log
+  await logAction({
+    propertyId: booking.property_id,
+    action: 'GUEST_CHECK_OUT',
+    details: { guestName: booking.guest_name, bookingId, totalCharges, totalPayments }
+  });
+
   revalidatePath('/dashboard/front-office');
   revalidatePath('/dashboard/front-office', 'page');
+  revalidatePath('/dashboard/housekeeping');
 
   return { success: true };
   }
