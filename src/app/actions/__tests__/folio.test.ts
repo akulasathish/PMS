@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { postIncidentalCharge } from '../folio'
+import { postIncidentalCharge, postPayment } from '../folio'
 
 vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
@@ -17,12 +17,11 @@ vi.mock('@/lib/supabase/server', () => ({
   })
 }));
 
-// Define the mock inside vi.hoisted so Vitest knows to bring it to the top
 const { mockInsert } = vi.hoisted(() => {
   return {
     mockInsert: vi.fn().mockReturnValue({
       select: vi.fn().mockReturnValue({
-        single: vi.fn().mockResolvedValue({ data: { id: 'mock-charge-id' }, error: null })
+        single: vi.fn().mockResolvedValue({ data: { id: 'mock-id' }, error: null })
       })
     })
   }
@@ -41,30 +40,61 @@ describe('Folio Server Actions', () => {
     vi.clearAllMocks();
   });
 
-  it('should return success and a chargeId when a valid charge is posted', async () => {
-    const formData = new FormData();
-    formData.append('bookingId', '12345-abc');
-    formData.append('propertyId', 'property-123');
-    formData.append('amount', '15.50');
-    formData.append('description', 'Minibar - Coke');
+  describe('postIncidentalCharge', () => {
+    it('should return success and a chargeId when a valid charge is posted', async () => {
+      const formData = new FormData();
+      formData.append('bookingId', '12345-abc');
+      formData.append('propertyId', 'property-123');
+      formData.append('amount', '15.50');
+      formData.append('description', 'Minibar - Coke');
 
-    const result = await postIncidentalCharge(formData);
-    
-    expect(result.success).toBe(true);
-    expect(result.chargeId).toBe('mock-charge-id');
-    expect(mockInsert).toHaveBeenCalledOnce();
+      const result = await postIncidentalCharge(formData);
+      
+      expect(result.success).toBe(true);
+      expect(result.chargeId).toBe('mock-id');
+      expect(mockInsert).toHaveBeenCalledOnce();
+    });
+
+    it('should return an error if the amount is missing or invalid', async () => {
+      const formData = new FormData();
+      formData.append('bookingId', '12345-abc');
+      formData.append('propertyId', 'property-123');
+      formData.append('description', 'Missing Amount Test');
+
+      const result = await postIncidentalCharge(formData);
+      
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('Missing required fields');
+      expect(mockInsert).not.toHaveBeenCalled();
+    });
   });
 
-  it('should return an error if the amount is missing or invalid', async () => {
-    const formData = new FormData();
-    formData.append('bookingId', '12345-abc');
-    formData.append('propertyId', 'property-123');
-    formData.append('description', 'Missing Amount Test');
+  describe('postPayment', () => {
+    it('should return success and a paymentId when a valid payment is logged', async () => {
+      const formData = new FormData();
+      formData.append('bookingId', '12345-abc');
+      formData.append('propertyId', 'property-123');
+      formData.append('amount', '100.00');
+      formData.append('method', 'UPI');
+      formData.append('transactionId', 'txn_09876');
 
-    const result = await postIncidentalCharge(formData);
-    
-    expect(result.error).toBeDefined();
-    expect(result.error).toContain('Missing required fields');
-    expect(mockInsert).not.toHaveBeenCalled();
+      const result = await postPayment(formData);
+      
+      expect(result.success).toBe(true);
+      expect(result.paymentId).toBe('mock-id');
+      expect(mockInsert).toHaveBeenCalledOnce();
+    });
+
+    it('should return an error if required payment fields are missing', async () => {
+      const formData = new FormData();
+      formData.append('bookingId', '12345-abc');
+      // Intentionally missing amount and method
+
+      const result = await postPayment(formData);
+      
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain('Missing required fields');
+      expect(mockInsert).not.toHaveBeenCalled();
+    });
   });
 })
