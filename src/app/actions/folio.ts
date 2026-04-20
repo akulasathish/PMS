@@ -115,3 +115,49 @@ export async function postPayment(formData: FormData) {
   
   return { success: true, paymentId: data.id };
 }
+
+/**
+ * Fetch the complete folio summary for a booking
+ */
+export async function getFolioSummary(bookingId: string) {
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // 1. Fetch base booking amount
+  const { data: booking, error: bookingErr } = await supabaseAdmin
+    .from('bookings')
+    .select('amount')
+    .eq('id', bookingId)
+    .single();
+
+  if (bookingErr || !booking) return { error: 'Booking not found.' };
+
+  // 2. Fetch incidental charges
+  const { data: incidentals, error: incErr } = await supabaseAdmin
+    .from('incidental_charges')
+    .select('id, amount, description, created_at')
+    .eq('booking_id', bookingId)
+    .order('created_at', { ascending: true });
+
+  // 3. Fetch payments
+  const { data: payments, error: payErr } = await supabaseAdmin
+    .from('payments')
+    .select('id, amount, method, created_at')
+    .eq('booking_id', bookingId)
+    .order('created_at', { ascending: true });
+
+  const totalCharges = Number(booking.amount) + (incidentals?.reduce((sum, item) => sum + Number(item.amount), 0) || 0);
+  const totalPayments = payments?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
+  const balanceDue = totalCharges - totalPayments;
+
+  return {
+    success: true,
+    data: {
+      roomAmount: Number(booking.amount),
+      incidentals: incidentals || [],
+      payments: payments || [],
+      totalCharges,
+      totalPayments,
+      balanceDue
+    }
+  };
+}
