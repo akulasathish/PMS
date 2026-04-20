@@ -15,9 +15,9 @@
 - [x] Task: Conductor - User Manual Verification 'Phase 2: Professional Folio UI' [8d4cfa6]
 
 ## Phase 3: Invoice Template (n8n Setup)
-- [ ] Task: Create a reusable HTML invoice template including GST/HSN slabs.
-- [ ] Task: Update the `on_booking_checked_out` trigger to include itemized charges in the payload.
-- [ ] Task: Conductor - User Manual Verification 'Phase 3: Invoice Template'
+- [x] Task: Create a reusable HTML invoice template including GST/HSN slabs. [1b2967d]
+- [x] Task: Update the `on_booking_checked_out` trigger to include itemized charges in the payload. [1b2967d]
+- [x] Task: Conductor - User Manual Verification 'Phase 3: Invoice Template' [1b2967d]
 
 ## Phase 4: n8n Workflow Update & Integration
 - [ ] Task: Import PDF Generation node into the Guest Checkout workflow.
