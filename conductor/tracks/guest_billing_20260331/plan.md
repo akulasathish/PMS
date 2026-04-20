@@ -1,7 +1,7 @@
 # Implementation Plan: Guest Folio & PDF Invoicing
 
 ## Phase 1: Folio Engine (Backend)
-- [~] Task: Create `incidental_charges` table migration to track extra items (Minibar, Laundry).
+- [x] Task: Create `incidental_charges` table migration to track extra items (Minibar, Laundry). [3506ef3]
 - [ ] Task: Create `payments` table migration to track guest settlements (Cash, Card, UPI).
 - [ ] Task: Build `postIncidentalCharge` server action with audit logging.
 - [ ] Task: Build `postPayment` server action with audit logging.
