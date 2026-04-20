@@ -9,10 +9,10 @@
 - [x] Task: Conductor - User Manual Verification 'Phase 1: Folio Engine' [bff1f00]
 
 ## Phase 2: Professional Folio UI (Frontend)
-- [ ] Task: Build the Folio Summary Modal to replace the simple "Check Out" button.
-- [ ] Task: Display the two-column ledger (Charges vs Payments).
-- [ ] Task: Add UI forms to post incidentals and log payments.
-- [ ] Task: Conductor - User Manual Verification 'Phase 2: Professional Folio UI'
+- [x] Task: Build the Folio Summary Modal to replace the simple "Check Out" button. [8d4cfa6]
+- [x] Task: Display the two-column ledger (Charges vs Payments). [8d4cfa6]
+- [x] Task: Add UI forms to post incidentals and log payments. [8d4cfa6]
+- [x] Task: Conductor - User Manual Verification 'Phase 2: Professional Folio UI' [8d4cfa6]
 
 ## Phase 3: Invoice Template (n8n Setup)
 - [ ] Task: Create a reusable HTML invoice template including GST/HSN slabs.
