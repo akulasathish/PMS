@@ -8,8 +8,7 @@ ADD COLUMN IF NOT EXISTS assigned_staff_id UUID REFERENCES public.profiles(id) O
 ADD COLUMN IF NOT EXISTS cleaning_started_at TIMESTAMPTZ,
 ADD COLUMN IF NOT EXISTS last_cleaned_at TIMESTAMPTZ;
 
--- 2. Repair 'bookings' table
-ALTER TABLE public.bookings
-ADD COLUMN IF NOT EXISTS id_verified BOOLEAN DEFAULT false,
-ADD COLUMN IF NOT EXISTS id_photo_url TEXT,
-ADD COLUMN IF NOT EXISTS signature_url TEXT;
+-- 3. Fix room status constraints for Housekeeping QC loop
+ALTER TABLE public.rooms DROP CONSTRAINT IF EXISTS rooms_status_check;
+ALTER TABLE public.rooms ADD CONSTRAINT rooms_status_check 
+CHECK (status IN ('Available', 'Occupied', 'Dirty', 'Blocked', 'Cleaning', 'Clean'));
