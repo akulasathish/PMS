@@ -1,0 +1,83 @@
+{
+  "name": "DEFINITIVE: Guest Checkout & GST Invoice",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "guest-checkout",
+        "options": {}
+      },
+      "id": "webhook-node",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [ 100, 300 ],
+      "webhookId": "guest-checkout"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.item.json.body;\nconst roomAmount = Number(body.room_amount);\nconst incidentals = body.incidentals || [];\nconst payments = body.payments || [];\n\n// GST Calculation\nlet gstRate = 0;\nif (roomAmount > 1000 && roomAmount <= 7500) gstRate = 0.12;\nelse if (roomAmount > 7500) gstRate = 0.18;\n\nconst cgst = (roomAmount * (gstRate / 2)).toFixed(2);\nconst sgst = (roomAmount * (gstRate / 2)).toFixed(2);\nconst totalIncidentals = incidentals.reduce((sum, i) => sum + Number(i.amount), 0);\nconst totalCharges = (roomAmount + Number(cgst) + Number(sgst) + totalIncidentals).toFixed(2);\n\n// Build HTML Rows\nconst incRows = incidentals.map(i => `<tr><td style=\"padding:8px;border-bottom:1px solid #eee\">${i.description}</td><td style=\"padding:8px;border-bottom:1px solid #eee;text-align:right\">₹${Number(i.amount).toFixed(2)}</td></tr>`).join('');\nconst payRows = payments.map(p => `<tr><td style=\"padding:8px;border-bottom:1px solid #eee;color:#059669\">Payment (${p.method})</td><td style=\"padding:8px;border-bottom:1px solid #eee;text-align:right;color:#059669\">-₹${Number(p.amount).toFixed(2)}</td></tr>`).join('');\n\nconst htmlInvoice = `<html><body style=\"font-family:sans-serif;padding:40px;color:#333\"><div style=\"text-align:center;border-bottom:2px solid #000;padding-bottom:20px\"><h1>TAX INVOICE</h1><p>${body.property_name}</p></div><div style=\"margin-top:20px\"><p><strong>Guest:</strong> ${body.guest_name}</p><p><strong>Room:</strong> ${body.room_number}</p><p><strong>Stay:</strong> ${body.check_in} to ${body.check_out}</p></div><table style=\"width:100%;margin-top:20px;border-collapse:collapse\"><thead><tr style=\"background:#f4f4f4\"><th align=\"left\" style=\"padding:8px\">Description</th><th align=\"right\" style=\"padding:8px\">Amount</th></tr></thead><tbody><tr><td style=\"padding:8px;border-bottom:1px solid #eee\">Room Rate</td><td style=\"padding:8px;border-bottom:1px solid #eee;text-align:right\">₹${roomAmount.toFixed(2)}</td></tr>${incRows}<tr><td style=\"padding:8px\">CGST (${(gstRate*50)}%)</td><td align=\"right\">₹${cgst}</td></tr><tr><td style=\"padding:8px\">SGST (${(gstRate*50)}%)</td><td align=\"right\">₹${sgst}</td></tr><tr style=\"background:#fafafa\"><td><strong>Total Charges</strong></td><td align=\"right\"><strong>₹${totalCharges}</strong></td></tr>${payRows}</tbody><tfoot><tr><th align=\"left\" style=\"padding:8px;font-size:18px\">Balance Due</th><th align=\"right\" style=\"padding:8px;font-size:18px\">₹0.00</th></tr></tfoot></table><p style=\"margin-top:40px;font-size:10px;text-align:center;color:#999\">HSN/SAC: 9963 | This is a system generated invoice.</p></body></html>`;\n\n// Convert to Base64 for the Resend API\nconst base64Invoice = Buffer.from(htmlInvoice).toString('base64');\n\nreturn {\n  ...body,\n  base64Invoice: base64Invoice\n};"
+      },
+      "id": "logic-node",
+      "name": "GST Math & Base64 Converter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [ 350, 300 ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer re_T6Xbtan8_NCrvHwHKrB5Wue3vqhyYSGVh"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"from\": \"Acme <onboarding@resend.dev>\",\n  \"to\": [\"{{$json.guest_email}}\"],\n  \"subject\": \"Thank you for staying at {{$json.property_name}}!\",\n  \"html\": \"<div style='font-family:sans-serif;max-width:600px;margin:0 auto;border:1px solid #eaeaea;border-radius:10px;padding:30px;'><h2 style='color:#111;'>Thank you for your stay!</h2><p>Hi {{$json.guest_name}},</p><p>We hope you had a wonderful time at <strong>{{$json.property_name}}</strong>. This is a confirmation of your checkout from <strong>{{$json.room_number}}</strong>.</p><div style='background:#f9fafb;padding:20px;border-radius:8px;margin:25px 0;border:1px dashed #ddd;'><p style='margin:0;font-size:14px;color:#666;'>Please find your itemized <strong>Tax Invoice</strong> attached to this email.</p></div><p>Safe travels,<br>The {{$json.property_name}} Team</p></div>\",\n  \"attachments\": [\n    {\n      \"filename\": \"Invoice.html\",\n      \"content\": \"{{$json.base64Invoice}}\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "resend-node",
+      "name": "Resend API (Final)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [ 600, 300 ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "GST Math & Base64 Converter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GST Math & Base64 Converter": {
+      "main": [
+        [
+          {
+            "node": "Resend API (Final)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
