@@ -38,7 +38,7 @@
           "parameters": [
             {
               "name": "from",
-              "value": "Acme <onboarding@resend.dev>"
+              "value": "<onboarding@resend.dev>"
             },
             {
               "name": "to",

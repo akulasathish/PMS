@@ -35,7 +35,7 @@ USING (
 -- 4.2. Property Access Policies
 CREATE POLICY "Admins can do everything on property_access" 
 ON public.property_access FOR ALL 
-USING ((SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin');
+USING (auth.jwt() -> 'app_metadata' ->> 'role' = 'admin' OR auth.jwt() -> 'user_metadata' ->> 'role' = 'admin');
 
 CREATE POLICY "Users can view their own access" 
 ON public.property_access FOR SELECT 
@@ -44,7 +44,7 @@ USING (user_id = auth.uid());
 -- 4.3. Rooms Policies
 CREATE POLICY "Admins can do everything on rooms" 
 ON public.rooms FOR ALL 
-USING ((SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin');
+USING (auth.jwt() -> 'app_metadata' ->> 'role' = 'admin' OR auth.jwt() -> 'user_metadata' ->> 'role' = 'admin');
 
 CREATE POLICY "Owners/Staff can see rooms of their properties" 
 ON public.rooms FOR SELECT 
@@ -67,7 +67,7 @@ WITH CHECK (
 -- 4.4. Bookings Policies
 CREATE POLICY "Admins can do everything on bookings" 
 ON public.bookings FOR ALL 
-USING ((SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin');
+USING (auth.jwt() -> 'app_metadata' ->> 'role' = 'admin' OR auth.jwt() -> 'user_metadata' ->> 'role' = 'admin');
 
 CREATE POLICY "Owners/Staff can manage bookings of their properties" 
 ON public.bookings FOR ALL 
@@ -83,7 +83,7 @@ WITH CHECK (
 -- 4.5. Profiles Policies
 CREATE POLICY "Admins can do everything on profiles" 
 ON public.profiles FOR ALL 
-USING ((SELECT role FROM public.profiles WHERE id = auth.uid()) = 'admin');
+USING (auth.jwt() -> 'app_metadata' ->> 'role' = 'admin' OR auth.jwt() -> 'user_metadata' ->> 'role' = 'admin');
 
 CREATE POLICY "Users can view their own profile" 
 ON public.profiles FOR SELECT 

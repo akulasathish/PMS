@@ -15,6 +15,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import BookingModal from './BookingModal';
+import FolioModal from '@/components/FolioModal';
 import { checkInGuest, checkOutGuest, updateGuestNotes, toggleRoomBlock, upgradeRoom, issueRefund, cancelBooking, resetGuestIdentity } from '@/app/actions/booking';
 import { Property, Room, Booking, UserProfile } from '@/lib/types';
 
@@ -72,6 +73,7 @@ export default function FrontOfficeTerminal() {
   // Form F Fields State
   const [guestAddress, setGuestAddress] = useState('');
   const [showQrCode, setShowQrCode] = useState(false);
+  const [activeCheckoutBooking, setActiveCheckoutBooking] = useState<{bookingId: string, roomId: string, guestName: string, amount: number} | null>(null);
   
   const supabase = createClient();
 
@@ -428,8 +430,14 @@ export default function FrontOfficeTerminal() {
 
   const handleSafeCheckOut = async (e: React.MouseEvent, bookingId: string, roomId: string) => {
     e.stopPropagation();
-    await checkOutGuest(bookingId, roomId);
-    window.location.reload();
+    const b = bookings.find(b => b.id === bookingId);
+    if (!b) return;
+    setActiveCheckoutBooking({
+      bookingId,
+      roomId,
+      guestName: b.guest_name,
+      amount: Number(b.amount)
+    });
   };
 
 
@@ -1235,6 +1243,22 @@ export default function FrontOfficeTerminal() {
             </div>
           </motion.div>
         </div>
+      )}
+
+      {activeCheckoutBooking && property?.id && (
+        <FolioModal
+          bookingId={activeCheckoutBooking.bookingId}
+          propertyId={property.id}
+          guestName={activeCheckoutBooking.guestName}
+          roomId={activeCheckoutBooking.roomId}
+          roomNumber={rooms.find(r => r.id === activeCheckoutBooking.roomId)?.room_number || ''}
+          baseAmount={activeCheckoutBooking.amount}
+          onClose={() => setActiveCheckoutBooking(null)}
+          onSuccess={() => {
+            setActiveCheckoutBooking(null);
+            window.location.reload();
+          }}
+        />
       )}
     </div>
   );

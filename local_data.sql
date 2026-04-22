@@ -354,7 +354,7 @@ INSERT INTO "auth"."refresh_tokens" ("instance_id", "id", "token", "user_id", "r
 --
 
 INSERT INTO "public"."app_settings" ("key", "value", "description", "updated_at") VALUES
-	('n8n_webhook_url', 'http://n8n:5678/webhook/booking-notification', 'The URL for n8n to process booking welcome emails', '2026-04-10 06:22:16.987814+00');
+	('n8n_webhook_url', 'http://18.206.46.206:5678/webhook/booking-notification', 'The URL for n8n to process booking welcome emails', '2026-04-10 06:22:16.987814+00');
 
 
 --

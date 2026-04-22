@@ -147,7 +147,7 @@ BEGIN
 
     -- Fallback to the default if not set
     IF webhook_url IS NULL THEN
-        webhook_url := 'http://n8n:5678/webhook/booking-notification';
+        webhook_url := 'http://18.206.46.206:5678/webhook/booking-notification';
     END IF;
 
     -- Construct the payload
@@ -192,7 +192,7 @@ BEGIN
         -- Fetch base n8n webhook URL from settings
         SELECT value INTO webhook_url FROM public.app_settings WHERE key = 'n8n_webhook_url';
         IF webhook_url IS NULL THEN
-            webhook_url := 'http://n8n:5678/webhook/booking-notification';
+            webhook_url := 'http://18.206.46.206:5678/webhook/booking-notification';
         END IF;
         
         -- Route to the specific Guest Checkout endpoint in n8n
@@ -247,7 +247,7 @@ BEGIN
         -- Fetch base n8n webhook URL from settings
         SELECT value INTO webhook_url FROM public.app_settings WHERE key = 'n8n_webhook_url';
         IF webhook_url IS NULL THEN
-            webhook_url := 'http://n8n:5678/webhook/booking-notification';
+            webhook_url := 'http://18.206.46.206:5678/webhook/booking-notification';
         END IF;
         
         -- Route to the specific Smart Check-In endpoint in n8n

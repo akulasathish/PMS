@@ -14,9 +14,10 @@ export async function registerProperty(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   
   console.log("SERVER ACTION `registerProperty` CALLED");
-  console.log("1. Authenticated User:", user?.id, "Role:", user?.user_metadata?.role);
+  const role = user?.app_metadata?.role || user?.user_metadata?.role;
+  console.log("1. Authenticated User:", user?.id, "Role:", role);
 
-  if (!user || user.user_metadata?.role !== 'admin') {
+  if (!user || role !== 'admin') {
     console.log("-> FAILED: Unauthorized.");
     return { error: 'Unauthorized. Only admins can register properties.' };
   }
