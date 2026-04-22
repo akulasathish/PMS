@@ -35,15 +35,17 @@ This document defines the Minimum Viable Product (MVP) requirements for the comm
     *   **Stay Summary Header:** Action Drawer displays `Total Nights` and `Date Range` clearly for staff.
     *   **Enterprise Check-In Guardrails:** Mandatory 3-step checklist (ID, Signature, Payment) mathematically blocks the "Check In" status flip until compliance is met.
     *   **Inventory Protection:** Dynamic date overlap calculation mathematically prevents overbooking during Walk-Ins.
-- [ ] **Night Audit & Room Blocking:**
-    *   **Room Blocking:** Administrative lock on rooms for maintenance or events.
-    *   **Night Audit:** "End of Day" logic to lock revenue and generate daily reports.
+- [~] **Night Audit & Room Blocking (Inventory Control):**
+    *   [x] **Enterprise Calendar Block:** Replace instant locks with a "Date & Reason" modal (Out of Order vs. Out of Service).
+    *   [x] **Strict Conflict Resolution:** The system MUST prevent an admin from blocking a room if a booking exists or a guest is checked in on any overlapping date. The guest must be checked out or moved (upgraded) to another room before the block can be applied.
+    *   [ ] **Maintenance Feed:** Integration with Housekeeping to display why rooms are offline.
+    *   [ ] **Night Audit:** "End of Day" logic to lock revenue and generate daily reports.
 - [x] **Housekeeping Web Terminal (Master Board):** 
     *   [x] **The QC Loop:** Move from a linear Clean/Dirty toggle to a 3-step workflow: `Dirty` ➡️ `Clean` ➡️ `Inspected` (Ready for Sale).
     *   [x] **Guest Context (X-Ray Vision):** Room cards must display real-time guest status (e.g., "Departing Today", "Arriving Soon", "Stayover") to prioritize cleaning order.
     *   [x] **Stayover Service:** A dedicated view for occupied rooms requiring daily light cleaning/towel changes.
     *   [x] **Cleaner View:** Mobile task list with "Start/Finish" timers.
-    *   **Minibar Posting:** A button on the cleaner's mobile view to add extra charges directly to a guest's folio.
+    *   [ ] **Minibar Posting:** A button on the cleaner's mobile view to add extra charges directly to a guest's folio.
 
 ## Pillar 3: Guest Journey & Automation
 - [x] **Smart Communications:** Automated n8n emails for Confirmation and Smart Check-In.
@@ -54,12 +56,12 @@ This document defines the Minimum Viable Product (MVP) requirements for the comm
     *   **Real-Time Sync:** Auto-ticks the Front Desk's Check-In checklist upon completion.
 - [x] **Guest Identity (Receptionist Hardware):**
     *   [x] **Mobile QR Handshake:** Receptionist uses their own smartphone to scan physical IDs directly into the desktop PMS.
-    *   **Master Guest Profiles:** Linking isolated bookings to a unified, permanent CRM guest record.
-- [ ] **The Professional Folio (Commercial Checkout Workflow):**
-    *   [x] **Folio Engine:** `incidental_charges` and `payments` tables with audit logging (Schema built and tests passing, pending local cache/UI verification).
+    *   [ ] **Master Guest Profiles:** Linking isolated bookings to a unified, permanent CRM guest record.
+- [x] **The Professional Folio (Commercial Checkout Workflow):**
+    *   [x] **Folio Engine:** `incidental_charges` and `payments` tables with audit logging.
     *   [x] **Balance Enforcement:** Physically block "Check-Out" button if Folio balance is not $0.00.
-    *   [ ] **Extra Charges:** UI to post incidentals (Laundry, Minibar, Room Service) and log payments. (FolioModal UI built, but backend API cache issue preventing successful post).
-    *   [ ] **Automated PDF Invoicing:** Generation of guest folios with GST compliance, emailed upon checkout via n8n.
+    *   [x] **Extra Charges:** UI to post incidentals (Laundry, Minibar, Room Service) and log payments.
+    *   [x] **Automated PDF Invoicing:** Generation of guest folios with GST compliance, emailed upon checkout via n8n.
 
 ## Pillar 4: Indian Market Compliance (Localization)
 - [ ] **GST-Compliant Invoicing:**
