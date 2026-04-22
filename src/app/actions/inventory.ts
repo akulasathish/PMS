@@ -151,3 +151,154 @@ export async function deleteRoom(roomId: string) {
   
   return { success: true };
 }
+
+/**
+ * Create a new Room Block (OOO/OOS) with conflict detection
+ */
+export async function createRoomBlock(formData: FormData) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) return { error: 'Unauthorized.' };
+  
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // 1. Role Validation
+  let role = user.app_metadata?.role || user.user_metadata?.role;
+  if (!role) {
+    const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', user.id).single();
+    role = profile?.role;
+  }
+
+  if (!['owner', 'admin'].includes(role)) {
+    return { error: 'Unauthorized. Only management can block inventory.' };
+  }
+
+  const roomId = formData.get('roomId') as string;
+  const propertyId = formData.get('propertyId') as string;
+  const blockType = formData.get('type') as string; // OOO or OOS
+  const startDate = formData.get('startDate') as string;
+  const endDate = formData.get('endDate') as string;
+  const reason = formData.get('reason') as string;
+  const notes = formData.get('notes') as string;
+
+  if (!roomId || !startDate || !endDate || !reason) {
+    return { error: 'Missing required fields.' };
+  }
+
+  // 2. CONFLICT CHECK: Is the room currently occupied?
+  const { data: room, error: roomErr } = await supabaseAdmin
+    .from('rooms')
+    .select('status, room_number')
+    .eq('id', roomId)
+    .single();
+
+  if (room?.status === 'Occupied') {
+    return { error: `Cannot block Room ${room.room_number} because it is currently Occupied. Please check out or move the guest first.` };
+  }
+
+  // 3. CONFLICT CHECK: Are there future reservations on these dates?
+  const { data: conflicts, error: conflictErr } = await supabaseAdmin
+    .from('bookings')
+    .select('id, guest_name')
+    .eq('room_id', roomId)
+    .in('status', ['Confirmed', 'Checked In'])
+    .or(`check_in.lte.${endDate},check_out.gte.${startDate}`);
+
+  // Refined overlap logic: (StartA <= EndB) and (EndA >= StartB)
+  const realConflicts = conflicts?.filter(b => true); // The query already filters for overlaps
+
+  if (conflicts && conflicts.length > 0) {
+    return { error: `Cannot block room. An existing booking (${conflicts[0].guest_name}) overlaps with these dates.` };
+  }
+
+  // 4. Insert the block record
+  const { data: block, error: blockErr } = await supabaseAdmin
+    .from('room_blocks')
+    .insert([{
+      property_id: propertyId,
+      room_id: roomId,
+      block_type: blockType,
+      start_date: startDate,
+      end_date: endDate,
+      reason: reason,
+      notes: notes,
+      created_by: user.id
+    }])
+    .select()
+    .single();
+
+  if (blockErr) {
+    return { error: `Database Error: ${blockErr.message}` };
+  }
+
+  // 5. If today is within the block range, update room status to Blocked
+  const today = new Date().toISOString().split('T')[0];
+  if (today >= startDate && today <= endDate) {
+    await supabaseAdmin
+      .from('rooms')
+      .update({ status: 'Blocked' })
+      .eq('id', roomId);
+  }
+
+  // Audit Log
+  await logAction({
+    propertyId,
+    action: 'ROOM_BLOCKED',
+    details: { roomNumber: room?.room_number, blockType, startDate, endDate, reason },
+    userId: user.id
+  });
+
+  revalidatePath('/dashboard/front-office');
+  revalidatePath('/dashboard/inventory');
+
+  return { success: true, blockId: block.id };
+}
+
+/**
+ * Resolve an active room block and return room to service (status: Dirty)
+ */
+export async function resolveRoomBlock(blockId: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: 'Unauthorized.' };
+
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // 1. Fetch block data to get roomId and propertyId
+  const { data: block, error: fetchErr } = await supabaseAdmin
+    .from('room_blocks')
+    .select('room_id, property_id')
+    .eq('id', blockId)
+    .single();
+
+  if (fetchErr || !block) return { error: 'Block not found.' };
+
+  // 2. Resolve the block
+  const { error: blockErr } = await supabaseAdmin
+    .from('room_blocks')
+    .update({ status: 'Resolved' })
+    .eq('id', blockId);
+
+  if (blockErr) return { error: blockErr.message };
+
+  // 3. Flip room to Dirty (requires cleaning after maintenance)
+  await supabaseAdmin
+    .from('rooms')
+    .update({ status: 'Dirty' })
+    .eq('id', block.room_id);
+
+  // Audit Log
+  await logAction({
+    propertyId: block.property_id,
+    action: 'ROOM_BLOCK_RESOLVED',
+    details: { blockId, roomId: block.room_id },
+    userId: user.id
+  });
+
+  revalidatePath('/dashboard/front-office');
+  revalidatePath('/dashboard/inventory');
+  revalidatePath('/dashboard/housekeeping');
+
+  return { success: true };
+}
