@@ -186,30 +186,26 @@ export async function createRoomBlock(formData: FormData) {
     return { error: 'Missing required fields.' };
   }
 
-  // 2. CONFLICT CHECK: Is the room currently occupied?
+  // 2. We ONLY rely on mathematical overlap. We do not block based on current 'Occupied' status,
+  // because an Occupied room today can be legitimately blocked for tomorrow.
   const { data: room, error: roomErr } = await supabaseAdmin
     .from('rooms')
-    .select('status, room_number')
+    .select('room_number')
     .eq('id', roomId)
     .single();
 
-  if (room?.status === 'Occupied') {
-    return { error: `Cannot block Room ${room.room_number} because it is currently Occupied. Please check out or move the guest first.` };
-  }
-
-  // 3. CONFLICT CHECK: Are there future reservations on these dates?
+  // 3. CONFLICT CHECK: Are there active reservations (Confirmed/Checked In) that overlap with these dates?
+  // Overlap Math: (BookingCheckIn < BlockEndDate) AND (BookingCheckOut > BlockStartDate)
   const { data: conflicts, error: conflictErr } = await supabaseAdmin
     .from('bookings')
     .select('id, guest_name')
     .eq('room_id', roomId)
     .in('status', ['Confirmed', 'Checked In'])
-    .or(`check_in.lte.${endDate},check_out.gte.${startDate}`);
-
-  // Refined overlap logic: (StartA <= EndB) and (EndA >= StartB)
-  const realConflicts = conflicts?.filter(b => true); // The query already filters for overlaps
+    .lt('check_in', endDate)
+    .gt('check_out', startDate);
 
   if (conflicts && conflicts.length > 0) {
-    return { error: `Cannot block room. An existing booking (${conflicts[0].guest_name}) overlaps with these dates.` };
+    return { error: `Cannot block room. An existing booking (${conflicts[0].guest_name}) overlaps with these dates. Please move the guest first.` };
   }
 
   // 4. Insert the block record
