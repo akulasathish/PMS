@@ -7,9 +7,9 @@
 - [x] Task: Conductor - User Manual Verification 'Phase 2: Conflict Engine' [1334470]
 
 ## Phase 3: Front Office Integration
-- [ ] Task: Build the Room Block Modal UI with date pickers and conflict warnings.
-- [ ] Task: Replace the simple "Lock" toggle on Room Cards with the Modal trigger.
-- [ ] Task: Conductor - User Manual Verification 'Phase 3: Front Office Integration'
+- [x] Task: Build the Room Block Modal UI with date pickers and conflict warnings. [a43b911]
+- [x] Task: Replace the simple "Lock" toggle on Room Cards with the Modal trigger. [a43b911]
+- [x] Task: Conductor - User Manual Verification 'Phase 3: Front Office Integration' [a43b911]
 
 ## Phase 4: Housekeeping & Sync
 - [ ] Task: Update Housekeeping Terminal to display active maintenance blocks.
