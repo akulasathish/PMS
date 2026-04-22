@@ -16,7 +16,8 @@ import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import BookingModal from './BookingModal';
 import FolioModal from '@/components/FolioModal';
-import { checkInGuest, checkOutGuest, updateGuestNotes, toggleRoomBlock, upgradeRoom, issueRefund, cancelBooking, resetGuestIdentity } from '@/app/actions/booking';
+import RoomBlockModal from '@/components/RoomBlockModal';
+import { checkInGuest, checkOutGuest, updateGuestNotes, upgradeRoom, issueRefund, cancelBooking, resetGuestIdentity } from '@/app/actions/booking';
 import { Property, Room, Booking, UserProfile } from '@/lib/types';
 
 
@@ -74,9 +75,9 @@ export default function FrontOfficeTerminal() {
   const [guestAddress, setGuestAddress] = useState('');
   const [showQrCode, setShowQrCode] = useState(false);
   const [activeCheckoutBooking, setActiveCheckoutBooking] = useState<{bookingId: string, roomId: string, guestName: string, amount: number} | null>(null);
-  
-  const supabase = createClient();
+  const [activeBlockRoom, setActiveBlockRoom] = useState<Room | null>(null);
 
+  const supabase = createClient();
   // Extract fetch data to a callable function to avoid window.location.reload()
   const loadDashboardData = useCallback(async () => {
     setIsLoading(true);
@@ -411,15 +412,8 @@ export default function FrontOfficeTerminal() {
     setActionLoading(false);
   };
 
-  const handleBlockRoom = async (room: Room) => {
-    setActionLoading(true);
-    const res = await toggleRoomBlock(room.id, room.status);
-    if (res.success && res.newStatus) {
-      setRooms(rooms.map(r => r.id === room.id ? { ...r, status: res.newStatus as Room['status'] } : r));
-    } else {
-      alert(res.error);
-    }
-    setActionLoading(false);
+  const handleBlockRoom = (room: Room) => {
+    setActiveBlockRoom(room);
   };
 
   const handleSafeCheckIn = async (e: React.MouseEvent, bookingId: string) => {
@@ -1256,7 +1250,18 @@ export default function FrontOfficeTerminal() {
           onClose={() => setActiveCheckoutBooking(null)}
           onSuccess={() => {
             setActiveCheckoutBooking(null);
-            window.location.reload();
+            loadDashboardData();
+          }}
+        />
+      )}
+
+      {activeBlockRoom && (
+        <RoomBlockModal
+          room={activeBlockRoom}
+          onClose={() => setActiveBlockRoom(null)}
+          onSuccess={() => {
+            setActiveBlockRoom(null);
+            loadDashboardData();
           }}
         />
       )}

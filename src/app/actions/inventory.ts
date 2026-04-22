@@ -302,3 +302,32 @@ export async function resolveRoomBlock(blockId: string) {
 
   return { success: true };
 }
+
+/**
+ * Find the active block for a room and resolve it
+ */
+export async function resolveRoomBlockByRoom(roomId: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: 'Unauthorized.' };
+
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // Find the active block for this room
+  const { data: block, error: fetchErr } = await supabaseAdmin
+    .from('room_blocks')
+    .select('id, property_id')
+    .eq('room_id', roomId)
+    .eq('status', 'Active')
+    .single();
+
+  if (fetchErr || !block) {
+    // If no active block found, just reset the room anyway to be safe
+    await supabaseAdmin.from('rooms').update({ status: 'Dirty' }).eq('id', roomId);
+    revalidatePath('/dashboard/front-office');
+    revalidatePath('/dashboard/inventory');
+    return { success: true };
+  }
+
+  return resolveRoomBlock(block.id);
+}
