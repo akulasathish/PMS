@@ -772,12 +772,11 @@ export default function FrontOfficeTerminal() {
                             <div className="flex flex-col gap-2">
                               <div className="flex items-center justify-between">
                                 {canBlockRoom() ? (
-                                  <button 
+                                  <button
                                     onClick={() => handleBlockRoom(room)}
-                                    disabled={actionLoading || (room.status !== 'Available' && room.status !== 'Blocked')}
+                                    disabled={actionLoading}
                                     className={`text-sm font-bold transition-colors ${room.status === 'Blocked' ? 'text-red-500 hover:text-red-400' : 'text-white hover:text-zinc-300'} disabled:opacity-50`}
-                                  >
-                                    {room.room_number}
+                                  >                                    {room.room_number}
                                   </button>
                                 ) : (
                                   <p className={`text-sm font-bold ${room.status === 'Blocked' ? 'text-red-500' : 'text-white'}`}>
