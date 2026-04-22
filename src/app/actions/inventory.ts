@@ -195,13 +195,14 @@ export async function createRoomBlock(formData: FormData) {
     .single();
 
   // 3. CONFLICT CHECK: Are there active reservations (Confirmed/Checked In) that overlap with these dates?
-  // Overlap Math: (BookingCheckIn < BlockEndDate) AND (BookingCheckOut > BlockStartDate)
+  // Overlap Math: (BookingCheckIn <= BlockEndDate) AND (BookingCheckOut > BlockStartDate)
+  // We use > for check_out because checking out on the 24th means the room is free ON the 24th afternoon.
   const { data: conflicts, error: conflictErr } = await supabaseAdmin
     .from('bookings')
     .select('id, guest_name')
     .eq('room_id', roomId)
     .in('status', ['Confirmed', 'Checked In'])
-    .lt('check_in', endDate)
+    .lte('check_in', endDate)
     .gt('check_out', startDate);
 
   if (conflicts && conflicts.length > 0) {

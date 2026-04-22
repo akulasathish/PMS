@@ -48,7 +48,7 @@ describe('Inventory Control (Room Blocking)', () => {
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
           in: vi.fn().mockReturnThis(),
-          lt: vi.fn().mockReturnThis(),
+          lte: vi.fn().mockReturnThis(),
           gt: vi.fn().mockResolvedValue({ data: [], error: null }) // No overlaps found
         };
       }
@@ -83,7 +83,7 @@ describe('Inventory Control (Room Blocking)', () => {
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
           in: vi.fn().mockReturnThis(),
-          lt: vi.fn().mockReturnThis(),
+          lte: vi.fn().mockReturnThis(),
           gt: vi.fn().mockResolvedValue({ data: [{ id: 'booking-id', guest_name: 'John Doe' }], error: null }) // Conflict found
         };
       }
