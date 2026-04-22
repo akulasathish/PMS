@@ -8,25 +8,31 @@ interface LogActionParams {
   action: string;
   details?: any;
   severity?: 'info' | 'warning' | 'critical';
+  userId?: string; // Add optional userId
 }
 
 /**
  * Global helper to record operational audit logs
  */
-export async function logAction({ propertyId, action, details = {}, severity = 'info' }: LogActionParams) {
+export async function logAction({ propertyId, action, details = {}, severity = 'info', userId }: LogActionParams) {
   try {
-    const supabase = createSSRClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    let finalUserId = userId;
+    
+    // Only perform auth check if userId was not provided
+    if (!finalUserId) {
+      const supabase = createSSRClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      finalUserId = user?.id;
+    }
 
-    // We use the Admin client to ensure logs are written even if user permissions are tight,
-    // but we still record the user_id of the person who performed the action.
+    // We use the Admin client to ensure logs are written even if user permissions are tight
     const supabaseAdmin = getSupabaseAdmin();
     
     const { error } = await supabaseAdmin
       .from('audit_logs')
       .insert([{
         property_id: propertyId,
-        user_id: user?.id || null,
+        user_id: finalUserId || null,
         action,
         details,
         severity

@@ -57,7 +57,8 @@ export async function createBooking(formData: FormData) {
   await logAction({
     propertyId,
     action: 'BOOKING_CREATED',
-    details: { guestName, amount, checkIn, checkOut, bookingId: bookingData.id }
+    details: { guestName, amount, checkIn, checkOut, bookingId: bookingData.id },
+    userId: user.id
   });
 
   // Revalidate the front-desk dashboard path
@@ -115,7 +116,8 @@ export async function checkInGuest(bookingId: string) {
   await logAction({
     propertyId: booking.property_id,
     action: 'GUEST_CHECK_IN',
-    details: { guestName: booking.guest_name, bookingId }
+    details: { guestName: booking.guest_name, bookingId },
+    userId: user.id
   });
 
   // Revalidate the tape chart so the status changes instantly
@@ -386,7 +388,8 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
   await logAction({
     propertyId: booking.property_id,
     action: 'GUEST_CHECK_OUT',
-    details: { guestName: booking.guest_name, bookingId, totalCharges, totalPayments }
+    details: { guestName: booking.guest_name, bookingId, totalCharges, totalPayments },
+    userId: user.id
   });
 
   revalidatePath('/dashboard/front-office');

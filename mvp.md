@@ -25,7 +25,7 @@ This document defines the Minimum Viable Product (MVP) requirements for the comm
     *   **The 3-Tier Toggle:** Every feature must have `[R] Read`, `[W] Write`, and `[D] Deny` access levels.
     *   **JSON Playground:** An advanced view for Owners to directly write/paste raw JSON permission arrays.
     *   **Searchable Matrix:** A live search bar to instantly filter the 25+ features (e.g., typing "Refund").
-- [ ] **Performance & Logs (Audit Trail):**
+- [x] **Performance & Logs (Audit Trail):**
     *   **Activity Feed:** Real-time logging of who created bookings, issued refunds, or marked rooms clean.
     *   **Owner Visibility:** A dedicated "Recent Activity" widget on the Tier 2 Dashboard.
 - [x] **Front Office Suite:**
@@ -55,11 +55,11 @@ This document defines the Minimum Viable Product (MVP) requirements for the comm
 - [x] **Guest Identity (Receptionist Hardware):**
     *   [x] **Mobile QR Handshake:** Receptionist uses their own smartphone to scan physical IDs directly into the desktop PMS.
     *   **Master Guest Profiles:** Linking isolated bookings to a unified, permanent CRM guest record.
-- [ ] **The Professional Folio:**
-    *   **Balance Enforcement:** Physically block "Check-Out" button if Folio balance is not $0.00.
-    *   **Extra Charges:** UI to post incidentals (Laundry, Minibar, Room Service) to the guest's bill.
-- [x] **Smart Cancellation:** One-click "Cancel / No Show" button to instantly release room inventory.
-- [ ] **Automated PDF Invoicing:** Generation of guest folios emailed upon checkout.
+- [ ] **The Professional Folio (Commercial Checkout Workflow):**
+    *   [x] **Folio Engine:** `incidental_charges` and `payments` tables with audit logging (Schema built and tests passing, pending local cache/UI verification).
+    *   [x] **Balance Enforcement:** Physically block "Check-Out" button if Folio balance is not $0.00.
+    *   [ ] **Extra Charges:** UI to post incidentals (Laundry, Minibar, Room Service) and log payments. (FolioModal UI built, but backend API cache issue preventing successful post).
+    *   [ ] **Automated PDF Invoicing:** Generation of guest folios with GST compliance, emailed upon checkout via n8n.
 
 ## Pillar 4: Indian Market Compliance (Localization)
 - [ ] **GST-Compliant Invoicing:**

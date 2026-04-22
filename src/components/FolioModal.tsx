@@ -14,13 +14,14 @@ interface FolioModalProps {
   bookingId: string;
   propertyId: string;
   guestName: string;
-  roomNumber: string;
+  roomId: string; // The UUID required for the database update
+  roomNumber: string; // The string for display purposes
   baseAmount: number;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-export function FolioModal({ bookingId, propertyId, guestName, roomNumber, baseAmount, onClose, onSuccess }: FolioModalProps) {
+export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumber, baseAmount, onClose, onSuccess }: FolioModalProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -96,7 +97,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomNumber, baseA
     setActionLoading(true);
     setError('');
     
-    const res = await checkOutGuest(bookingId, roomNumber);
+    const res = await checkOutGuest(bookingId, roomId);
     if (res.error) {
       setError(res.error);
       setActionLoading(false);

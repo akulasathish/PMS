@@ -50,7 +50,8 @@ export async function postIncidentalCharge(formData: FormData) {
   await logAction({
     propertyId,
     action: 'INCIDENTAL_CHARGE_POSTED',
-    details: { bookingId, amount, description, chargeId: data.id }
+    details: { bookingId, amount, description, chargeId: data.id },
+    userId: user.id
   });
 
   // Force UI updates across dashboards
@@ -107,7 +108,8 @@ export async function postPayment(formData: FormData) {
   await logAction({
     propertyId,
     action: 'PAYMENT_RECEIVED',
-    details: { bookingId, amount, method, transactionId, paymentId: data.id }
+    details: { bookingId, amount, method, transactionId, paymentId: data.id },
+    userId: user.id
   });
 
   // Force UI updates across dashboards

@@ -1250,6 +1250,7 @@ export default function FrontOfficeTerminal() {
           bookingId={activeCheckoutBooking.bookingId}
           propertyId={property.id}
           guestName={activeCheckoutBooking.guestName}
+          roomId={activeCheckoutBooking.roomId}
           roomNumber={rooms.find(r => r.id === activeCheckoutBooking.roomId)?.room_number || ''}
           baseAmount={activeCheckoutBooking.amount}
           onClose={() => setActiveCheckoutBooking(null)}

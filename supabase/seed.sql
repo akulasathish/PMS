@@ -8,11 +8,11 @@ ON CONFLICT (id) DO NOTHING;
 
 -- 2. Create the Users (Admin, Owner, and Staff) in auth.users
 -- Passwords are set to 'password123' using bcrypt salt
-INSERT INTO auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_user_meta_data)
+INSERT INTO auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_user_meta_data, raw_app_meta_data)
 VALUES
-    ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '00000000-0000-0000-0000-000000000000', 'admin@pms.com', crypt('password123', gen_salt('bf')), now(), now(), now(), '{"role":"admin"}'),
-    ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '00000000-0000-0000-0000-000000000000', 'owner@demo.com', crypt('password123', gen_salt('bf')), now(), now(), now(), '{"role":"owner"}'),
-    ('cccccccc-cccc-cccc-cccc-cccccccccccc', '00000000-0000-0000-0000-000000000000', 'staff@demo.com', crypt('password123', gen_salt('bf')), now(), now(), now(), '{"role":"staff"}')
+    ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '00000000-0000-0000-0000-000000000000', 'admin@pms.com', crypt('password123', gen_salt('bf')), now(), now(), now(), '{"role":"admin"}', '{"provider":"email","providers":["email"]}'),
+    ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '00000000-0000-0000-0000-000000000000', 'owner@demo.com', crypt('password123', gen_salt('bf')), now(), now(), now(), '{"role":"owner"}', '{"provider":"email","providers":["email"]}'),
+    ('cccccccc-cccc-cccc-cccc-cccccccccccc', '00000000-0000-0000-0000-000000000000', 'staff@demo.com', crypt('password123', gen_salt('bf')), now(), now(), now(), '{"role":"staff"}', '{"provider":"email","providers":["email"]}')
 ON CONFLICT (id) DO NOTHING;
 
 -- 3. Link Users to Profiles and Properties
@@ -22,6 +22,12 @@ VALUES
     ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'owner@demo.com', 'Demo Owner', 'owner', '11111111-1111-1111-1111-111111111111'),
     ('cccccccc-cccc-cccc-cccc-cccccccccccc', 'staff@demo.com', 'Demo Staff', 'staff', '11111111-1111-1111-1111-111111111111')
 ON CONFLICT (id) DO NOTHING;
+
+-- 3.5 Explicit Property Access for Master Users
+INSERT INTO public.property_access (user_id, property_id)
+VALUES
+    ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '11111111-1111-1111-1111-111111111111')
+ON CONFLICT DO NOTHING;
 
 -- 4. Create Standard and Deluxe Rooms for the Demo Property (Tier 2)
 INSERT INTO public.rooms (id, property_id, room_number, type, status)

@@ -50,6 +50,7 @@ describe('FolioModal Component', () => {
         bookingId="123"
         propertyId="prop-123"
         guestName="John Doe"
+        roomId="room-123"
         roomNumber="101"
         baseAmount={100}
         onClose={() => {}}
