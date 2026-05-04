@@ -36,7 +36,5 @@ export default withSentryConfig(nextConfig, {
   // This can increase your server load as well as your hosting bill.
   // Note: Check that the configured route does not match with your next.config.js redirects, rewrites or middlewareroutes.
   tunnelRoute: "/monitoring",
-
-  // Hides source maps from visitors
-  hideSourceMaps: true,
 });
+

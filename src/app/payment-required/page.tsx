@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { 
   Building2, 
@@ -16,11 +16,11 @@ import {
 import Link from 'next/link';
 import { selfServiceOnboarding } from '@/app/actions/onboarding';
 
-export default function RegistrationPage() {
+function RegistrationForm() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const plan = searchParams.get('plan') || 'starter';
-  
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -67,21 +67,21 @@ export default function RegistrationPage() {
 
   return (
     <div className="min-h-screen bg-[#08080a] text-zinc-300 selection:bg-indigo-500/30">
-      
+
       {/* Background Decor */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none opacity-50">
         <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-indigo-500/10 rounded-full blur-[120px]" />
       </div>
 
       <main className="relative z-10 max-w-5xl mx-auto px-6 py-20 min-h-screen flex flex-col items-center justify-center">
-        
+
         <Link href="/" className="absolute top-10 left-6 flex items-center gap-2 text-zinc-500 hover:text-white transition-colors group">
           <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
           <span className="text-xs font-bold uppercase tracking-widest">Back to Plans</span>
         </Link>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center w-full">
-          
+
           {/* Left Side: Summary */}
           <div className="hidden md:block">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.03] border border-white/[0.08] mb-6">
@@ -118,7 +118,7 @@ export default function RegistrationPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
-              
+
               {error && (
                 <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-bold">
                   {error}
@@ -211,5 +211,17 @@ export default function RegistrationPage() {
 
       </main>
     </div>
+  );
+}
+
+export default function RegistrationPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#08080a] flex items-center justify-center">
+        <Loader2 className="animate-spin text-indigo-500" size={32} />
+      </div>
+    }>
+      <RegistrationForm />
+    </Suspense>
   );
 }
