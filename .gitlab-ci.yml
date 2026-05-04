@@ -1,0 +1,85 @@
+# RE-PMS Engine 2026: CI/CD Pipeline
+# This pipeline automates the testing, building, and deployment of the PMS to AWS EKS Fargate.
+
+stages:
+  - test
+  - build
+  - deploy
+
+variables:
+  # The ECR registry where our Docker images live
+  ECR_REGISTRY: "401644592968.dkr.ecr.us-east-1.amazonaws.com"
+  ECR_REPOSITORY: "pms/app"
+  AWS_REGION: "us-east-1"
+  # Use the commit SHA as a unique tag for easy rollbacks
+  IMAGE_TAG: $CI_COMMIT_SHORT_SHA
+
+# -----------------------------------------------------------------------------
+# STAGE 1: Test (Fails the build if code is broken)
+# -----------------------------------------------------------------------------
+run_unit_tests:
+  stage: test
+  image: node:20-alpine
+  script:
+    - echo "Running automated test suite..."
+    - npm ci
+    - npx vitest run
+  # Only run tests on merge requests or the main branch
+  only:
+    - merge_requests
+    - main
+
+# -----------------------------------------------------------------------------
+# STAGE 2: Build & Push Docker Image (Only on main branch)
+# -----------------------------------------------------------------------------
+build_and_push:
+  stage: build
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  before_script:
+    # Install AWS CLI to authenticate with ECR
+    - apk add --no-cache aws-cli
+    - echo "Logging into AWS ECR..."
+    - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+  script:
+    - echo "Building production Docker image..."
+    # We bake the Production Supabase keys into the image at build time.
+    # Note: These variables MUST be set in GitLab Settings -> CI/CD -> Variables
+    - docker build 
+        --build-arg NEXT_PUBLIC_SUPABASE_URL=$PROD_SUPABASE_URL 
+        --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=$PROD_SUPABASE_ANON_KEY 
+        -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG 
+        -t $ECR_REGISTRY/$ECR_REPOSITORY:latest 
+        .
+    - echo "Pushing image to ECR..."
+    - docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+    - docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+  only:
+    - main
+
+# -----------------------------------------------------------------------------
+# STAGE 3: Deploy to AWS EKS Fargate
+# -----------------------------------------------------------------------------
+deploy_to_eks:
+  stage: deploy
+  image: 
+    name: bitnami/kubectl:latest
+    entrypoint: [""]
+  before_script:
+    # AWS CLI is required to generate the authentication token for EKS
+    - apt-get update && apt-get install -y awscli
+    # Connect kubectl to our cluster
+    - aws eks update-kubeconfig --region $AWS_REGION --name pms-production
+  script:
+    - echo "Deploying version $IMAGE_TAG to EKS Cluster..."
+    # Update the deployment.yaml to use our specific new image tag
+    - sed -i "s|image:.*|image:\ $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG|g" k8s/deployment.yaml
+    # Apply the manifests
+    - kubectl apply -f k8s/deployment.yaml
+    - kubectl apply -f k8s/service.yaml
+    - echo "Deployment initiated successfully!"
+    # Verify the rollout status
+    - kubectl rollout status deployment/pms-frontend -n default
+  only:
+    - main

@@ -32,6 +32,33 @@ export async function createBooking(formData: FormData) {
 
   const supabaseAdmin = getSupabaseAdmin();
 
+  // OVERLAP CHECK: Prevent booking if the room is scheduled for maintenance/blocked
+  // Overlap Math: (BlockStart <= BookingEnd) AND (BlockEnd >= BookingStart)
+  const { data: blocks } = await supabaseAdmin
+    .from('room_blocks')
+    .select('reason')
+    .eq('room_id', roomId)
+    .eq('status', 'Active')
+    .lte('start_date', checkOut)
+    .gte('end_date', checkIn);
+
+  if (blocks && blocks.length > 0) {
+    return { error: `Cannot book this room. It is scheduled for maintenance (${blocks[0].reason}) during these dates.` };
+  }
+
+  // OVERLAP CHECK: Prevent double-booking a room that already has a guest
+  const { data: existingBookings } = await supabaseAdmin
+    .from('bookings')
+    .select('guest_name')
+    .eq('room_id', roomId)
+    .in('status', ['Confirmed', 'Checked In'])
+    .lte('check_in', checkOut)
+    .gte('check_out', checkIn);
+
+  if (existingBookings && existingBookings.length > 0) {
+    return { error: `Cannot book this room. It is already booked by ${existingBookings[0].guest_name} during these dates.` };
+  }
+
   // Insert the booking
   const { data: bookingData, error: bookingError } = await supabaseAdmin
     .from('bookings')

@@ -1,64 +1,58 @@
-# RE-PMS Engine 2026: Deployment & Migration Guide
+# RE-PMS Engine 2026: Enterprise Deployment Strategy
 
-This guide explains how to quickly rebuild the RE-PMS system on a new machine, server, or cloud provider (e.g., AWS, Azure, Supabase Cloud) without starting from scratch.
+This document outlines the professional Infrastructure-as-Code (IaC) and cloud-native deployment strategy for the RE-PMS platform.
 
-## System Architecture
-* **Frontend:** Next.js 16
-* **Database:** Supabase (PostgreSQL)
-* **Automation:** n8n (Dockerized)
+## 🏛️ Cloud Architecture (Production)
+Our production environment is built for scale, high availability, and 99.9% uptime.
 
-## Prerequisites
-Before you begin, ensure you have the following installed:
-* Docker & Docker Compose
-* Node.js & npm
-* Supabase CLI (`npm i -g supabase`)
+| Service | Role | Why we use it |
+| :--- | :--- | :--- |
+| **AWS EKS** | Container Orchestrator | The industry standard for managing Dockerized microservices at scale. |
+| **AWS Fargate** | Serverless Compute | Eliminates server maintenance (no EC2 patching) and provides per-container isolation and auto-scaling. |
+| **AWS ECR** | Image Registry | Secure, private storage for our immutable Docker versioned images. |
+| **Supabase Cloud** | DB & Auth Engine | Managed PostgreSQL with built-in Row-Level Security (RLS) for bulletproof multi-tenancy. |
+| **n8n (Dockerized)** | Logic Orchestrator | Handles event-driven automation (GST math, PDF generation) without cluttering the core app. |
 
----
-
-## The 3-Step Rebuild Process
-
-### 1. Spin up the Infrastructure
-Start by launching the `n8n` automation engine via Docker Compose.
-```bash
-docker-compose up -d
-```
-
-### 2. Apply Migrations & Seed Data
-Initialize the Supabase database. This will automatically apply all schema migrations (capturing the full "DNA" of the database including RLS and Postgres Triggers) and inject the base seed data so you don't start with a blank screen.
-```bash
-npx supabase start
-npx supabase db reset
-```
-
-**What the Seed Data includes:**
-* **Tier 1 (Admin):** `admin@pms.com` / `password123`
-* **Tier 2 (Owner):** `owner@demo.com` / `password123` (Linked to "The Grand Demo Hotel")
-* **Tier 3 (Staff):** `staff@demo.com` / `password123`
-* **Rooms:** Pre-configured Standard and Suite rooms.
-
-### 3. Restore n8n Automation
-Import the email automation workflow into n8n:
-1. Navigate to your n8n instance (e.g., `http://localhost:5678`).
-2. Create your initial admin account if prompted.
-3. Click **Add Workflow** -> **Import from File**.
-4. Select the `n8n-booking-workflow.json` file found in the root directory.
-5. Add your **Resend API Key** to the HTTP Request node credentials.
-6. Toggle the workflow to **ACTIVE** (top-right corner).
+## 🛠️ Deployment Toolchain
+| Tool | Usage | Why we use it |
+| :--- | :--- | :--- |
+| **Terraform** | Infrastructure-as-Code | Ensures our entire cloud (VPC, EKS, IAM) is version-controlled and repeatable. |
+| **Docker** | Containerization | Guarantees "Works on my machine" consistency from local dev to AWS EKS. |
+| **kubectl** | Cluster Management | The primary CLI tool for deploying and inspecting applications inside EKS. |
+| **GitLab CI/CD** | Automated SDLC | Automates the Test -> Build -> Deploy pipeline upon every code push. |
 
 ---
 
-## Dynamic Webhook Configuration (Cloud Deployment)
+## 📊 Observability & Monitoring
+We follow the "Three Pillars of Observability" to ensure system health:
 
-The Postgres Trigger (`on_booking_created`) is designed to send an HTTP POST request to n8n whenever a new booking is created.
+1. **Error Tracking (Sentry):**
+   * **Role:** Real-time exception catching.
+   * **Why:** Instantly notifies the team of frontend or backend crashes with exact stack traces.
+2. **Infrastructure Metrics (Prometheus):**
+   * **Role:** Time-series data collection.
+   * **Why:** Tracks CPU, RAM, and network health of our Kubernetes pods.
+3. **Visualization (Grafana):**
+   * **Role:** The "Control Room" dashboard.
+   * **Why:** Transforms Prometheus numbers into real-time health charts for the engineering team.
 
-If you deploy this stack to a cloud provider like AWS instead of running it locally, the database needs to know the new public IP or domain name for n8n.
+---
 
-You **do not** need to rewrite any SQL to fix this. Instead, simply update the `app_settings` table in the database:
+## 🚀 The Deployment Lifecycle (SDLC)
 
-```sql
-UPDATE public.app_settings 
-SET value = 'http://<YOUR_AWS_PUBLIC_IP>:5678/webhook/booking-notification' 
-WHERE key = 'n8n_webhook_url';
-```
+1. **Infrastructure Provisioning:** 
+   * Run `terraform apply` to build the VPC and EKS Cluster.
+   * State is stored securely in an AWS S3 bucket with DynamoDB locking.
+2. **Schema Synchronization:**
+   * Run `npx supabase db push` to synchronize local migrations with Supabase Cloud.
+3. **Application Deployment:**
+   * CI/CD pipeline builds the Docker image.
+   * Image is tagged and pushed to AWS ECR.
+   * `kubectl apply` updates the EKS cluster with the latest version.
+4. **Automation Setup:**
+   * n8n workflows are imported via JSON to ensure consistent event-driven logic.
 
-Once updated, the Postgres trigger will automatically start routing Welcome Emails to your cloud-hosted n8n instance!
+---
+
+*Current Status: **Pilot / Testing Phase***
+*Lead Architect: **Solo Developer***

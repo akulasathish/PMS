@@ -1,80 +1,73 @@
-# RE-PMS Engine 2026: Architecture Map
+# RE-PMS Engine 2026: EKS Cluster Runbook
 
-This document visually outlines the strict 3-tier Role-Based Access Control (RBAC) architecture, the data flow, and the automation integrations within the Property Management System.
+This document details how to manage and monitor the production EKS Fargate cluster.
 
-## System Architecture Diagram
+## 📊 Monitoring Stack (Prometheus & Grafana)
 
-```mermaid
-graph TD
-    %% Define Styles
-    classDef frontend fill:#1E1E24,stroke:#6366F1,stroke-width:2px,color:#fff
-    classDef backend fill:#0F172A,stroke:#10B981,stroke-width:2px,color:#fff
-    classDef automation fill:#1E1E24,stroke:#F59E0B,stroke-width:2px,color:#fff
-    classDef external fill:#1E1E24,stroke:#EC4899,stroke-width:2px,color:#fff
+We use **Helm** to install the monitoring stack into a dedicated namespace called `monitoring`.
 
-    %% Components
-    subgraph Frontend [Next.js App Router UI]
-        T1["Tier 1: Admin Fleet Manager (/admin)"]:::frontend
-        T2["Tier 2: Owner Dashboard (/dashboard)"]:::frontend
-        T3["Tier 3: Staff Front Desk (/front-desk)"]:::frontend
-    end
+### 1. Install Helm (If not installed)
+On Arch Linux:
+```bash
+sudo pacman -S helm
+```
 
-    subgraph Database [Supabase Database & Auth]
-        Auth["GoTrue Authentication"]:::backend
-        DB[("PostgreSQL Database (Properties, Rooms, Bookings)")]:::backend
-        
-        T1 -->|Provisions Properties, Owners & Access| DB
-        T2 -->|Adds Rooms & Analyzes Occupancy| DB
-        T3 -->|Assigns Rooms & Updates Booking Status| DB
-        
-        Trigger1["PG Trigger: AFTER INSERT (Booking Created)"]:::backend
-        Trigger2["PG Trigger: AFTER UPDATE (Status = Checked In)"]:::backend
-        Trigger3["PG Trigger: AFTER INSERT (Property Access Linked)"]:::backend
-        
-        DB -.->|Status = Confirmed| Trigger1
-        DB -.->|Status = Checked In| Trigger2
-        DB -.->|Owner Assigned| Trigger3
-    end
+### 2. Add Repositories
+```bash
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
+```
 
-    subgraph n8n Automation [n8n Automation Engine]
-        WH1("Webhook: /webhook/booking-notification"):::automation
-        WH2("Webhook: /webhook/smart-checkin"):::automation
-        WH3("Webhook: /webhook/owner-invite"):::automation
-        ResendHTTP("HTTP Request: Resend Email API"):::automation
-        
-        Trigger1 ==>|POST JSON Payload (Guest details)| WH1
-        Trigger2 ==>|POST JSON Payload (WiFi & Room data)| WH2
-        Trigger3 ==>|POST JSON Payload (Owner credentials)| WH3
-        
-        WH1 -->|Formats HTML Welcome Email| ResendHTTP
-        WH2 -->|Formats HTML WiFi Check-In Email| ResendHTTP
-        WH3 -->|Formats HTML Owner Onboarding Email| ResendHTTP
-    end
+### 3. Install Prometheus
+```bash
+kubectl create namespace monitoring
+helm install prometheus prometheus-community/prometheus \
+  --namespace monitoring \
+  --set server.persistentVolume.enabled=false \
+  --set alertmanager.persistentVolume.enabled=false
+```
 
-    subgraph External [External Services]
-        ResendAPI["Resend Email Service"]:::external
-        GuestInbox(("Guest Inbox")):::external
-        
-        ResendHTTP -->|Bearer Token Auth| ResendAPI
-        ResendAPI -->|Delivers Transactional Email| GuestInbox
-    end
+### 4. Install Grafana
+```bash
+helm install grafana grafana/grafana \
+  --namespace monitoring \
+  --set persistence.enabled=false \
+  --set adminPassword='your-secure-password'
+```
+
+### 5. Access the Dashboards
+To view Grafana from your laptop, use port-forwarding:
+```bash
+kubectl port-forward deployment/grafana 3001:3000 -n monitoring
+```
+Then open: `http://localhost:3001`
+
+---
+
+## 🚀 Application Lifecycle
+
+### Manual Deployment (Testing)
+To manually push a change to the cluster without using GitLab:
+```bash
+kubectl apply -f k8s/
+```
+
+### View Logs
+```bash
+kubectl logs -l app=pms-frontend -f
+```
+
+### Check System Health
+```bash
+kubectl get pods -A
 ```
 
 ---
 
-## Feature Parity: The Shared `rooms` Table
+## 🔒 Secret Management
 
-The RE-PMS system relies on a single source of truth for physical inventory: the `rooms` table. However, each Tier interacts with this exact same table in completely different ways, ensuring feature parity without data duplication.
-
-### 1. Admin (Create / Provision)
-While the Admin primarily provisions the parent *Property*, they maintain global oversight over the physical inventory limits. The Admin tier establishes the schema constraints (e.g., maximum rooms per tier: Starter vs. Enterprise) and monitors total fleet capacity across all properties.
-
-### 2. Staff (Use / Operate)
-The Tier 3 Front Desk staff use the `rooms` table as an interactive, real-time matrix. 
-* **The Tape Chart:** Staff rely on the `status` column (`Available`, `Occupied`, `Dirty`) to assign incoming walk-ins.
-* **Operations:** When a staff member clicks the "Check-In Guest" button, they are effectively locking a specific `room_id` to a `booking_id`, transitioning the physical room from "Available" to "Occupied".
-
-### 3. Owner (Analyze / Manage)
-The Tier 2 Owner interacts with the `rooms` table purely from a managerial and analytical perspective.
-* **Inventory Management:** Owners create the actual records (adding "Room 101" or "Suite 500") via the `/dashboard/inventory` panel.
-* **Occupancy Analytics:** The dashboard calculates the real-time Occupancy Rate by counting the number of `Occupied` rooms divided by the total number of rooms in the property, translating physical space into actionable financial metrics.
+To update Supabase or Resend keys:
+1. Delete the old secret: `kubectl delete secret pms-prod-secrets`
+2. Re-create: `kubectl create secret generic pms-prod-secrets --from-literal=KEY=VALUE...`
+3. Restart pods: `kubectl rollout restart deployment/pms-frontend`

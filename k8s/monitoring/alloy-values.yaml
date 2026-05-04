@@ -1,0 +1,105 @@
+alloy:
+  configMap:
+    create: true
+    content: |
+      // 1. DISCOVERY: All Pods (for logs)
+      discovery.kubernetes "all_pods" {
+        role = "pod"
+      }
+
+      // 2. DISCOVERY: Kube State Metrics Service
+      discovery.kubernetes "kube_state_metrics" {
+        role = "service"
+        selectors {
+          role = "service"
+          label = "app.kubernetes.io/name=kube-state-metrics"
+        }
+      }
+
+      // 3. METRICS: Scrape Kube State Metrics (kube_*)
+      prometheus.scrape "kube_state_metrics" {
+        targets    = discovery.kubernetes.kube_state_metrics.targets
+        forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+      }
+
+      // 4. METRICS: Fargate cAdvisor (container_*)
+      discovery.kubernetes "nodes" {
+        role = "node"
+      }
+      prometheus.scrape "cadvisor" {
+        targets    = discovery.kubernetes.nodes.targets
+        scheme     = "https"
+        metrics_path = "/metrics/cadvisor"
+        bearer_token_file = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+        tls_config {
+          ca_file = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+          insecure_skip_verify = true
+        }
+        forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+      }
+
+      // 5. METRICS: Annotated Pods (Custom App Metrics)
+      discovery.relabel "annotated_pods" {
+        targets = discovery.kubernetes.all_pods.targets
+        rule {
+          source_labels = ["__meta_kubernetes_pod_annotation_prometheus_io_scrape"]
+          action        = "keep"
+          regex         = "true"
+        }
+        rule {
+          source_labels = ["__address__", "__meta_kubernetes_pod_annotation_prometheus_io_port"]
+          action        = "replace"
+          regex         = "([^:]+)(?::\\d+)?;(\\d+)"
+          replacement   = "$1:$2"
+          target_label  = "__address__"
+        }
+      }
+      prometheus.scrape "kubernetes_pods" {
+        targets    = discovery.relabel.annotated_pods.output
+        forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+      }
+
+      // 6. LOGS: Collect all pod logs
+      loki.source.kubernetes "all_logs" {
+        targets    = discovery.kubernetes.all_pods.targets
+        forward_to = [loki.write.grafana_cloud.receiver]
+      }
+
+      // 7. SHIPPING: Grafana Cloud
+      prometheus.remote_write "grafana_cloud" {
+        endpoint {
+          url = "https://prometheus-prod-43-prod-ap-south-1.grafana.net/api/prom/push"
+          basic_auth {
+            username = "3166082"
+            password = "glc_eyJvIjoiMTc1MzEwOCIsIm4iOiJncmFmYW5hLWFjY2Vzcy1wb2xpY3ktdG9rZW4yLWdyYWZhbmEtYWNjZXNzLXBvbGljeS10b2tlbjIiLCJrIjoiWUs3UDBRMVoxRTY2b282a1FUNzZUNmRiIiwibSI6eyJyIjoidXMifX0="
+          }
+        }
+      }
+
+      loki.write "grafana_cloud" {
+        endpoint {
+          url = "https://logs-prod-028.grafana.net/loki/api/v1/push"
+          basic_auth {
+            username = "1578716"
+            password = "glc_eyJvIjoiMTc1MzEwOCIsIm4iOiJncmFmYW5hLWFjY2Vzcy1wb2xpY3ktdG9rZW4yLWdyYWZhbmEtYWNjZXNzLXBvbGljeS10b2tlbjIiLCJrIjoiWUs3UDBRMVoxRTY2b282a1FUNzZUNmRiIiwibSI6eyJyIjoidXMifX0="
+          }
+        }
+      }
+
+controller:
+  type: deployment
+  replicas: 1
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 500m
+    memory: 1Gi
+
+serviceAccount:
+  create: true
+  name: alloy
+rbac:
+  create: true

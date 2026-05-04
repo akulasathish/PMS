@@ -6,7 +6,8 @@ import {
   Brush, Sparkles, Clock, CheckCircle2, UserCheck, 
   Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, Lock,
-  Play, CheckCircle, ShieldCheck, ShieldAlert
+  Play, CheckCircle, ShieldCheck, ShieldAlert,
+  AlertTriangle
 } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -37,6 +38,8 @@ export default function HousekeepingTerminal() {
   const [activeTab, setActiveTab] = useState<'todo' | 'cleaning' | 'inspect' | 'stayovers' | 'all'>('todo');
   
   const supabase = createClient();
+
+  const [activeBlocks, setActiveBlocks] = useState<any[]>([]);
 
   const loadHousekeepingData = useCallback(async () => {
     setIsLoading(true);
@@ -100,7 +103,12 @@ export default function HousekeepingTerminal() {
           }
 
           if (roomsRes.data) setRooms(roomsRes.data);
-          if (bookingsRes.data) setBookings(bookingsRes.data);        }
+          if (bookingsRes.data) setBookings(bookingsRes.data);
+
+          // Fetch active maintenance blocks
+          const blocksRes = await supabase.from('room_blocks').select('*').eq('property_id', activeId).eq('status', 'Active');
+          if (blocksRes.data) setActiveBlocks(blocksRes.data);
+        }
 
     } catch (err) {
       console.error("Housekeeping Load Error:", err);
@@ -150,7 +158,17 @@ export default function HousekeepingTerminal() {
   }, [property?.id, supabase]);
 
 
-  const getGuestContext = (room: RoomWithProfile): { label: string, color: string, condition: string } => {
+  const getGuestContext = (room: RoomWithProfile): { label: string, color: string, condition: string, detail?: string } => {
+    if (room.status === 'Blocked') {
+      const block = activeBlocks?.find(b => b.room_id === room.id);
+      return { 
+        label: 'Out of Order / Maintenance', 
+        color: 'text-rose-500 bg-rose-500/10 border border-rose-500/20',
+        condition: 'offline',
+        detail: block ? `Reason: ${block.reason}` : undefined
+      };
+    }
+
     const today = new Date().toISOString().substring(0, 10);
     const booking = bookings.find(b => b.room_id === room.id);
     
@@ -161,21 +179,16 @@ export default function HousekeepingTerminal() {
     if (booking) {
       if (booking.status === 'Confirmed' && booking.check_in === today) {
          label = 'Arrival Today';
-         color = 'text-indigo-400 bg-indigo-500/10';
+         color = 'text-indigo-400 bg-indigo-500/10 border border-indigo-500/20';
       } else if (booking.status === 'Checked In' && booking.check_out === today) {
          label = 'Departing Today';
-         color = 'text-amber-400 bg-amber-500/10';
+         color = 'text-amber-400 bg-amber-500/10 border border-amber-500/20';
       } else if (booking.status === 'Checked In') {
          label = 'Stayover';
-         color = 'text-emerald-400 bg-emerald-500/10';
+         color = 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20';
       } else {
          label = 'Reserved';
       }
-    }
-    
-    if (room.status === 'Blocked') {
-       label = 'Blocked';
-       color = 'text-rose-500 bg-rose-500/10';
     }
 
     // Determine Physical Condition
@@ -185,7 +198,6 @@ export default function HousekeepingTerminal() {
     if (room.status === 'Clean') condition = 'Ready for Inspection';
     if (room.status === 'Available') condition = 'Ready for Guest';
     if (room.status === 'Occupied') condition = 'Service Required';
-    if (room.status === 'Blocked') condition = 'Under Maintenance';
 
     return { label, color, condition };
   };
@@ -366,6 +378,13 @@ export default function HousekeepingTerminal() {
                         <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">{room.type}</p>
                       </div>
                     </div>
+                    
+                    {getGuestContext(room).detail && (
+                      <div className="px-3 py-2 bg-rose-500/10 border border-rose-500/20 rounded-lg flex items-start gap-2 mt-3 mb-2">
+                        <AlertTriangle size={12} className="text-rose-400 shrink-0 mt-0.5" />
+                        <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest leading-relaxed">{getGuestContext(room).detail}</p>
+                      </div>
+                    )}
                     
                     {room.status === 'Cleaning' && (
                       <div className="flex flex-col items-end">

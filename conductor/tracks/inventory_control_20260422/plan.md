@@ -12,6 +12,6 @@
 - [x] Task: Conductor - User Manual Verification 'Phase 3: Front Office Integration' [a43b911]
 
 ## Phase 4: Housekeeping & Sync
-- [ ] Task: Update Housekeeping Terminal to display active maintenance blocks.
-- [ ] Task: Verify real-time status sync between modules.
+- [~] Task: Update Housekeeping Terminal to display active maintenance blocks.
+- [~] Task: Verify real-time status sync between modules.
 - [ ] Task: Conductor - User Manual Verification 'Phase 4: Housekeeping & Sync'
