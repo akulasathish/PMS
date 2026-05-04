@@ -59,7 +59,7 @@ export default function GuestRegCard() {
 
       <footer className="fixed bottom-0 left-0 right-0 p-8 text-center bg-gradient-to-t from-[#08080a] to-transparent pointer-events-none">
         <p className="text-[9px] font-bold text-zinc-700 uppercase tracking-[0.2em] flex items-center justify-center gap-2">
-          Securely powered by <span className="text-zinc-500">RE-PMS Engine 2026</span>
+          Securely powered by <span className="text-zinc-500">StaySync Enterprise Edition</span>
         </p>
       </footer>
     </div>

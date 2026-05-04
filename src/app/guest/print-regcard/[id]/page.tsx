@@ -159,7 +159,7 @@ export default function PrintRegCard() {
 
       {/* FOOTER */}
       <div className="mt-32 text-center text-[8px] text-zinc-400 uppercase tracking-widest font-bold border-t border-black/5 pt-6">
-        <p>This is a digitally generated document from RE-PMS Engine v2026.1</p>
+        <p>This is a digitally generated document from StaySync Engine v2026.1</p>
         <p className="mt-1 font-black">All data securely stored in accordance with Indian Sarai Act regulations.</p>
       </div>
 

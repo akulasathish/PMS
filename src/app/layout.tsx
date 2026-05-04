@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RE-PMS | Engine 2026",
-  description: "Premium Property Management System",
+  title: "StaySync | Enterprise PMS",
+  description: "Next-generation property management and real-time operations.",
 };
 
 export default function RootLayout({
