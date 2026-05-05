@@ -63,13 +63,9 @@ build_and_push:
 # -----------------------------------------------------------------------------
 deploy_to_eks:
   stage: deploy
-  image: 
-    name: bitnami/kubectl:latest
-    entrypoint: [""]
+  image: alpine/k8s:1.28.2
   before_script:
-    # AWS CLI is required to generate the authentication token for EKS
-    - apt-get update && apt-get install -y awscli
-    # Connect kubectl to our cluster
+    # Connect kubectl to our cluster (AWS CLI and kubectl are already pre-installed in this image)
     - aws eks update-kubeconfig --region $AWS_REGION --name pms-production
   script:
     - echo "Deploying version $IMAGE_TAG to EKS Cluster..."
