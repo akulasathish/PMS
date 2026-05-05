@@ -135,7 +135,7 @@ export async function getAdminProperties() {
 
   if (error) {
     console.error("Failed to fetch properties for dropdown:", error);
-    return [];
+    throw new Error(`DB Error: ${error.message} (Code: ${error.code})`);
   }
 
   return data;
