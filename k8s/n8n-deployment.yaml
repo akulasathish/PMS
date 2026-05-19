@@ -18,22 +18,16 @@ spec:
       containers:
       - name: n8n
         image: docker.n8n.io/n8nio/n8n:latest
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 5678
           name: http
         
         env:
-          - name: N8N_HOST
-            value: "n8n.staysync.online"
           - name: N8N_PORT
             value: "5678"
-          - name: N8N_PROTOCOL
-            value: "https"
           - name: NODE_ENV
             value: "production"
-          - name: WEBHOOK_URL
-            value: "https://n8n.staysync.online/"
           # Security: Basic Auth for the n8n dashboard
           - name: N8N_BASIC_AUTH_ACTIVE
             value: "true"
@@ -41,6 +35,8 @@ spec:
             value: "admin"
           - name: N8N_BASIC_AUTH_PASSWORD
             value: "StaySyncAutomation2026!"
+          - name: N8N_SECURE_COOKIE
+            value: "false"
             
         # Optional: In a true production environment, you would attach an EFS volume here
         # so n8n doesn't lose its workflows if the pod restarts. For now, we will use memory.
@@ -61,6 +57,10 @@ metadata:
   namespace: default
   labels:
     app: n8n
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
 spec:
   selector:
     app: n8n
