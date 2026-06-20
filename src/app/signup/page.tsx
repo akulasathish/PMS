@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
@@ -8,7 +8,7 @@ import { registerUserWithoutVerification } from '@/app/actions/auth'; // Import 
 import Link from 'next/link';
 import { Loader2, Mail, Lock, User, AlertCircle } from 'lucide-react';
 
-export default function SignupPage() {
+function SignupForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -183,5 +183,17 @@ export default function SignupPage() {
         </div>
       </motion.div>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen bg-[#060608] items-center justify-center p-6 z-50">
+        <Loader2 className="animate-spin text-emerald-400" size={32} />
+      </div>
+    }>
+      <SignupForm />
+    </Suspense>
   );
 }

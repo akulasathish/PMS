@@ -7,7 +7,7 @@ import {
   ArrowRight, ShieldCheck, Loader2, AlertCircle 
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { getFolioSummary, postIncidentalCharge, postPayment } from '@/app/actions/folio';
+import { getFolioSummary, postIncidentalCharge, postPayment, postProposedTimeCharge, waiveProposedTimeCharge } from '@/app/actions/folio';
 import { checkOutGuest } from '@/app/actions/booking';
 
 interface FolioModalProps {
@@ -29,6 +29,10 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
   
   const [folio, setFolio] = useState<any>(null);
   
+  // Waiver inputs for automated rules
+  const [showWaiver, setShowWaiver] = useState<'early' | 'late' | null>(null);
+  const [waiverReasonText, setWaiverReasonText] = useState('');
+  
   // UI Tabs for forms
   const [activeTab, setActiveTab] = useState<'summary' | 'charge' | 'payment'>('summary');
 
@@ -47,6 +51,38 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
   useEffect(() => {
     loadFolio();
   }, [bookingId]);
+
+  const handleApplyProposedCharge = async (type: 'early' | 'late', amount: number) => {
+    setActionLoading(true);
+    setError('');
+    const description = type === 'early' ? 'Automated Early Check-In Fee' : 'Automated Late Checkout Fee';
+    const res = await postProposedTimeCharge(bookingId, propertyId, description, amount);
+    if (res.error) {
+      setError(res.error);
+    } else {
+      await loadFolio();
+    }
+    setActionLoading(false);
+  };
+
+  const handleConfirmWaiver = async (type: 'early' | 'late') => {
+    if (!waiverReasonText.trim()) {
+      setError('Please specify a waiver reason.');
+      return;
+    }
+    setActionLoading(true);
+    setError('');
+    const description = type === 'early' ? 'Early Check-In Fee' : 'Late Checkout Fee';
+    const res = await waiveProposedTimeCharge(bookingId, propertyId, description, waiverReasonText);
+    if (res.error) {
+      setError(res.error);
+    } else {
+      setWaiverReasonText('');
+      setShowWaiver(null);
+      await loadFolio();
+    }
+    setActionLoading(false);
+  };
 
   const handlePostCharge = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -183,6 +219,87 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
               <AnimatePresence mode="wait">
                 {activeTab === 'summary' && (
                   <motion.div key="summary" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
+                    
+                    {/* Automated Time Rule Recommendation Banner */}
+                    {((folio?.proposedLateCheckoutFee > 0 || folio?.proposedEarlyCheckinFee > 0) && !loading) && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="p-5 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 space-y-4"
+                      >
+                        <div className="flex items-start gap-3.5">
+                          <div className="p-2 bg-indigo-500/20 text-indigo-400 rounded-xl shrink-0">
+                            <AlertCircle size={20} />
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="text-sm font-bold text-white tracking-wide">Automated Billing Recommendation</h4>
+                            <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
+                              {folio?.proposedLateCheckoutFee > 0 ? (
+                                <>
+                                  Late Checkout detected. Standard checkout is **{folio.standardHours?.checkOut || '11:00 AM'}**. 
+                                  Proposed Fee: <span className="text-indigo-400 font-bold font-mono text-sm">₹{folio.proposedLateCheckoutFee.toFixed(2)}</span> *(Based on 50% room rate rules)*.
+                                </>
+                              ) : (
+                                <>
+                                  Early Check-In detected. Standard check-in is **{folio.standardHours?.checkIn || '2:00 PM'}**.
+                                  Proposed Fee: <span className="text-indigo-400 font-bold font-mono text-sm">₹{folio.proposedEarlyCheckinFee.toFixed(2)}</span> *(Based on early arrival tiers)*.
+                                </>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+
+                        {showWaiver ? (
+                          <div className="pl-12 space-y-3.5 max-w-md">
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Waiver Reason</label>
+                              <input 
+                                type="text"
+                                value={waiverReasonText}
+                                onChange={(e) => setWaiverReasonText(e.target.value)}
+                                placeholder="e.g. VIP guest, room readiness delay..."
+                                className="w-full bg-black/40 border border-white/10 rounded-xl py-2 px-3 text-white text-xs focus:outline-none focus:border-indigo-500 transition-all"
+                              />
+                            </div>
+                            <div className="flex gap-2">
+                              <button 
+                                onClick={() => handleConfirmWaiver(showWaiver)}
+                                disabled={actionLoading}
+                                className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-[10px] font-bold uppercase tracking-wider transition-colors"
+                              >
+                                Confirm Waive
+                              </button>
+                              <button 
+                                onClick={() => { setShowWaiver(null); setWaiverReasonText(''); }}
+                                className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 text-[10px] font-bold uppercase tracking-wider transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="pl-12 flex gap-2">
+                            <button 
+                              onClick={() => handleApplyProposedCharge(
+                                folio?.proposedLateCheckoutFee > 0 ? 'late' : 'early',
+                                folio?.proposedLateCheckoutFee > 0 ? folio.proposedLateCheckoutFee : folio.proposedEarlyCheckinFee
+                              )}
+                              disabled={actionLoading}
+                              className="px-4 py-2 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-[10px] font-bold uppercase tracking-wider transition-colors"
+                            >
+                              Post Charge
+                            </button>
+                            <button 
+                              onClick={() => setShowWaiver(folio?.proposedLateCheckoutFee > 0 ? 'late' : 'early')}
+                              className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white text-[10px] font-bold uppercase tracking-wider transition-colors"
+                            >
+                              Waive Fee
+                            </button>
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+
                     <div className="grid grid-cols-2 gap-6">
                       
                       {/* Charges Column */}
