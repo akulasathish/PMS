@@ -55,53 +55,62 @@ export async function middleware(request: NextRequest) {
   )
 
   const { data: { user } } = await supabase.auth.getUser()
-
   const { pathname } = request.nextUrl
+  const now = new Date();
 
-  // Protect /admin routes (Tier 1)
-  if (pathname.startsWith('/admin')) {
-    if (pathname === '/admin/login') return response
-    if (!user || user.user_metadata?.role !== 'admin') {
-      return NextResponse.redirect(new URL('/admin/login', request.url))
-    }
+  console.log('Middleware Path:', pathname);
+  console.log('Middleware User:', user ? user.id : 'No user');
+
+  // Define public paths that don't require authentication
+  const publicPaths = ['/', '/login', '/signup', '/auth/callback'];
+  
+  // Allow access to public paths
+  if (publicPaths.includes(pathname)) {
+    return response;
   }
 
-  // Protect /dashboard routes (Tier 2/3 Consolidated)
+  // Handle authenticated users and protected routes
   if (pathname.startsWith('/dashboard')) {
-    if (pathname === '/dashboard/login') return response
+    // If not authenticated, redirect to login
+    if (!user) {
+      console.log('-> Redirecting unauthenticated user to login.');
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+
+    // Fetch user profile
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('property_id')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !profile) {
+      console.error('-> Middleware: Error fetching profile or profile not found:', profileError?.message);
+      await supabase.auth.signOut();
+      return NextResponse.redirect(new URL('/login?error=profile_missing', request.url));
+    }
     
-    const validDashboardRoles = [
-      'owner', 
-      'staff', 
-      'front-desk', 
-      'Guest Journey', 
-      'Night Auditor', 
-      'Room Attendant', 
-      'Supervisor'
-    ];
+    const propertyId = profile.property_id;
 
-    if (!user || !validDashboardRoles.includes(user.user_metadata?.role)) {
-      return NextResponse.redirect(new URL('/dashboard/login', request.url))
+    console.log('Middleware Profile:', profile);
+    console.log('Middleware Property ID:', propertyId);
+
+    // If user has no property and is not on property setup page, redirect to property setup
+    if (!propertyId && pathname !== '/dashboard/property-setup') {
+      console.log('-> Redirecting to property setup: No property found for user.');
+      return NextResponse.redirect(new URL('/dashboard/property-setup', request.url));
     }
   }
 
-  // Remove the old /front-desk block since we consolidated to /dashboard
-  // (Left empty or deleted)
-
-  // Check property suspension for non-admin users
-  if (user && user.user_metadata?.role !== 'admin' && !pathname.endsWith('/login')) {
-    const { data: profile } = await supabase.from('profiles').select('property_id').eq('id', user.id).single()
-    if (profile?.property_id) {
-      const { data: property } = await supabase.from('properties').select('status').eq('id', profile.property_id).single()
-      if (property?.status === 'Suspended') {
-        return NextResponse.redirect(new URL('/payment-required', request.url))
-      }
-    }
+  // For any other authenticated paths that might be introduced later, redirect if not authenticated
+  if (!user && !publicPaths.includes(pathname)) {
+    console.log('-> Redirecting unauthenticated user from protected path to login.');
+    return NextResponse.redirect(new URL('/login', request.url));
   }
-
+  
   return response
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/dashboard/:path*', '/front-desk/:path*'],
+  matcher: ['/', '/login', '/signup', '/auth/callback', '/dashboard/:path*'],
 }

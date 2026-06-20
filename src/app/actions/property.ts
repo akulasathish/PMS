@@ -2,148 +2,152 @@
 
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { createClient as createSSRClient } from '@/lib/supabase/server';
-
-// Revalidate path is needed to refresh the admin dashboard
 import { revalidatePath } from 'next/cache';
 
+// New type definition for Property
+export interface Property {
+  id: string;
+  name: string;
+  owner_user_id: string; // Link to auth.users.id
+  status: string;
+  created_at: string;
+  updated_at: string;
+  gst_number?: string;
+  state_code?: string;
+  address?: string; // Add address field
+  city?: string;    // Add city field
+  country?: string; // Add country field
+}
+
 /**
- * Register a new property and owner
+ * An authenticated user creates a new property.
  */
-export async function registerProperty(formData: FormData) {
+export async function createProperty(propertyData: {
+  user_id: string;
+  name: string;
+  address: string;
+  city: string;
+  country: string;
+}) {
   try {
     const supabase = createSSRClient();
     const { data: { user } } = await supabase.auth.getUser();
     
-    console.log("SERVER ACTION `registerProperty` CALLED");
-    const role = user?.app_metadata?.role || user?.user_metadata?.role;
-    console.log("1. Authenticated User:", user?.id, "Role:", role);
+    console.log("SERVER ACTION `createProperty` CALLED");
+    console.log("1. Authenticated User:", user?.id);
 
-    if (!user || role !== 'admin') {
-      console.log("-> FAILED: Unauthorized.");
-      return { error: 'Unauthorized. Only admins can register properties.' };
+    if (!user || user.id !== propertyData.user_id) {
+      console.log("-> FAILED: Unauthorized user ID mismatch.");
+      return { success: false, error: 'Unauthorized. User ID mismatch.' };
     }
 
-    const propertyName = formData.get('propertyName') as string;
-    const ownerEmail = formData.get('ownerEmail') as string;
-    // Let the user pick a tier or default to "Starter"
-    const tier = (formData.get('tier') as string) || 'Starter';
-
-    console.log("2. Form Data:", { propertyName, ownerEmail, tier });
-
-    if (!propertyName || !ownerEmail) {
+    if (!propertyData.name || !propertyData.address || !propertyData.city || !propertyData.country) {
       console.log("-> FAILED: Missing fields.");
-      return { error: 'Property Name and Owner Email are required.' };
+      return { success: false, error: 'All property details are required.' };
     }
 
-    const supabaseAdmin = getSupabaseAdmin();
-
-    // 1. Generate a dummy password (e.g. 8 random characters)
-    const dummyPassword = Math.random().toString(36).slice(-8);
-
-    // 2. Insert the Property
-    console.log("3. Inserting Property...");
-    const { data: propertyData, error: propertyError } = await supabaseAdmin
+    // 1. Insert the Property
+    console.log("2. Inserting Property...");
+    const { data: newProperty, error: propertyError } = await supabase
       .from('properties')
-      .insert([{ name: propertyName, tier: tier }])
+      .insert([
+        { 
+          name: propertyData.name, 
+          owner_user_id: user.id,
+          status: 'Active',
+          address: propertyData.address,
+          city: propertyData.city,
+          country: propertyData.country,
+        }
+      ])
       .select()
       .single();
 
-    if (propertyError || !propertyData) {
+    if (propertyError || !newProperty) {
       console.error("-> FAILED to create property:", propertyError);
-      return { error: 'Failed to create property in the database.' };
+      return { success: false, error: 'Failed to create property in the database.' };
     }
-    console.log("-> Property Inserted:", propertyData.id);
+    console.log("-> Property Inserted:", newProperty.id);
 
-    // 3. Create the User via Supabase Admin Auth
-    console.log("4. Creating Auth User...");
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email: ownerEmail,
-      password: dummyPassword,
-      email_confirm: true,
-      user_metadata: { 
-        role: 'owner',
-        requires_password_change: true 
-      }
-    });
+    const { error: accessError } = await supabase
+      .from('property_access')
+      .insert({ user_id: user.id, property_id: newProperty.id });
 
-    if (authError || !authData.user) {
-      console.error("-> FAILED to create owner user:", authError);
-      // Rollback property creation if user creation fails
-      await supabaseAdmin.from('properties').delete().eq('id', propertyData.id);
-      return { error: `Failed to create owner user: ${authError?.message}` };
+    if (accessError) {
+      console.error("-> FAILED to create property_access row:", accessError);
+      return { success: false, error: 'Failed to link property access.' };
     }
-    console.log("-> Auth User Created:", authData.user.id);
 
-    // 4. Create the Profile linking the Owner to the Property
-    console.log("5. Creating Profile...");
-    const { error: profileError } = await supabaseAdmin
+    // Update the user's profile to link to this property as their current/default
+    const { error: profileUpdateError } = await supabase
       .from('profiles')
-      .insert([{
-        id: authData.user.id,
-        email: ownerEmail,
-        role: 'owner',
-        property_id: propertyData.id,
-        full_name: 'Property Owner'
-      }]);
+      .update({ property_id: newProperty.id })
+      .eq('id', user.id);
 
-    if (profileError) {
-      console.error("-> FAILED to create owner profile:", profileError);
-      // Cleanup
-      await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
-      await supabaseAdmin.from('properties').delete().eq('id', propertyData.id);
-      return { error: 'Failed to link owner to property.' };
+    if (profileUpdateError) {
+      console.error("-> FAILED to update user profile with property_id:", profileUpdateError);
+      // Decide if you want to rollback property creation here. For now, we'll just log.
+      return { success: false, error: 'Failed to link property to user profile.' };
     }
-    console.log("-> Profile Created!");
+    console.log("-> User profile updated with new property_id.");
 
-    // Revalidate the admin page so the new property shows up in the "Fleet Manager"
-    revalidatePath('/admin');
-    revalidatePath('/(tier1)/admin', 'page');
+    revalidatePath('/dashboard'); // Revalidate the dashboard to show the new property
     
-    console.log("-> SUCCESS: Property Registration Complete");
+    console.log("-> SUCCESS: Property Creation Complete");
     
     return { 
       success: true, 
-      dummyPassword,
-      propertyId: propertyData.id
+      data: newProperty
     };
   } catch (err: any) {
-    console.error("Unhandled Server Crash in registerProperty:", err);
-    return { error: `Server Crash: ${err.message}` };
+    console.error("Unhandled Server Crash in createProperty:", err);
+    return { success: false, error: `Server Crash: ${err.message}` };
   }
 }
 
 /**
- * Toggle property status between Active and Suspended
+ * Toggle property status between Active and Suspended by its owner.
  */
 export async function togglePropertyStatus(propertyId: string, currentStatus: string) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
   
-  if (!user || user.user_metadata?.role !== 'admin') {
-    return { error: 'Unauthorized. Only admins can toggle property status.' };
+  if (!user) {
+    return { success: false, error: 'Unauthorized.' };
   }
 
-  const supabaseAdmin = getSupabaseAdmin();
+  // Verify the user is the owner of this property
+  const { data: property, error: propertyCheckError } = await supabase
+    .from('properties')
+    .select('owner_user_id')
+    .eq('id', propertyId)
+    .single();
+
+  if (propertyCheckError || !property || property.owner_user_id !== user.id) {
+    return { success: false, error: 'Unauthorized or Property not found.' };
+  }
+
   const newStatus = currentStatus === 'Active' ? 'Suspended' : 'Active';
 
-  const { error } = await supabaseAdmin
+  const { error } = await supabase
     .from('properties')
     .update({ status: newStatus })
     .eq('id', propertyId);
 
   if (error) {
     console.error("Failed to toggle property status:", error);
-    return { error: 'Failed to toggle property status.' };
+    return { success: false, error: 'Failed to toggle property status.' };
   }
 
-  revalidatePath('/admin');
-  revalidatePath('/(tier1)/admin', 'page');
+  revalidatePath('/dashboard');
   
   return { success: true, newStatus };
 }
 
 /**
- * Delete a property and clean up associated users (Owner/Staff)
+ * Delete a property by its owner.
+ * This should only delete the property and its dependent data (rooms, bookings etc.)
+ * but NOT the user account itself.
  */
 export async function deleteProperty(propertyId: string) {
   const supabase = createSSRClient();
@@ -151,47 +155,45 @@ export async function deleteProperty(propertyId: string) {
   
   console.log("SERVER ACTION `deleteProperty` CALLED for Property:", propertyId);
 
-  if (!user || user.user_metadata?.role !== 'admin') {
-    return { error: 'Unauthorized. Only admins can delete properties.' };
+  if (!user) {
+    return { success: false, error: 'Unauthorized.' };
   }
 
-  const supabaseAdmin = getSupabaseAdmin();
+  // Verify the user is the owner of this property
+  const { data: property, error: propertyCheckError } = await supabase
+    .from('properties')
+    .select('owner_user_id')
+    .eq('id', propertyId)
+    .single();
 
-  // 1. Find all users associated with this property
-  const { data: profiles, error: fetchError } = await supabaseAdmin
-    .from('profiles')
-    .select('id')
-    .eq('property_id', propertyId);
-
-  if (fetchError) {
-    console.error("Failed to fetch property profiles:", fetchError);
-    return { error: 'Failed to fetch associated users for deletion.' };
+  if (propertyCheckError || !property || property.owner_user_id !== user.id) {
+    return { success: false, error: 'Unauthorized or Property not found.' };
   }
 
-  // 2. Delete the associated users from Supabase Auth
-  if (profiles && profiles.length > 0) {
-    for (const profile of profiles) {
-      const { error: deleteUserError } = await supabaseAdmin.auth.admin.deleteUser(profile.id);
-      if (deleteUserError) {
-        console.error(`Failed to delete user ${profile.id}:`, deleteUserError);
-      }
-    }
-  }
-
-  // 3. Delete the Property (Cascade will handle rooms, bookings, profiles if configured, 
-  // but just in case, we've manually deleted the Auth users which is the most critical part)
-  const { error: deletePropError } = await supabaseAdmin
+  // Delete the Property. Assuming RLS and CASCADE DELETE are configured in the DB
+  // for dependent tables like rooms, bookings, etc.
+  const { error: deletePropError } = await supabase
     .from('properties')
     .delete()
     .eq('id', propertyId);
 
   if (deletePropError) {
     console.error("Failed to delete property:", deletePropError);
-    return { error: 'Failed to delete property from the database.' };
+    return { success: false, error: 'Failed to delete property from the database.' };
   }
 
-  revalidatePath('/admin');
-  revalidatePath('/(tier1)/admin', 'page');
+  // If the deleted property was the user's current property, reset their profile.property_id
+  const { error: profileUpdateError } = await supabase
+    .from('profiles')
+    .update({ property_id: null })
+    .eq('id', user.id)
+    .eq('property_id', propertyId); // Only update if it was the currently active one
+
+  if (profileUpdateError) {
+    console.error("Failed to clear property_id from user profile:", profileUpdateError);
+  }
+
+  revalidatePath('/dashboard');
   
   console.log("-> SUCCESS: Property Deleted");
   return { success: true };
@@ -201,19 +203,29 @@ export async function updatePropertyGST(propertyId: string, gstNumber: string, s
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user || !['owner', 'admin'].includes(user.user_metadata?.role)) {
-    return { error: 'Unauthorized.' };
+  if (!user) {
+    return { success: false, error: 'Unauthorized.' };
   }
 
-  const supabaseAdmin = getSupabaseAdmin();
-  const { error } = await supabaseAdmin
+  // Verify the user is the owner of this property
+  const { data: property, error: propertyCheckError } = await supabase
+    .from('properties')
+    .select('owner_user_id')
+    .eq('id', propertyId)
+    .single();
+
+  if (propertyCheckError || !property || property.owner_user_id !== user.id) {
+    return { success: false, error: 'Unauthorized or Property not found.' };
+  }
+
+  const { error } = await supabase
     .from('properties')
     .update({ gst_number: gstNumber, state_code: stateCode })
     .eq('id', propertyId);
 
   if (error) {
     console.error("Failed to update property GST:", error);
-    return { error: error.message };
+    return { success: false, error: error.message };
   }
 
   revalidatePath('/dashboard');
