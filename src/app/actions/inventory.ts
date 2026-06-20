@@ -16,15 +16,8 @@ export async function addRoom(formData: FormData) {
   
   const supabaseAdmin = getSupabaseAdmin();
 
-  let role = user.user_metadata?.role;
-  if (!role) {
-    const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', user.id).single();
-    role = profile?.role;
-  }
+  // Authenticated users can add rooms
 
-  if (!['owner', 'admin'].includes(role)) {
-    return { error: 'Unauthorized. Role: ' + role };
-  }
 
   const propertyId = formData.get('propertyId') as string;
   const roomNumber = formData.get('number') as string;
@@ -96,16 +89,8 @@ export async function deleteRoom(roomId: string) {
   
   const supabaseAdmin = getSupabaseAdmin();
 
-  // Only owners or admins can delete rooms
-  let role = user.user_metadata?.role;
-  if (!role) {
-    const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', user.id).single();
-    role = profile?.role;
-  }
+  // Authenticated users can delete rooms
 
-  if (!['owner', 'admin'].includes(role)) {
-    return { error: 'Unauthorized. Role: ' + role };
-  }
 
   // Safety check: Don't delete a room if it has active bookings!
   const { data: activeBookings } = await supabaseAdmin
@@ -163,16 +148,8 @@ export async function createRoomBlock(formData: FormData) {
   
   const supabaseAdmin = getSupabaseAdmin();
 
-  // 1. Role Validation
-  let role = user.app_metadata?.role || user.user_metadata?.role;
-  if (!role) {
-    const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', user.id).single();
-    role = profile?.role;
-  }
+  // Authenticated users can block rooms
 
-  if (!['owner', 'admin'].includes(role)) {
-    return { error: 'Unauthorized. Only management can block inventory.' };
-  }
 
   const roomId = formData.get('roomId') as string;
   const propertyId = formData.get('propertyId') as string;

@@ -4,11 +4,21 @@ import { withSentryConfig } from "@sentry/nextjs";
 const nextConfig: NextConfig = {
   /* config options here */
   reactCompiler: true,
+  env: {
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  },
   images: {
     remotePatterns: [
       {
         protocol: 'https',
         hostname: 'xjsuwjivetlmzzbngeuy.supabase.co',
+        port: '',
+        pathname: '/storage/v1/object/public/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'njblemtrkqdnijwrnvjp.supabase.co',
         port: '',
         pathname: '/storage/v1/object/public/**',
       },

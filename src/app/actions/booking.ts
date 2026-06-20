@@ -12,9 +12,9 @@ export async function createBooking(formData: FormData) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Validate session and role (Staff, Front-Desk, or Owner can create bookings)
-  if (!user || !['staff', 'front-desk', 'owner'].includes(user.user_metadata?.role)) {
-    return { error: 'Unauthorized. Only staff or owners can create bookings.' };
+  // Validate session
+  if (!user) {
+    return { error: 'Unauthorized.' };
   }
 
   const propertyId = formData.get('propertyId') as string;
@@ -102,8 +102,8 @@ export async function checkInGuest(bookingId: string) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Validate session and role
-  if (!user || !['staff', 'front-desk', 'owner'].includes(user.user_metadata?.role)) {
+  // Validate session
+  if (!user) {
     return { error: 'Unauthorized. Only authorized personnel can check-in guests.' };
   }
 
@@ -162,7 +162,7 @@ export async function checkInGuest(bookingId: string) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user || !['staff', 'front-desk', 'owner', 'admin'].includes(user.user_metadata?.role)) {
+  if (!user) {
     return { error: 'Unauthorized.' };
   }
 
@@ -192,7 +192,7 @@ export async function checkInGuest(bookingId: string) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user || !['staff', 'front-desk', 'owner', 'admin'].includes(user.user_metadata?.role)) {
+  if (!user) {
     return { error: 'Unauthorized.' };
   }
 
@@ -230,7 +230,7 @@ export async function updateGuestNotes(bookingId: string, notes: string) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user || !['staff', 'front-desk', 'owner', 'admin'].includes(user.user_metadata?.role)) {
+  if (!user) {
     return { error: 'Unauthorized.' };
   }
 
@@ -257,8 +257,8 @@ export async function toggleRoomBlock(roomId: string, currentStatus: string) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user || !['owner', 'admin'].includes(user.user_metadata?.role)) {
-    return { error: 'Unauthorized. Only management can block physical inventory.' };
+  if (!user) {
+    return { error: 'Unauthorized. Only logged in users can block physical inventory.' };
   }
 
   const supabaseAdmin = getSupabaseAdmin();
@@ -286,7 +286,7 @@ export async function upgradeRoom(bookingId: string, oldRoomId: string, newRoomI
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user || !['staff', 'front-desk', 'owner', 'admin'].includes(user.user_metadata?.role)) {
+  if (!user) {
     return { error: 'Unauthorized.' };
   }
 
@@ -319,7 +319,7 @@ export async function issueRefund(bookingId: string, currentAmount: number, refu
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user || !['staff', 'front-desk', 'owner', 'admin'].includes(user.user_metadata?.role)) {
+  if (!user) {
     return { error: 'Unauthorized.' };
   }
 
@@ -350,7 +350,7 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user || !['staff', 'front-desk', 'owner', 'admin'].includes(user.user_metadata?.role)) {
+  if (!user) {
     return { error: 'Unauthorized. Only authorized personnel can check-out guests.' };
   }
 

@@ -1,3 +1,27 @@
+---
+provider: google-vertex
+project_id: "project-c60f8681-e665-4b2e-ad3"
+location: "us-central1"
+model: gemini-3.1-pro-high
+---
+
+# StaySync Deployment Mandates
+
+This document contains foundational mandates for deploying the StaySync platform to AWS EKS. Gemini MUST adhere to these instructions for every deployment to prevent production outages and authentication failures.
+
+## 🛡️ Pre-Deployment Checklist
+... [Keep the rest of your file exactly as it is] ...
+
+
+
+
+
+
+
+
+
+
+
 # StaySync Deployment Mandates
 
 This document contains foundational mandates for deploying the StaySync platform to AWS EKS. Gemini MUST adhere to these instructions for every deployment to prevent production outages and authentication failures.

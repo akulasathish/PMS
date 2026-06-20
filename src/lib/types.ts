@@ -1,7 +1,6 @@
 export interface Property {
   id: string;
   name: string;
-  tier: 'Starter' | 'Pro' | 'Enterprise';
   status: 'Active' | 'Suspended';
   wifi_network?: string;
   wifi_password?: string;
@@ -38,9 +37,8 @@ export interface Booking {
 export interface UserProfile {
   id: string;
   full_name: string;
-  role: 'admin' | 'owner' | 'front-desk' | 'staff' | 'Guest Journey' | 'Night Auditor' | 'Room Attendant' | 'Supervisor';
-  property_id: string | null;
   email?: string;
-  permissions?: Record<string, Record<string, string>>;
+  property_id: string | null;
   created_at?: string;
 }
+

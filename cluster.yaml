@@ -1,0 +1,44 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: pms-production
+  region: ap-south-1
+  version: "1.35"
+
+iam:
+  withOIDC: true
+
+managedNodeGroups: [] # No EC2 nodes, only Fargate
+
+fargateProfiles:
+  - name: kube-system-fp
+    selectors:
+      - namespace: kube-system
+    tags:
+      Name: pms-production-kube-system-fargate
+  - name: pms-app-fp
+    selectors:
+      - namespace: default
+    tags:
+      Name: pms-production-app-fargate
+
+# Let eksctl create the entire VPC, subnets, and NAT Gateways
+# It will pick sensible defaults for CIDRs and create 3 public/3 private subnets.
+vpc:
+  # cidr: "10.0.0.0/16" # Removed to let eksctl manage the CIDR
+  # nat:
+  #  gateways: 3 # Removed to let eksctl manage NAT Gateways automatically
+  # subnets: # Removed explicit subnet definitions to let eksctl create them
+
+cloudWatch:
+  clusterLogging:
+    enableTypes: ["api", "scheduler", "controllerManager", "audit", "authenticator"]
+    logRetentionInDays: 7 # Optional: Retain logs for 7 days
+
+# eksctl automatically installs and manages these critical addons for Fargate
+# We enable them here to ensure they are created with the cluster
+addons:
+- name: vpc-cni
+- name: kube-proxy
+- name: coredns
