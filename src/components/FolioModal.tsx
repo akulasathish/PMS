@@ -396,7 +396,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                      <div className="max-w-md mx-auto">
                       <div className="mb-6">
                         <h3 className="text-lg font-bold text-white">Log Payment</h3>
-                        <p className="text-xs text-zinc-400 mt-1">Record a payment received from the guest to settle the folio.</p>
+                        <p className="text-xs text-zinc-400 mt-1">Record a payment received from the guest to settle the folio. For split/combination payments (e.g. Cash + UPI), simply log each payment amount separately.</p>
                       </div>
                       
                       <form onSubmit={handlePostPayment} className="space-y-4">
@@ -414,6 +414,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                           <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Amount (₹)</label>
                             <input 
+                              key={folio?.balanceDue}
                               name="amount" type="number" step="0.01" required min="1" 
                               defaultValue={folio?.balanceDue > 0 ? folio.balanceDue.toFixed(2) : ''}
                               className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm font-mono focus:outline-none focus:border-indigo-500 transition-all"

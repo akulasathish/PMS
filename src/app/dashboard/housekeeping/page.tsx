@@ -65,12 +65,9 @@ export default function HousekeepingTerminal() {
       }
       
       if (activeId && activeId !== 'undefined') {
-          const { data: prop } = await supabase.from('properties').select('*').eq('id', activeId).single();
-          setProperty(prop);
-
-                    let finalRoomsQuery;
+          let finalRoomsQuery;
           if (!activeId || activeId === 'undefined' || activeId === 'null') activeId = '63dad7aa-c5f9-4f0e-b21e-b0175397a42c';
-      if (activeId && activeId !== 'undefined' && activeId !== 'null') {
+          if (activeId && activeId !== 'undefined' && activeId !== 'null') {
              finalRoomsQuery = supabase.from('rooms').select('*, profiles:assigned_staff_id(full_name)').eq('property_id', activeId).or('is_deleted.eq.false,is_deleted.is.null').order('room_number');
           } else if (prof?.property_id) {
              finalRoomsQuery = supabase.from('rooms').select('*, profiles:assigned_staff_id(full_name)').eq('property_id', prof.property_id).or('is_deleted.eq.false,is_deleted.is.null').order('room_number');
@@ -78,11 +75,16 @@ export default function HousekeepingTerminal() {
              finalRoomsQuery = supabase.from('rooms').select('*, profiles:assigned_staff_id(full_name)').or('is_deleted.eq.false,is_deleted.is.null').order('room_number');
           }
 
-          const executedRoomsRes = await finalRoomsQuery;
-          const executedBookingsRes = await supabase.from('bookings').select('*').eq('property_id', activeId).in('status', ['Confirmed', 'Checked In']);
+          const [propRes, roomsRes, bookingsRes, blocksRes] = await Promise.all([
+            supabase.from('properties').select('*').eq('id', activeId).single(),
+            finalRoomsQuery,
+            supabase.from('bookings').select('*').eq('property_id', activeId).in('status', ['Confirmed', 'Checked In']),
+            supabase.from('room_blocks').select('*').eq('property_id', activeId).eq('status', 'Active')
+          ]);
 
-          const roomsRes = executedRoomsRes;
-          const bookingsRes = executedBookingsRes;
+          if (propRes.data) {
+            setProperty(propRes.data);
+          }
 
           if (!roomsRes.data || roomsRes.data.length === 0) {
               console.error("🚨 EMERGENCY TRUTH LOG: ZERO ROOMS FETCHED FOR PROPERTY!", activeId);
@@ -104,9 +106,6 @@ export default function HousekeepingTerminal() {
 
           if (roomsRes.data) setRooms(roomsRes.data);
           if (bookingsRes.data) setBookings(bookingsRes.data);
-
-          // Fetch active maintenance blocks
-          const blocksRes = await supabase.from('room_blocks').select('*').eq('property_id', activeId).eq('status', 'Active');
           if (blocksRes.data) setActiveBlocks(blocksRes.data);
         }
 

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { X, Loader2, Bed, Calendar, User, Mail, DollarSign, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import { X, Loader2, Bed, Calendar, User, Mail, Phone, DollarSign, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import { createBooking } from '@/app/actions/booking';
 import { Room, Booking } from '@/lib/types';
 
@@ -153,19 +153,34 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Guest Email</label>
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Guest Phone</label>
                   <div className="relative">
                     <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
-                      <Mail size={16} />
+                      <Phone size={16} />
                     </div>
                     <input 
-                      type="email" 
-                      name="guestEmail"
+                      type="tel" 
+                      name="guestPhone"
                       required
-                      placeholder="john@example.com"
+                      placeholder="+91 98765 43210"
                       className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-azure-500/50"
                     />
                   </div>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Guest Email <span className="text-zinc-500 lowercase font-normal">(optional)</span></label>
+                <div className="relative">
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
+                    <Mail size={16} />
+                  </div>
+                  <input 
+                    type="email" 
+                    name="guestEmail"
+                    placeholder="john@example.com"
+                    className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-azure-500/50"
+                  />
                 </div>
               </div>
 

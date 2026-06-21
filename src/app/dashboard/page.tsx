@@ -176,19 +176,23 @@ export default function Dashboard() {
           return;
         }
 
-        const { data: accessibleProperties } = await supabase
-          .from('property_access')
-          .select(`
-            property_id,
-            properties ( id, name )
-          `)
-          .eq('user_id', user.id);
+        const [accessiblePropertiesResult, profileResult] = await Promise.all([
+          supabase
+            .from('property_access')
+            .select(`
+              property_id,
+              properties ( id, name )
+            `)
+            .eq('user_id', user.id),
+          supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single()
+        ]);
 
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
+        const accessibleProperties = accessiblePropertiesResult.data;
+        const profile = profileResult.data;
         
         if (profile) setUserProfile(profile);
 
@@ -215,31 +219,42 @@ export default function Dashboard() {
         }
           
         if (activePropertyId) {
-          const { data: propData } = await supabase
-            .from('properties')
-            .select('*')
-            .eq('id', activePropertyId)
-            .single();
+          const [propResult, roomsResult, bookingsResult, analyticsResult] = await Promise.all([
+            supabase
+              .from('properties')
+              .select('*')
+              .eq('id', activePropertyId)
+              .single(),
+            supabase
+              .from('rooms')
+              .select('*')
+              .eq('property_id', activePropertyId),
+            supabase
+              .from('bookings')
+              .select('*')
+              .eq('property_id', activePropertyId)
+              .order('check_in', { ascending: false }),
+            getRevenueData(activePropertyId).catch((e) => {
+              console.warn("Analytics fetch failed:", e);
+              return { success: false, data: null };
+            })
+          ]);
+
+          const propData = propResult.data;
+          const roomsData = roomsResult.data;
+          const bookingsData = bookingsResult.data;
           
           if (propData) {
             setProperty(propData);
-            
-            // Staff management is deprecated in 1-tier model, so we no longer load a staff list.
-
-            const { data: roomsData } = await supabase.from('rooms').select('*').eq('property_id', propData.id);
-            const { data: bookingsData } = await supabase.from('bookings').select('*').eq('property_id', propData.id).order('check_in', { ascending: false });
-
-            if (roomsData) setRooms(roomsData);
-            if (bookingsData) setBookings(bookingsData);
-
-            try {
-              const analyticsRes = await getRevenueData(propData.id);
-              if (analyticsRes.success && analyticsRes.data) {
-                setRevenueData(analyticsRes.data);
-              }
-            } catch (e) {
-              console.warn("Analytics fetch failed:", e);
-            }
+          }
+          if (roomsData) {
+            setRooms(roomsData);
+          }
+          if (bookingsData) {
+            setBookings(bookingsData);
+          }
+          if (analyticsResult && analyticsResult.success && analyticsResult.data) {
+            setRevenueData(analyticsResult.data);
           }
         }
       } catch (err) {

@@ -114,33 +114,20 @@ export default function NightAuditPage() {
       }
 
       if (activeId && activeId !== 'undefined') {
-        // Fetch property
-        const { data: prop } = await supabase.from('properties').select('id, name').eq('id', activeId).single();
-        if (prop) setProperty(prop);
+        const [propRes, settingsRes, bookingsRes, roomsRes] = await Promise.all([
+          supabase.from('properties').select('id, name').eq('id', activeId).single(),
+          supabase.from('app_settings').select('value').eq('key', 'business_date').single(),
+          supabase.from('bookings').select('*').eq('property_id', activeId),
+          supabase.from('rooms').select('*').eq('property_id', activeId)
+        ]);
 
-        // Fetch business date from app_settings
-        const { data: settingsData } = await supabase
-          .from('app_settings')
-          .select('value')
-          .eq('key', 'business_date')
-          .single();
+        if (propRes.data) setProperty(propRes.data);
 
-        const activeDate = settingsData?.value || '2026-06-21';
+        const activeDate = settingsRes.data?.value || '2026-06-21';
         setBusinessDate(activeDate);
 
-        // Fetch bookings and rooms
-        const { data: bookingsData } = await supabase
-          .from('bookings')
-          .select('*')
-          .eq('property_id', activeId);
-
-        const { data: roomsData } = await supabase
-          .from('rooms')
-          .select('*')
-          .eq('property_id', activeId);
-
-        if (bookingsData) setBookings(bookingsData);
-        if (roomsData) setRooms(roomsData);
+        if (bookingsRes.data) setBookings(bookingsRes.data);
+        if (roomsRes.data) setRooms(roomsRes.data);
       }
     } catch (err) {
       console.error("Night Audit Load Error:", err);

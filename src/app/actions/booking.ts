@@ -21,13 +21,14 @@ export async function createBooking(formData: FormData) {
   const roomId = formData.get('roomId') as string;
   const guestName = formData.get('guestName') as string;
   const guestEmail = formData.get('guestEmail') as string;
+  const guestPhone = formData.get('guestPhone') as string;
   const checkIn = formData.get('checkIn') as string;
   const checkOut = formData.get('checkOut') as string;
   const amount = parseFloat(formData.get('amount') as string);
   const status = 'Confirmed';
 
-  if (!propertyId || !roomId || !guestName || !guestEmail || !checkIn || !checkOut || isNaN(amount)) {
-    return { error: 'All fields (Property, Room, Guest Name, Email, Check In/Out, Amount) are required.' };
+  if (!propertyId || !roomId || !guestName || !guestPhone || !checkIn || !checkOut || isNaN(amount)) {
+    return { error: 'All fields (Property, Room, Guest Name, Guest Phone, Check In/Out, Amount) are required.' };
   }
 
   const supabaseAdmin = getSupabaseAdmin();
@@ -66,7 +67,8 @@ export async function createBooking(formData: FormData) {
       property_id: propertyId,
       room_id: roomId,
       guest_name: guestName,
-      guest_email: guestEmail,
+      guest_email: guestEmail || null,
+      guest_phone: guestPhone,
       check_in: checkIn,
       check_out: checkOut,
       amount: amount,
@@ -151,7 +153,10 @@ export async function checkInGuest(
   const [bookingRes, roomRes] = await Promise.all([
     supabaseAdmin
       .from('bookings')
-      .update({ status: 'Checked In' })
+      .update({ 
+        status: 'Checked In',
+        check_in_time: new Date().toISOString()
+      })
       .eq('id', bookingId),
     supabaseAdmin
       .from('rooms')
@@ -425,7 +430,10 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
   // 3. EXECUTE CHECKOUT
   const { error: bookingError } = await supabaseAdmin
     .from('bookings')
-    .update({ status: 'Checked Out' })
+    .update({ 
+      status: 'Checked Out',
+      check_out_time: new Date().toISOString()
+    })
     .eq('id', bookingId);
 
   if (bookingError) {
@@ -457,3 +465,50 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
 
   return { success: true };
   }
+
+/**
+ * Automatically record the check-in time when a guest opens their profile/registration card
+ */
+export async function recordCheckInTime(bookingId: string) {
+  const supabaseAdmin = getSupabaseAdmin();
+  
+  // First, fetch the booking to see if check_in_time is already set
+  const { data: booking, error: fetchError } = await supabaseAdmin
+    .from('bookings')
+    .select('check_in_time, property_id, guest_name')
+    .eq('id', bookingId)
+    .single();
+    
+  if (fetchError || !booking) {
+    console.error("Failed to fetch booking for auto check-in time:", fetchError);
+    return { error: "Booking not found." };
+  }
+  
+  // If check_in_time is already set, do nothing
+  if (booking.check_in_time) {
+    return { success: true, alreadySet: true, checkInTime: booking.check_in_time };
+  }
+  
+  const now = new Date().toISOString();
+  
+  // Update check_in_time
+  const { error: updateError } = await supabaseAdmin
+    .from('bookings')
+    .update({ check_in_time: now })
+    .eq('id', bookingId);
+    
+  if (updateError) {
+    console.error("Failed to record check-in time:", updateError);
+    return { error: `Failed to record check-in time: ${updateError.message}` };
+  }
+  
+  // Audit Log
+  await logAction({
+    propertyId: booking.property_id,
+    action: 'AUTO_CHECK_IN_TIME_RECORDED',
+    details: { guestName: booking.guest_name, bookingId, checkInTime: now }
+  });
+  
+  revalidatePath('/dashboard/front-office');
+  return { success: true, checkInTime: now };
+}

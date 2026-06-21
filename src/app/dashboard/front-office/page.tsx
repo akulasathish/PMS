@@ -8,7 +8,7 @@ import {
   ArrowRightLeft, ChevronRight, 
   Plus, Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, LogOut,
-  ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck, RefreshCw, RotateCcw, Printer, XCircle, Link2, Camera, X, ShieldCheck, AlertCircle,
+  ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck, RefreshCw, RotateCcw, Printer, XCircle, Link2, Camera, X, ShieldCheck, AlertCircle, Phone, Mail,
   Trash2, DollarSign, Moon, Banknote, Smartphone, CreditCard
 } from 'lucide-react';
 import Link from 'next/link';
@@ -52,8 +52,11 @@ export default function FrontOfficeTerminal() {
   const [showBookingModal, setShowBookingModal] = useState(false);
   
   // Tabs State
-  const [activeTab, setActiveTab] = useState<'tape' | 'arrivals' | 'departures' | 'house' | 'all'>('tape');
+  const [activeTab, setActiveTab] = useState<'tape' | 'arrivals' | 'departures' | 'house' | 'all' | 'balances'>('tape');
   const [searchQuery, setSearchQuery] = useState('');
+  const [balancesFilter, setBalancesFilter] = useState<'inHouse' | 'allActive'>('inHouse');
+  const [incidentals, setIncidentals] = useState<any[]>([]);
+  const [payments, setPayments] = useState<any[]>([]);
   const [reservationFilter, setReservationFilter] = useState('Confirmed');
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
@@ -109,30 +112,32 @@ export default function FrontOfficeTerminal() {
       }
       
       if (activeId && activeId !== 'undefined') {
-        const { data: prop } = await supabase.from('properties').select('*').eq('id', activeId).single();
-        setProperty(prop);
-
-        // Fetch rooms and bookings, explicitly bypassing browser cache
-        let finalRoomsQuery;
         const currentActiveId = activeId || prof?.property_id;
-        
+
+        let finalRoomsQuery;
         if (currentActiveId && currentActiveId !== 'undefined' && currentActiveId !== 'null') {
            finalRoomsQuery = supabase.from('rooms').select('*').eq('property_id', currentActiveId).or('is_deleted.eq.false,is_deleted.is.null').order('room_number');
         } else {
            finalRoomsQuery = supabase.from('rooms').select('*').or('is_deleted.eq.false,is_deleted.is.null').order('room_number');
         }
 
-        const executedRoomsRes = await finalRoomsQuery;
-        
-        // FIX: Add property_id filter to bookings to ensure we see our data
         let bookingsQuery = supabase.from('bookings').select('*').eq('property_id', currentActiveId || '00000000-0000-0000-0000-000000000000');
         if (currentActiveId) {
           bookingsQuery = bookingsQuery.eq('property_id', currentActiveId);
         }
-        const executedBookingsRes = await bookingsQuery.order('created_at', { ascending: false });
+        bookingsQuery = bookingsQuery.order('created_at', { ascending: false });
 
-        const roomsRes = executedRoomsRes;
-        const bookingsRes = executedBookingsRes;
+        const [propRes, roomsRes, bookingsRes, incidentalsRes, paymentsRes] = await Promise.all([
+          supabase.from('properties').select('*').eq('id', activeId).single(),
+          finalRoomsQuery,
+          bookingsQuery,
+          supabase.from('incidental_charges').select('*').eq('property_id', activeId),
+          supabase.from('payments').select('*').eq('property_id', activeId)
+        ]);
+
+        if (propRes.data) {
+          setProperty(propRes.data);
+        }
 
         if (!roomsRes.data || roomsRes.data.length === 0) {
             console.error("🚨 EMERGENCY TRUTH LOG: ZERO ROOMS FETCHED FOR PROPERTY!", activeId);
@@ -160,6 +165,8 @@ export default function FrontOfficeTerminal() {
 
         setRooms(roomsRes.data || []);
         setBookings(bookingsRes.data || []);
+        setIncidentals(incidentalsRes.data || []);
+        setPayments(paymentsRes.data || []);
       }
     } catch (err) {
       console.error("Dashboard Load Error:", err);
@@ -231,24 +238,60 @@ export default function FrontOfficeTerminal() {
 
   const getArrivalsToday = () => {
     const todayStr = getLocalYYYYMMDD(new Date());
-    return bookings.filter(b => {
+    let filtered = bookings.filter(b => {
       // Extract only the first 10 characters (YYYY-MM-DD) from whatever Postgres returned
       const dbDate = b.check_in ? String(b.check_in).substring(0, 10) : '';
       return dbDate === todayStr && b.status === 'Confirmed';
     });
+
+    if (searchQuery) {
+      const lowerQuery = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(b => {
+        const roomNum = rooms.find(r => r.id === b.room_id)?.room_number || '';
+        const nameMatch = b.guest_name ? b.guest_name.toLowerCase().includes(lowerQuery) : false;
+        const roomMatch = roomNum.toLowerCase().includes(lowerQuery);
+        return nameMatch || roomMatch;
+      });
+    }
+
+    return filtered;
   };
 
   const getDeparturesToday = () => {
     const todayStr = getLocalYYYYMMDD(new Date());
-    return bookings.filter(b => {
+    let filtered = bookings.filter(b => {
       // Extract only the first 10 characters
       const dbDate = b.check_out ? String(b.check_out).substring(0, 10) : '';
       return dbDate === todayStr && b.status === 'Checked In';
     });
+
+    if (searchQuery) {
+      const lowerQuery = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(b => {
+        const roomNum = rooms.find(r => r.id === b.room_id)?.room_number || '';
+        const nameMatch = b.guest_name ? b.guest_name.toLowerCase().includes(lowerQuery) : false;
+        const roomMatch = roomNum.toLowerCase().includes(lowerQuery);
+        return nameMatch || roomMatch;
+      });
+    }
+
+    return filtered;
   };
 
   const getInHouse = () => {
-    return bookings.filter(b => b.status === 'Checked In');
+    let filtered = bookings.filter(b => b.status === 'Checked In');
+
+    if (searchQuery) {
+      const lowerQuery = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(b => {
+        const roomNum = rooms.find(r => r.id === b.room_id)?.room_number || '';
+        const nameMatch = b.guest_name ? b.guest_name.toLowerCase().includes(lowerQuery) : false;
+        const roomMatch = roomNum.toLowerCase().includes(lowerQuery);
+        return nameMatch || roomMatch;
+      });
+    }
+
+    return filtered;
   };
 
   
@@ -591,6 +634,221 @@ export default function FrontOfficeTerminal() {
     return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
   };
 
+  const renderBalancesView = () => {
+    // Filter bookings based on selected balancesFilter (In-House Only or All Active)
+    let filteredBookings = bookings;
+    
+    if (balancesFilter === 'inHouse') {
+      filteredBookings = bookings.filter(b => b.status === 'Checked In');
+    } else {
+      // All active includes Checked In and Confirmed (excluding Checked Out and Cancelled)
+      filteredBookings = bookings.filter(b => b.status === 'Checked In' || b.status === 'Confirmed');
+    }
+
+    // Apply text search if any
+    if (searchQuery) {
+      const lowerQuery = searchQuery.toLowerCase().trim();
+      filteredBookings = filteredBookings.filter(b => {
+        const roomNum = rooms.find(r => r.id === b.room_id)?.room_number || '';
+        const nameMatch = b.guest_name ? b.guest_name.toLowerCase().includes(lowerQuery) : false;
+        const roomMatch = roomNum.toLowerCase() === lowerQuery;
+        return nameMatch || roomMatch;
+      });
+    }
+
+    // Map to calculated balances and sort room-wise
+    const balanceItems = filteredBookings.map(booking => {
+      const room = rooms.find(r => r.id === booking.room_id);
+      const roomNum = room?.room_number || 'N/A';
+      
+      const bookingIncidentals = incidentals.filter(i => i.booking_id === booking.id);
+      const bookingPayments = payments.filter(p => p.booking_id === booking.id);
+
+      const roomAmount = Number(booking.amount);
+      const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0);
+      const totalCharges = roomAmount + incidentalsAmount;
+      const totalPaid = bookingPayments.reduce((sum, item) => sum + Number(item.amount), 0);
+      const balanceDue = totalCharges - totalPaid;
+
+      return {
+        booking,
+        roomNum,
+        roomType: room?.type || 'N/A',
+        roomAmount,
+        incidentalsAmount,
+        totalCharges,
+        totalPaid,
+        balanceDue
+      };
+    }).sort((a, b) => {
+      return a.roomNum.localeCompare(b.roomNum, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
+    return (
+      <div className="space-y-6">
+        {/* Balances Sub-Header Controls */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-zinc-900/20 border border-white/[0.04] p-4 rounded-2xl">
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Show Dues:</span>
+            <div className="flex bg-black/40 border border-white/10 p-0.5 rounded-xl">
+              <button
+                onClick={() => setBalancesFilter('inHouse')}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                  balancesFilter === 'inHouse'
+                    ? 'bg-[#4f46e5] text-white shadow-lg shadow-[#4f46e5]/10'
+                    : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                In-House Only
+              </button>
+              <button
+                onClick={() => setBalancesFilter('allActive')}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                  balancesFilter === 'allActive'
+                    ? 'bg-[#4f46e5] text-white shadow-lg shadow-[#4f46e5]/10'
+                    : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                All Active (In-House & Confirmed)
+              </button>
+            </div>
+          </div>
+
+          <div className="text-xs text-zinc-400 font-medium">
+            Showing <span className="text-white font-bold">{balanceItems.length}</span> rooms with active folios
+          </div>
+        </div>
+
+        {balanceItems.length === 0 ? (
+          <div className="py-40 text-center border border-dashed border-white/5 rounded-3xl bg-white/[0.01]">
+            <CheckCircle2 size={40} className="text-emerald-500/40 mx-auto mb-4" />
+            <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs">No Outstanding Balances Found</p>
+          </div>
+        ) : (
+          <div className="bg-[#0a0a0c]/60 border border-white/[0.04] rounded-3xl overflow-hidden shadow-2xl">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-black/40 border-b border-white/[0.06] text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                    <th className="p-4 pl-6">Room / Sl No</th>
+                    <th className="p-4">Guest Details</th>
+                    <th className="p-4 text-right">Base Rent</th>
+                    <th className="p-4 text-right">Incidentals</th>
+                    <th className="p-4 text-right">Total Charges</th>
+                    <th className="p-4 text-right text-emerald-400">Total Paid</th>
+                    <th className="p-4 text-right text-rose-400 font-bold bg-rose-500/5">Balance Due</th>
+                    <th className="p-4 pr-6 text-center">Settlement</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/[0.02]">
+                  {balanceItems.map(({ booking, roomNum, roomType, roomAmount, incidentalsAmount, totalCharges, totalPaid, balanceDue }) => {
+                    const hasDues = balanceDue > 0.01;
+                    return (
+                      <tr key={booking.id} className="hover:bg-white/[0.01] transition-colors">
+                        {/* Room Number / Serial */}
+                        <td className="p-4 pl-6 align-middle">
+                          <div className="flex flex-col gap-1">
+                            <span className="text-sm font-black text-white bg-white/5 px-2.5 py-1 rounded-lg w-fit">
+                              Room {roomNum}
+                            </span>
+                            <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider pl-0.5">
+                              {roomType}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Guest details */}
+                        <td className="p-4 align-middle">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-sm font-bold text-white hover:text-indigo-400 transition-colors cursor-pointer" onClick={() => openActionDrawer(booking)}>
+                              {booking.guest_name}
+                            </span>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${
+                                booking.status === 'Checked In' 
+                                  ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' 
+                                  : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                              }`}>
+                                {booking.status}
+                              </span>
+                              <span className="text-[10px] text-zinc-500">
+                                {booking.id.slice(0, 8)}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Rent */}
+                        <td className="p-4 text-right align-middle font-semibold text-zinc-300">
+                          ₹{roomAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+
+                        {/* Incidentals */}
+                        <td className="p-4 text-right align-middle font-semibold text-zinc-400">
+                          ₹{incidentalsAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+
+                        {/* Total Charges */}
+                        <td className="p-4 text-right align-middle font-bold text-white">
+                          ₹{totalCharges.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+
+                        {/* Total Paid */}
+                        <td className="p-4 text-right align-middle font-bold text-emerald-400">
+                          ₹{totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+
+                        {/* Balance Due */}
+                        <td className="p-4 text-right align-middle bg-rose-500/[0.01]">
+                          <div className="flex flex-col items-end gap-1">
+                            <span className={`text-base font-black ${hasDues ? 'text-rose-400 font-mono shadow-sm' : 'text-zinc-600 font-mono'}`}>
+                              ₹{balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                            {hasDues ? (
+                              <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
+                                Outstanding
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                                Paid in Full
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Action buttons */}
+                        <td className="p-4 pr-6 text-center align-middle">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveCheckoutBooking({
+                                bookingId: booking.id,
+                                roomId: booking.room_id,
+                                guestName: booking.guest_name,
+                                amount: Number(booking.amount)
+                              });
+                            }}
+                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                              hasDues
+                                ? 'bg-[#4f46e5] text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/10'
+                                : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                            }`}
+                          >
+                            Open Folio
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   if (isLoading) {
     return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
   }
@@ -669,12 +927,13 @@ export default function FrontOfficeTerminal() {
                 { id: 'arrivals', label: 'Arrivals Today', icon: UserCheck },
                 { id: 'departures', label: 'Departures Today', icon: LogOut },
                 { id: 'house', label: 'In-House', icon: Bed },
+                { id: 'balances', label: 'Pending Payments', icon: DollarSign },
                 { id: 'all', label: 'Reservations', icon: Search },
               ].map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => {
-                    setActiveTab(tab.id as 'tape' | 'arrivals' | 'departures' | 'house' | 'all');
+                    setActiveTab(tab.id as 'tape' | 'arrivals' | 'departures' | 'house' | 'all' | 'balances');
                     setSearchQuery(''); // Clear search when switching tabs
                   }}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all shrink-0 ${
@@ -691,6 +950,31 @@ export default function FrontOfficeTerminal() {
             </div>
 
             
+            {/* UNIFIED SEARCH CONTROL FOR LIST TABS */}
+            {(activeTab === 'arrivals' || activeTab === 'departures' || activeTab === 'house' || activeTab === 'balances') && (
+              <div className="flex items-center justify-end gap-3">
+                <div className="relative w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" size={14} />
+                  <input 
+                    type="text" 
+                    placeholder="Search room number or guest..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-xs text-white focus:outline-none focus:border-indigo-500/50 transition-all"
+                  />
+                </div>
+                {searchQuery && (
+                  <button 
+                    onClick={() => setSearchQuery('')}
+                    className="p-2 text-zinc-500 hover:text-rose-400 bg-zinc-800 hover:bg-rose-500/10 border border-white/5 rounded-xl transition-all"
+                    title="Clear Search"
+                  >
+                    <XCircle size={14} />
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* RESERVATIONS MASTER CONTROLS */}
             {activeTab === 'all' && (
               <div className="flex items-center gap-3">
@@ -908,6 +1192,7 @@ export default function FrontOfficeTerminal() {
                   </div>
                 ) : getAllReservations().map(b => <BookingRow key={b.id} booking={b} />)
               )}
+              {activeTab === 'balances' && renderBalancesView()}
             </div>
           )}
         </div>
@@ -940,9 +1225,51 @@ export default function FrontOfficeTerminal() {
                     <UserCheck className="text-indigo-400" size={20} />
                     {selectedBooking.guest_name}
                   </h2>
-                  <p className="text-[11px] font-black text-indigo-500 uppercase tracking-widest mt-1">
+                  <p className="text-[11px] font-black text-indigo-500 uppercase tracking-widest mt-1 mb-2">
                     {calculateNights(selectedBooking.check_in, selectedBooking.check_out)} Nights &bull; {selectedBooking.check_in} to {selectedBooking.check_out}
                   </p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-400">
+                    {selectedBooking.guest_phone && (
+                      <span className="flex items-center gap-1.5 font-medium">
+                        <Phone size={12} className="text-zinc-500" />
+                        {selectedBooking.guest_phone}
+                      </span>
+                    )}
+                    {selectedBooking.guest_email && (
+                      <span className="flex items-center gap-1.5 font-medium">
+                        <Mail size={12} className="text-zinc-500" />
+                        {selectedBooking.guest_email}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Physical Check-In / Out Timestamps */}
+                  {(selectedBooking.check_in_time || selectedBooking.check_out_time) && (
+                    <div className="flex flex-col gap-1.5 mt-3.5 pt-3 border-t border-white/[0.04] text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                      {selectedBooking.check_in_time && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-zinc-500">Actual Check-In:</span>
+                          <span className="text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded-md font-bold">
+                            {new Date(selectedBooking.check_in_time).toLocaleString(undefined, {
+                              dateStyle: 'medium',
+                              timeStyle: 'short'
+                            })}
+                          </span>
+                        </div>
+                      )}
+                      {selectedBooking.check_out_time && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-zinc-500">Actual Check-Out:</span>
+                          <span className="text-rose-400 font-mono bg-rose-500/10 px-2 py-0.5 rounded-md font-bold">
+                            {new Date(selectedBooking.check_out_time).toLocaleString(undefined, {
+                              dateStyle: 'medium',
+                              timeStyle: 'short'
+                            })}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 
                 <div className="flex items-center gap-2">
@@ -965,6 +1292,43 @@ export default function FrontOfficeTerminal() {
               </div>
 
               <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                {/* 0. BILLING & FOLIO LEDGER (Only for Checked In guests) */}
+                {selectedBooking.status === 'Checked In' && (
+                  <div className="space-y-3 pb-6 border-b border-white/[0.04]">
+                    <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                      <DollarSign size={14} /> Billing & Folio Ledger
+                    </h3>
+                    <div className="bg-black/40 border border-white/[0.04] rounded-2xl p-4 space-y-4">
+                      <p className="text-[11px] text-zinc-500 leading-relaxed">
+                        Manage guest billing, record cash or UPI payments, and view detailed folio summaries.
+                      </p>
+                      
+                      <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.02] flex justify-between items-center">
+                        <div>
+                          <span className="text-[9px] font-black text-zinc-500 uppercase tracking-wider block">Base Room Rate</span>
+                          <span className="text-xs text-zinc-400 mt-0.5 font-medium block">Accommodation charges</span>
+                        </div>
+                        <span className="text-sm font-black text-white font-mono">₹{Number(selectedBooking.amount).toFixed(2)}</span>
+                      </div>
+                      
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveCheckoutBooking({
+                            bookingId: selectedBooking.id,
+                            roomId: selectedBooking.room_id,
+                            guestName: selectedBooking.guest_name,
+                            amount: Number(selectedBooking.amount)
+                          });
+                        }}
+                        className="w-full bg-emerald-600/10 hover:bg-emerald-600 hover:text-black text-emerald-400 border border-emerald-500/20 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg"
+                      >
+                        <Banknote size={16} /> Open Folio & Log Payment
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* 0. CHECK-IN REQUIREMENTS (Only for Confirmed guests) */}
                 {selectedBooking.status === 'Confirmed' && (
                   <div className="space-y-3 pb-6 border-b border-white/[0.04]">
@@ -980,10 +1344,111 @@ export default function FrontOfficeTerminal() {
                         <input type="checkbox" className="w-4 h-4 rounded bg-black border-white/20 accent-amber-500" checked={checkRegCardSigned} onChange={e => setCheckRegCardSigned(e.target.checked)} />
                         <span className="text-sm text-zinc-300 group-hover:text-white transition-colors">Sign Digital RegCard & Terms</span>
                       </label>
-                      <label className="flex items-center gap-3 cursor-pointer group">
-                        <input type="checkbox" className="w-4 h-4 rounded bg-black border-white/20 accent-amber-500" checked={checkPaymentSecured} onChange={e => setCheckPaymentSecured(e.target.checked)} />
-                        <span className="text-sm text-zinc-300 group-hover:text-white transition-colors">Secure Payment / Auth (${selectedBooking.amount})</span>
-                      </label>
+                      <div className="space-y-2">
+                        <label className="flex items-center gap-3 cursor-pointer group">
+                          <input type="checkbox" className="w-4 h-4 rounded bg-black border-white/20 accent-amber-500" checked={checkPaymentSecured} onChange={e => setCheckPaymentSecured(e.target.checked)} />
+                          <span className="text-sm text-zinc-300 group-hover:text-white transition-colors">Verify / Collect Check-In Payment</span>
+                        </label>
+                        
+                        <AnimatePresence>
+                          {checkPaymentSecured && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                              animate={{ opacity: 1, height: "auto", marginTop: 8 }}
+                              exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="bg-zinc-900/60 p-4 rounded-xl border border-white/[0.04] space-y-4 ml-7">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-bold text-zinc-400">Record Payment in Ledger?</span>
+                                  <label className="relative inline-flex items-center cursor-pointer">
+                                    <input 
+                                      type="checkbox" 
+                                      checked={checkInPaymentRecorded} 
+                                      onChange={(e) => setCheckInPaymentRecorded(e.target.checked)} 
+                                      className="sr-only peer"
+                                    />
+                                    <div className="w-9 h-5 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600 peer-checked:after:bg-white"></div>
+                                    <span className="ml-2 text-[10px] font-bold text-zinc-300 uppercase tracking-wider">{checkInPaymentRecorded ? 'Yes' : 'No'}</span>
+                                  </label>
+                                </div>
+
+                                {checkInPaymentRecorded ? (
+                                  <div className="space-y-3.5">
+                                    {/* Amount Input */}
+                                    <div className="space-y-1.5">
+                                      <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Payment Amount (₹)</label>
+                                      <div className="relative">
+                                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 font-mono text-xs">₹</span>
+                                        <input 
+                                          type="number"
+                                          step="0.01"
+                                          value={checkInPaymentAmount}
+                                          onChange={(e) => setCheckInPaymentAmount(e.target.value)}
+                                          placeholder="0.00"
+                                          className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-7 pr-3 text-white text-xs font-mono focus:outline-none focus:border-indigo-500 transition-all"
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {/* Payment Method Quick Selector */}
+                                    <div className="space-y-1.5">
+                                      <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Payment Method</label>
+                                      <div className="grid grid-cols-2 gap-2">
+                                        {[
+                                          { id: 'Cash', label: 'Cash', icon: Banknote },
+                                          { id: 'UPI', label: 'UPI / QR', icon: Smartphone },
+                                          { id: 'Credit Card', label: 'Card', icon: CreditCard },
+                                          { id: 'Bank Transfer', label: 'Transfer', icon: Building2 },
+                                        ].map((method) => {
+                                          const Icon = method.icon;
+                                          const isSelected = checkInPaymentMethod === method.id;
+                                          return (
+                                            <button
+                                              key={method.id}
+                                              type="button"
+                                              onClick={() => setCheckInPaymentMethod(method.id as any)}
+                                              className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs font-bold transition-all ${
+                                                isSelected 
+                                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
+                                                  : 'bg-black/20 text-zinc-400 border-white/5 hover:bg-white/5 hover:text-white'
+                                              }`}
+                                            >
+                                              <Icon size={14} className={isSelected ? 'text-emerald-400' : 'text-zinc-500'} />
+                                              {method.label}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                      <p className="text-[9px] text-zinc-500 italic mt-1.5 pl-0.5 leading-relaxed">
+                                        💡 For combination payments (e.g. Cash + UPI), complete check-in without recording a payment here, then log each payment separately in the Billing/Folio modal.
+                                      </p>
+                                    </div>
+
+                                    {/* Transaction ID */}
+                                    {checkInPaymentMethod !== 'Cash' && (
+                                      <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Transaction ID (Optional)</label>
+                                        <input 
+                                          type="text"
+                                          value={checkInPaymentTxnId}
+                                          onChange={(e) => setCheckInPaymentTxnId(e.target.value)}
+                                          placeholder="e.g. UPI / Ref number"
+                                          className="w-full bg-black/40 border border-white/10 rounded-xl py-2 px-3 text-white text-xs font-mono focus:outline-none focus:border-indigo-500 transition-all"
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <p className="text-[10px] text-zinc-500 leading-relaxed italic">
+                                    No payment will be logged during check-in. The full balance of <span className="font-mono not-italic text-zinc-400 font-bold">₹{Number(selectedBooking.amount).toFixed(2)}</span> will remain outstanding as Balance Due, and must be settled before checkout.
+                                  </p>
+                                )}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
                       <label className="flex items-center gap-3 cursor-pointer group">
                         <input type="checkbox" className="w-4 h-4 rounded bg-black border-white/20 accent-amber-500" checked={checkFormFDone} onChange={e => setCheckFormFDone(e.target.checked)} />
                         <span className="text-sm text-zinc-300 group-hover:text-white transition-colors">Capture Form F (Home Address)</span>

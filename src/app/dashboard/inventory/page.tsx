@@ -65,16 +65,21 @@ export default function Inventory() {
 
         if (!user) return;
 
-        const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-        setUserProfile(prof as UserProfile);
+        const [profResult, accessiblePropertiesResult] = await Promise.all([
+          supabase.from('profiles').select('*').eq('id', user.id).single(),
+          supabase
+            .from('property_access')
+            .select(`
+              property_id,
+              properties ( id, name )
+            `)
+            .eq('user_id', user.id)
+        ]);
 
-        const { data: accessibleProperties } = await supabase
-          .from('property_access')
-          .select(`
-            property_id,
-            properties ( id, name )
-          `)
-          .eq('user_id', user.id);
+        const prof = profResult.data;
+        const accessibleProperties = accessiblePropertiesResult.data;
+        
+        setUserProfile(prof as UserProfile);
 
         let activePropertyId = null;
         let parsedPropsList: { id: string, name: string }[] = [];
@@ -109,22 +114,28 @@ export default function Inventory() {
         if (activePropertyId) {
           setPropertyId(activePropertyId);
 
-          const { data: propData } = await supabase
-            .from('properties')
-            .select('*')
-            .eq('id', activePropertyId)
-            .single();
-
-          if (propData) {
-            setProperty(propData);
-            const { data: roomsData } = await supabase
+          const [propResult, roomsResult] = await Promise.all([
+            supabase
+              .from('properties')
+              .select('*')
+              .eq('id', activePropertyId)
+              .single(),
+            supabase
               .from('rooms')
               .select('*')
               .eq('property_id', activePropertyId)
               .or('is_deleted.eq.false,is_deleted.is.null')
-              .order('room_number', { ascending: true });
+              .order('room_number', { ascending: true })
+          ]);
 
-            if (roomsData) setRooms(roomsData);
+          const propData = propResult.data;
+          const roomsData = roomsResult.data;
+
+          if (propData) {
+            setProperty(propData);
+          }
+          if (roomsData) {
+            setRooms(roomsData);
           }
         }
       } catch (err) {

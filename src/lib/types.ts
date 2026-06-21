@@ -22,6 +22,7 @@ export interface Booking {
   room_id: string;
   guest_name: string;
   guest_email?: string;
+  guest_phone?: string;
   guest_address?: string;
   check_in: string;
   check_out: string;
@@ -32,6 +33,8 @@ export interface Booking {
   id_photo_url?: string;
   signature_url?: string;
   notes?: string;
+  check_in_time?: string;
+  check_out_time?: string;
 }
 
 export interface UserProfile {
