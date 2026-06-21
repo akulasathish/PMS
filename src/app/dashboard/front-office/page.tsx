@@ -9,7 +9,7 @@ import {
   Plus, Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, LogOut,
   ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck, RefreshCw, RotateCcw, Printer, XCircle, Link2, Camera, X, ShieldCheck, AlertCircle,
-  Trash2, DollarSign
+  Trash2, DollarSign, Moon, Banknote, Smartphone, CreditCard
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -26,6 +26,7 @@ const NAV_ITEMS = [
   { icon: Activity, label: "Front Office", href: "/dashboard/front-office", active: true, module: 'front_office' },
   { icon: Brush, label: "Housekeeping", href: "/dashboard/housekeeping", active: false, module: 'housekeeping' },
   { icon: DoorOpen, label: "Inventory", href: "/dashboard/inventory", active: false, module: 'inventory' },
+  { icon: Moon, label: "Night Audit", href: "/dashboard/night-audit", active: false, module: 'night_audit' },
   { icon: Settings, label: "Settings", href: "#", active: false, module: 'settings' },
 ];
 
@@ -69,6 +70,12 @@ export default function FrontOfficeTerminal() {
   const [checkRegCardSigned, setCheckRegCardSigned] = useState(false);
   const [checkPaymentSecured, setCheckPaymentSecured] = useState(false);
   const [checkFormFDone, setCheckFormFDone] = useState(false);
+  
+  // Custom check-in payment details
+  const [checkInPaymentRecorded, setCheckInPaymentRecorded] = useState(true);
+  const [checkInPaymentMethod, setCheckInPaymentMethod] = useState<'Cash' | 'UPI' | 'Credit Card' | 'Bank Transfer' | 'OTA Pre-Paid'>('Cash');
+  const [checkInPaymentAmount, setCheckInPaymentAmount] = useState('');
+  const [checkInPaymentTxnId, setCheckInPaymentTxnId] = useState('');
   
   // Form F Fields State
   const [guestAddress, setGuestAddress] = useState('');
@@ -391,8 +398,32 @@ export default function FrontOfficeTerminal() {
 
   const handleSafeCheckIn = async (e: React.MouseEvent, bookingId: string) => {
     e.stopPropagation();
-    await checkInGuest(bookingId);
-    window.location.reload();
+    setActionLoading(true);
+    
+    let paymentDetails = undefined;
+    if (checkPaymentSecured && checkInPaymentRecorded) {
+      const amountVal = parseFloat(checkInPaymentAmount);
+      if (isNaN(amountVal) || amountVal <= 0) {
+        alert("Please enter a valid check-in payment amount.");
+        setActionLoading(false);
+        return;
+      }
+      paymentDetails = {
+        amount: amountVal,
+        method: checkInPaymentMethod,
+        transactionId: checkInPaymentTxnId.trim() || undefined
+      };
+    }
+
+    const res = await checkInGuest(bookingId, paymentDetails);
+    setActionLoading(false);
+    
+    if (res.error) {
+      alert(res.error);
+    } else {
+      setSelectedBooking(null);
+      loadDashboardData();
+    }
   };
 
   const handleSafeCheckOut = async (e: React.MouseEvent, bookingId: string, roomId: string) => {
@@ -482,6 +513,12 @@ export default function FrontOfficeTerminal() {
     setCheckPaymentSecured(false);
     setCheckFormFDone(false);
     setGuestAddress(booking.guest_address || '');
+    
+    // Reset and pre-fill check-in payment details
+    setCheckInPaymentRecorded(true);
+    setCheckInPaymentMethod('Cash');
+    setCheckInPaymentAmount(booking.amount.toString());
+    setCheckInPaymentTxnId('');
     
     // Auto-check requirements if they were already done via the Magic Link
     if (booking.id_verified) {

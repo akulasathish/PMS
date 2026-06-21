@@ -7,7 +7,7 @@ import {
   Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, Lock,
   Play, CheckCircle, ShieldCheck, ShieldAlert,
-  AlertTriangle, DollarSign
+  AlertTriangle, DollarSign, Moon
 } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -24,6 +24,7 @@ const NAV_ITEMS = [
   { icon: Activity, label: "Front Office", href: "/dashboard/front-office", active: false, module: 'front_office' },
   { icon: Brush, label: "Housekeeping", href: "/dashboard/housekeeping", active: true, module: 'housekeeping' },
   { icon: DoorOpen, label: "Inventory", href: "/dashboard/inventory", active: false, module: 'inventory' },
+  { icon: Moon, label: "Night Audit", href: "/dashboard/night-audit", active: false, module: 'night_audit' },
   { icon: Settings, label: "Settings", href: "#", active: false, module: 'settings' },
 ];
 

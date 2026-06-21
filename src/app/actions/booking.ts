@@ -98,7 +98,14 @@ export async function createBooking(formData: FormData) {
 /**
  * Check-In a Guest (Updates status and triggers n8n Smart Check-In)
  */
-export async function checkInGuest(bookingId: string) {
+export async function checkInGuest(
+  bookingId: string,
+  paymentDetails?: {
+    amount: number;
+    method: string;
+    transactionId?: string;
+  }
+) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -119,6 +126,25 @@ export async function checkInGuest(bookingId: string) {
   if (fetchError || !booking) {
     console.error("Failed to fetch booking for check-in:", fetchError);
     return { error: "Booking not found." };
+  }
+
+  // Insert payment if details are provided
+  if (paymentDetails && paymentDetails.amount > 0) {
+    const { error: paymentError } = await supabaseAdmin
+      .from('payments')
+      .insert([{
+        booking_id: bookingId,
+        property_id: booking.property_id,
+        amount: paymentDetails.amount,
+        method: paymentDetails.method,
+        transaction_id: paymentDetails.transactionId || null,
+        created_by: user.id
+      }]);
+
+    if (paymentError) {
+      console.error("Check-in Payment Error:", paymentError);
+      return { error: `Failed to record check-in payment: ${paymentError.message}` };
+    }
   }
 
   // Update the booking status to 'Checked In' AND mark the room as 'Occupied'
@@ -143,7 +169,13 @@ export async function checkInGuest(bookingId: string) {
   await logAction({
     propertyId: booking.property_id,
     action: 'GUEST_CHECK_IN',
-    details: { guestName: booking.guest_name, bookingId },
+    details: { 
+      guestName: booking.guest_name, 
+      bookingId,
+      paymentRecorded: !!paymentDetails,
+      paymentAmount: paymentDetails?.amount,
+      paymentMethod: paymentDetails?.method
+    },
     userId: user.id
   });
 

@@ -36,7 +36,8 @@ import {
   Building2,
   ChevronsUpDown,
   Lock,
-  Brush
+  Brush,
+  Moon
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -44,6 +45,7 @@ const NAV_ITEMS = [
   { icon: Activity, label: "Front Office", href: "/dashboard/front-office", active: false, module: 'front_office' },
   { icon: Brush, label: "Housekeeping", href: "/dashboard/housekeeping", active: false, module: 'housekeeping' },
   { icon: DoorOpen, label: "Inventory", href: "/dashboard/inventory", active: false, module: 'inventory' },
+  { icon: Moon, label: "Night Audit", href: "/dashboard/night-audit", active: false, module: 'night_audit' },
   { icon: Settings, label: "Settings", href: "#", active: false, module: 'settings' }, 
 ];
 
