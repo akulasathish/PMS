@@ -7,24 +7,7 @@ model: gemini-3.1-pro-high
 
 # StaySync Deployment Mandates
 
-This document contains foundational mandates for deploying the StaySync platform to AWS EKS. Gemini MUST adhere to these instructions for every deployment to prevent production outages and authentication failures.
-
-## 🛡️ Pre-Deployment Checklist
-... [Keep the rest of your file exactly as it is] ...
-
-
-
-
-
-
-
-
-
-
-
-# StaySync Deployment Mandates
-
-This document contains foundational mandates for deploying the StaySync platform to AWS EKS. Gemini MUST adhere to these instructions for every deployment to prevent production outages and authentication failures.
+This document contains foundational mandates for deploying the StaySync platform to AWS ECS. Gemini MUST adhere to these instructions for every deployment to prevent production outages and authentication failures.
 
 ## 🛡️ Pre-Deployment Checklist
 
@@ -40,15 +23,15 @@ Before building any Docker image or pushing to AWS ECR, Gemini MUST execute the 
 - **Action:** Explicitly pass production keys as `--build-arg` in the `docker build` command.
 - **Production Reference:**
   - URL: `https://xjsuwjivetlmzzbngeuy.supabase.co`
-  - Anon Key: (Fetch from user or existing EKS secret if not provided)
+  - Anon Key: (Fetch from user or existing ECS service task definition if not provided)
 
-### 3. Kubernetes Secret Alignment
-- **Mandate:** Pods must have the latest server-side credentials.
-- **Action:** If keys have changed, update the `pms-prod-secrets` generic secret using `kubectl apply`.
+### 3. ECS Service Alignment
+- **Mandate:** Tasks must have the latest server-side credentials and environment configuration.
+- **Action:** Ensure task definitions and environment variables are properly matched in the AWS ECS Console or Task Definition template.
 
 ### 4. Zero-Downtime Rollout
-- **Mandate:** Deployments to EKS must trigger a rolling update to prevent service interruption.
-- **Action:** After `docker push`, always run `kubectl rollout restart deployment pms-frontend`.
+- **Mandate:** Deployments to ECS Fargate must trigger a rolling update to prevent service interruption.
+- **Action:** After `docker push`, always force a new deployment on the ECS service.
 
 ## ⚙️ Standard Deployment Workflow
 
@@ -56,17 +39,17 @@ Before building any Docker image or pushing to AWS ECR, Gemini MUST execute the 
 # Step 1: Push Database Migrations
 npx supabase db push --linked
 
-# Step 2: Build Image (Baking PROD keys)
+# Step 2: Build Image (Baking PROD keys and tagging for ap-south-1 ECR)
 docker build --no-cache \
   --build-arg NEXT_PUBLIC_SUPABASE_URL=https://xjsuwjivetlmzzbngeuy.supabase.co \
   --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=<PROD_ANON_KEY> \
-  -t 401644592968.dkr.ecr.us-east-1.amazonaws.com/pms/app:latest .
+  -t 401644592968.dkr.ecr.ap-south-1.amazonaws.com/pms/app:latest .
 
-# Step 3: Push to ECR
-docker push 401644592968.dkr.ecr.us-east-1.amazonaws.com/pms/app:latest
+# Step 3: Push to ECR (Mumbai ap-south-1)
+docker push 401644592968.dkr.ecr.ap-south-1.amazonaws.com/pms/app:latest
 
-# Step 4: Restart EKS Pods
-kubectl rollout restart deployment pms-frontend
+# Step 4: Restart ECS Tasks (Force a new deployment)
+aws ecs update-service --cluster PMS_ECS --service pms-app-service-xwt8ytiz --force-new-deployment --region ap-south-1
 ```
 
 ## 🚫 Forbidden Actions
