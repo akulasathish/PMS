@@ -531,7 +531,7 @@ export default function Dashboard() {
           </div>
         </header>
 
-        <div className="p-8 space-y-8">
+        <div className="p-8 pb-28 lg:pb-8 space-y-8">
 
           {/* STAT CARDS ROW */}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
@@ -847,6 +847,38 @@ export default function Dashboard() {
           </div>
         </div>
       </main>
+
+      {/* Mobile Bottom Navigation Bar */}
+      <div className="lg:hidden fixed bottom-0 left-0 w-full z-40 bg-[#0a0a0c]/85 backdrop-blur-xl border-t border-white/[0.05] shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
+        <div className="flex items-center justify-around py-2 px-1 max-w-md mx-auto">
+          {NAV_ITEMS.map((item) => {
+            const locked = !hasAccess(item.module);
+            return (
+              <Link
+                key={item.label}
+                href={locked ? "#" : item.href}
+                onClick={(e) => {
+                  if (locked) {
+                    e.preventDefault();
+                    alert(`Access Restricted: The ${item.label} module requires higher authorization.`);
+                  }
+                }}
+                className={`flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl transition-all duration-300 ${
+                  item.active 
+                    ? 'text-indigo-400 font-bold' 
+                    : locked 
+                      ? 'text-zinc-800' 
+                      : 'text-zinc-500 active:text-zinc-200'
+                }`}
+              >
+                <item.icon size={18} className={item.active ? 'text-indigo-400 drop-shadow-[0_0_8px_rgba(99,102,241,0.4)]' : ''} />
+                <span className="text-[9px] uppercase tracking-wider font-semibold">{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+
     </div>
   );
 }

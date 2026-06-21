@@ -496,10 +496,10 @@ export default function FrontOfficeTerminal() {
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       onClick={() => openActionDrawer(booking)}
-      className="group flex items-center justify-between p-5 bg-zinc-900/40 border border-white/[0.04] rounded-2xl hover:border-indigo-500/40 transition-all cursor-pointer shadow-xl"
+      className="group flex flex-col sm:flex-row sm:items-center justify-between p-4 md:p-5 bg-zinc-900/40 border border-white/[0.04] rounded-2xl hover:border-indigo-500/40 transition-all cursor-pointer shadow-xl gap-4"
     >
-      <div className="flex items-center gap-5">
-        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500/20 to-violet-500/20 border border-white/5 flex items-center justify-center text-indigo-400 font-black text-xs uppercase group-hover:scale-105 transition-transform">
+      <div className="flex items-center gap-4 md:gap-5">
+        <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-gradient-to-br from-indigo-500/20 to-violet-500/20 border border-white/5 flex items-center justify-center text-indigo-400 font-black text-xs uppercase group-hover:scale-105 transition-transform shrink-0">
           {booking.guest_name.substring(0, 2)}
         </div>
         <div>
@@ -515,8 +515,8 @@ export default function FrontOfficeTerminal() {
         </div>
       </div>
 
-      <div className="flex items-center gap-6">
-        <div className="text-right hidden md:block">
+      <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-t-0 border-white/[0.04] pt-3 sm:pt-0">
+        <div className="text-left sm:text-right">
           <p className="text-[10px] text-zinc-600 font-black uppercase tracking-tighter">Amount Due</p>
           <p className="text-sm font-black text-white">${booking.amount}</p>
         </div>
@@ -526,7 +526,7 @@ export default function FrontOfficeTerminal() {
             canCheckIn() ? (
               <button 
                 onClick={(e) => { e.stopPropagation(); openActionDrawer(booking); }}
-                className="bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-black px-4 py-2 rounded-xl transition-all shadow-lg shadow-amber-500/10"
+                className="bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-black px-4 py-2 rounded-xl transition-all shadow-lg shadow-amber-500/10 shrink-0"
               >
                 START CHECK-IN
               </button>
@@ -536,7 +536,7 @@ export default function FrontOfficeTerminal() {
             canCheckOut() ? (
               <button 
                 onClick={(e) => handleSafeCheckOut(e, booking.id, booking.room_id)}
-                className="bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-black px-4 py-2 rounded-xl transition-all shadow-lg shadow-rose-500/10"
+                className="bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-black px-4 py-2 rounded-xl transition-all shadow-lg shadow-rose-500/10 shrink-0"
               >
                 CHECK OUT
               </button>
@@ -603,20 +603,20 @@ export default function FrontOfficeTerminal() {
 
       {/* MAIN */}
       <main className="flex-1 flex flex-col overflow-hidden">
-        <header className="p-8 border-b border-white/[0.04] bg-[#08080a] flex flex-col gap-6">
-          <div className="flex justify-between items-center">
+        <header className="p-4 md:p-8 border-b border-white/[0.04] bg-[#08080a] flex flex-col gap-4 md:gap-6">
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
             <div>
-              <h2 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
+              <h2 className="text-xl sm:text-3xl font-bold text-white tracking-tight flex items-center gap-2 sm:gap-3">
                 <Activity className="text-emerald-400" />
                 Front Office Terminal
               </h2>
-              <p className="text-zinc-500 text-sm mt-1">Real-time availability and guest management</p>
+              <p className="text-zinc-500 text-xs sm:text-sm mt-1">Real-time availability and guest management</p>
             </div>
             
             {canCreateBooking() && (
               <button 
                 onClick={() => setShowBookingModal(true)}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg active:scale-95"
+                className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg active:scale-95 text-xs sm:text-sm"
               >
                 <Plus size={18} />
                 New Walk-In
@@ -626,7 +626,7 @@ export default function FrontOfficeTerminal() {
 
           {/* TAB SYSTEM */}
           <div className="flex flex-col w-full gap-6">
-            <div className="flex items-center gap-1 bg-white/[0.02] border border-white/[0.05] p-1 rounded-2xl w-fit self-center md:self-start">
+            <div className="flex items-center gap-1 bg-white/[0.02] border border-white/[0.05] p-1 rounded-2xl w-full md:w-fit overflow-x-auto no-scrollbar scroll-smooth">
               {[
                 { id: 'tape', label: 'Tape Chart', icon: Calendar },
                 { id: 'arrivals', label: 'Arrivals Today', icon: UserCheck },
@@ -640,13 +640,13 @@ export default function FrontOfficeTerminal() {
                     setActiveTab(tab.id as 'tape' | 'arrivals' | 'departures' | 'house' | 'all');
                     setSearchQuery(''); // Clear search when switching tabs
                   }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all shrink-0 ${
                     activeTab === tab.id 
                       ? 'bg-indigo-600 text-white shadow-lg' 
                       : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5'
                   }`}
                 >
-                  <tab.icon size={14} />
+                  <tab.icon size={13} />
                   {tab.label}
                   {tab.id === 'arrivals' && getArrivalsToday().length > 0 && <span className="ml-1 bg-white text-indigo-600 px-1.5 py-0.5 rounded-md text-[9px]">{getArrivalsToday().length}</span>}
                 </button>
@@ -724,7 +724,7 @@ export default function FrontOfficeTerminal() {
           </div>
         </header>
 
-        <div className="flex-1 p-8 overflow-auto">
+        <div className="flex-1 p-4 md:p-8 pb-28 lg:pb-8 overflow-auto">
           {activeTab === 'tape' ? (
             <div className="bg-zinc-900/30 rounded-2xl border border-white/[0.06] overflow-hidden">
               <table className="w-full border-collapse">
@@ -1237,6 +1237,37 @@ export default function FrontOfficeTerminal() {
           }}
         />
       )}
+      {/* Mobile Bottom Navigation Bar */}
+      <div className="lg:hidden fixed bottom-0 left-0 w-full z-40 bg-[#0a0a0c]/85 backdrop-blur-xl border-t border-white/[0.05] shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
+        <div className="flex items-center justify-around py-2 px-1 max-w-md mx-auto">
+          {NAV_ITEMS.map((item) => {
+            const locked = !hasAccess(item.module);
+            return (
+              <Link
+                key={item.label}
+                href={locked ? "#" : item.href}
+                onClick={(e) => {
+                  if (locked) {
+                    e.preventDefault();
+                    alert(`Access Restricted: The ${item.label} module requires higher authorization.`);
+                  }
+                }}
+                className={`flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl transition-all duration-300 ${
+                  item.active 
+                    ? 'text-indigo-400 font-bold' 
+                    : locked 
+                      ? 'text-zinc-800' 
+                      : 'text-zinc-500 active:text-zinc-200'
+                }`}
+              >
+                <item.icon size={18} className={item.active ? 'text-indigo-400 drop-shadow-[0_0_8px_rgba(99,102,241,0.4)]' : ''} />
+                <span className="text-[9px] uppercase tracking-wider font-semibold">{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+
     </div>
   );
 }
