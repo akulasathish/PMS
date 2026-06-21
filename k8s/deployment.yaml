@@ -5,10 +5,6 @@ metadata:
   namespace: default
   labels:
     app: pms-frontend
-  annotations:
-    prometheus.io/scrape: "true"
-    prometheus.io/port: "3000"
-    prometheus.io/path: "/api/metrics"
 spec:
   replicas: 2
   selector:
@@ -20,38 +16,45 @@ spec:
         app: pms-frontend
     spec:
       containers:
-      - name: pms-frontend
-        # This tag will be dynamically updated by GitLab CI during deployment
-        image: 401644592968.dkr.ecr.us-east-1.amazonaws.com/pms/app:latest
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 3000
-          name: http
-        
-        # Injecting secrets securely from the Kubernetes Secret store
-        envFrom:
-        - secretRef:
-            name: pms-prod-secrets
-            
-        # Health Checks to ensure the container is ready before receiving traffic
-        readinessProbe:
-          httpGet:
-            path: /
-            port: 3000
-          initialDelaySeconds: 10
-          periodSeconds: 5
-        livenessProbe:
-          httpGet:
-            path: /
-            port: 3000
-          initialDelaySeconds: 15
-          periodSeconds: 15
-          
-        # Fargate memory/cpu requests
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "250m"
-          limits:
-            memory: "1Gi"
-            cpu: "500m"
+        - name: pms-frontend
+          image: 401644592968.dkr.ecr.ap-south-1.amazonaws.com/pms/app:latest # Corrected region
+          ports:
+            - containerPort: 3000
+          env:
+            - name: NEXT_PUBLIC_SUPABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: pms-prod-secrets
+                  key: NEXT_PUBLIC_SUPABASE_URL
+            - name: NEXT_PUBLIC_SUPABASE_ANON_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: pms-prod-secrets
+                  key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+            - name: SUPABASE_SERVICE_ROLE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: pms-prod-secrets
+                  key: SUPABASE_SERVICE_ROLE_KEY
+            - name: RESEND_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: pms-prod-secrets
+                  key: RESEND_API_KEY
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1024Mi"
+              cpu: "500m"
+      # This ensures pods are scheduled on Fargate
+      nodeSelector:
+        kubernetes.io/os: linux
+        kubernetes.io/arch: amd64
+      tolerations:
+        - key: eks.amazonaws.com/fargate-profile
+          operator: Exists
+        - key: eks.amazonaws.com/compute-type
+          value: fargate
+          effect: NoSchedule

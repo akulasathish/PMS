@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.notify_owner_provisioned() FROM anon;

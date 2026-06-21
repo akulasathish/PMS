@@ -1,0 +1,9 @@
+Open that file and paste the following configuration blocks, making sure your project ID is filled out:
+   ```toml
+   [provider]
+   name = "google-vertex"
+   project_id = "project-c60f8681-e665-4b2e-ad3"
+   location = "us-central1"
+
+   [models]
+   default = "gemini-3.1-pro-high"

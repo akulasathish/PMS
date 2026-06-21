@@ -8,9 +8,9 @@ stages:
 
 variables:
   # The ECR registry where our Docker images live
-  ECR_REGISTRY: "401644592968.dkr.ecr.us-east-1.amazonaws.com"
+  ECR_REGISTRY: "401644592968.dkr.ecr.ap-south-1.amazonaws.com"
   ECR_REPOSITORY: "pms/app"
-  AWS_REGION: "us-east-1"
+  AWS_REGION: "ap-south-1"
   # Use the commit SHA as a unique tag for easy rollbacks
   IMAGE_TAG: $CI_COMMIT_SHORT_SHA
 

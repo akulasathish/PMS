@@ -10,20 +10,19 @@ This file tracks all major tracks for the project. Each track has its own detail
 - **Goal:** Transition from dummy passwords to Supabase native invites.
 - **Link:** [Track Details](./tracks/auth_invite_20260331/index.md)
 
-## Tier 3 Tape Chart & Booking Matrix
+## Front Desk Tape Chart & Booking Matrix
 - **ID:** `tape_chart_20260331`
 - **Goal:** Build the interactive timeline grid for front-desk operations.
 - **Link:** [Track Details](./tracks/tape_chart_20260331/index.md)
 
-## Tier 2 Inventory & Room Management
+## Inventory & Room Management
 - **ID:** `inventory_mgmt_20260331`
 - **Goal:** Polished interface for owners to manage physical room inventory.
 - **Link:** [Track Details](./tracks/inventory_mgmt_20260331/index.md)
 
-## Tier 1 Fleet Command & "Kill Switch"
+## [DEPRECATED / REMOVED] Tier 1 Fleet Command & "Kill Switch"
 - **ID:** `fleet_command_20260331`
-- **Goal:** Global fleet management for super-admins.
-- **Link:** [Track Details](./tracks/fleet_command_20260331/index.md)
+- **Goal:** Global fleet management for super-admins (Deprecated in favor of a single-tier self-service architecture).
 
 ## OTA Channel Manager Synchronization
 - **ID:** `ota_sync_20260331`
@@ -35,10 +34,9 @@ This file tracks all major tracks for the project. Each track has its own detail
 - **Goal:** Strict database isolation for multi-tenancy.
 - **Link:** [Track Details](./tracks/rls_hardening_20260331/index.md)
 
-## Tier 2/3 Feature Parity (Executive Operations)
+## [DEPRECATED / INTEGRATED] Tier 2/3 Feature Parity
 - **ID:** `tier_parity_20260331`
-- **Goal:** Enable Tier 2 Owners to access all Tier 3 Front-Desk operational tools (Check-in/Booking).
-- **Link:** [Track Details](./tracks/tier_parity_20260331/index.md)
+- **Goal:** Enable Tier 2 Owners to access Tier 3 Front-Desk tools. (Integrated natively into the unified Owner dashboard role).
 
 ## Housekeeping & Room Recovery Module
 - **ID:** `housekeeping_mgmt_20260331`
@@ -75,7 +73,6 @@ This file tracks all major tracks for the project. Each track has its own detail
 - **Goal:** UPI QR codes and dynamic checkout for the Indian market.
 - **Link:** [Track Details](./tracks/integrated_payments_20260331/index.md)
 
-## SaaS Subscription Billing (Tier 1)
+## [DEPRECATED / REMOVED] SaaS Subscription Billing
 - **ID:** `saas_billing_20260331`
-- **Goal:** Stripe integration to manage monthly recurring revenue from owners.
-- **Link:** [Track Details](./tracks/saas_billing_20260331/index.md)
+- **Goal:** Stripe integration to manage monthly recurring revenue. (Deprecated in favor of free-tier/open self-service PMS).
