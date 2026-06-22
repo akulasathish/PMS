@@ -207,29 +207,32 @@ export async function executeDateRollover(propertyId: string, currentBusinessDat
     return { error: `Failed to update business date: ${settingsError.message}` };
   }
 
-  // 3. Mark all occupied rooms as 'Dirty' so housekeeping can clean them
-  const { data: occupiedRooms, error: roomsFetchError } = await supabaseAdmin
-    .from('rooms')
-    .select('id, room_number')
+  // 3. Reset all currently occupied stayover rooms (with booking status 'Checked In') back to 'Occupied' in the database.
+  // This ensures that any rooms that were cleaned and inspected yesterday (which are currently 'Available', 'Clean', or 'Cleaning')
+  // are put back into the Housekeeping "Stayovers" (Service Required) bucket for the new business date,
+  // while preserving their occupied status and avoiding marking them as vacant 'Dirty' rooms.
+  const { data: activeBookings, error: bookingsError } = await supabaseAdmin
+    .from('bookings')
+    .select('room_id')
     .eq('property_id', propertyId)
-    .eq('status', 'Occupied');
+    .eq('status', 'Checked In');
 
-  if (roomsFetchError) {
-    return { error: `Failed to fetch occupied rooms: ${roomsFetchError.message}` };
+  if (bookingsError) {
+    return { error: `Failed to fetch active bookings during rollover: ${bookingsError.message}` };
   }
 
   let updatedRoomsCount = 0;
-  if (occupiedRooms && occupiedRooms.length > 0) {
-    const roomIds = occupiedRooms.map(r => r.id);
+  if (activeBookings && activeBookings.length > 0) {
+    const roomIds = activeBookings.map(b => b.room_id);
     const { error: roomsUpdateError } = await supabaseAdmin
       .from('rooms')
-      .update({ status: 'Dirty' })
+      .update({ status: 'Occupied' })
       .in('id', roomIds);
 
     if (roomsUpdateError) {
-      return { error: `Failed to update room statuses to Dirty: ${roomsUpdateError.message}` };
+      return { error: `Failed to reset stayover room statuses to Occupied: ${roomsUpdateError.message}` };
     }
-    updatedRoomsCount = occupiedRooms.length;
+    updatedRoomsCount = activeBookings.length;
   }
 
   // 4. Log action

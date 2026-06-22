@@ -9,7 +9,7 @@ import {
   Plus, Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, LogOut,
   ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck, RefreshCw, RotateCcw, Printer, XCircle, Link2, Camera, X, ShieldCheck, AlertCircle, Phone, Mail,
-  Trash2, DollarSign, Moon, Banknote, Smartphone, CreditCard
+  Trash2, DollarSign, Moon, Banknote, Smartphone, CreditCard, Clock
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -17,7 +17,7 @@ import { createClient } from '@/lib/supabase/client';
 import BookingModal from './BookingModal';
 import FolioModal from '@/components/FolioModal';
 import RoomBlockModal from '@/components/RoomBlockModal';
-import { checkInGuest, checkOutGuest, updateGuestNotes, upgradeRoom, issueRefund, cancelBooking, resetGuestIdentity } from '@/app/actions/booking';
+import { checkInGuest, checkOutGuest, updateGuestNotes, upgradeRoom, issueRefund, cancelBooking, resetGuestIdentity, updateCheckInTime } from '@/app/actions/booking';
 import { Property, Room, Booking, UserProfile } from '@/lib/types';
 
 
@@ -42,6 +42,15 @@ const generateDays = () => {
 };
 
 const DAYS = generateDays();
+
+const toLocalDatetimeString = (isoString?: string) => {
+  if (!isoString) return '';
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return '';
+  const offset = d.getTimezoneOffset();
+  const localDate = new Date(d.getTime() - (offset * 60 * 1000));
+  return localDate.toISOString().substring(0, 16);
+};
 
 export default function FrontOfficeTerminal() {
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -85,6 +94,10 @@ export default function FrontOfficeTerminal() {
   const [showQrCode, setShowQrCode] = useState(false);
   const [activeCheckoutBooking, setActiveCheckoutBooking] = useState<{bookingId: string, roomId: string, guestName: string, amount: number} | null>(null);
   const [activeBlockRoom, setActiveBlockRoom] = useState<Room | null>(null);
+
+  // Backdated Check-In Time Change State
+  const [isEditingCheckInTime, setIsEditingCheckInTime] = useState(false);
+  const [tempCheckInTime, setTempCheckInTime] = useState('');
 
   const supabase = createClient();
   // Extract fetch data to a callable function to avoid window.location.reload()
@@ -568,6 +581,10 @@ export default function FrontOfficeTerminal() {
       setCheckIdVerified(true);
       setCheckRegCardSigned(true);
     }
+
+    // Initialize check-in time editing states
+    setIsEditingCheckInTime(false);
+    setTempCheckInTime(toLocalDatetimeString(booking.check_in_time));
   };
 
   // --- SUB-COMPONENT: LIST ITEM ---
@@ -664,7 +681,11 @@ export default function FrontOfficeTerminal() {
       const bookingIncidentals = incidentals.filter(i => i.booking_id === booking.id);
       const bookingPayments = payments.filter(p => p.booking_id === booking.id);
 
-      const roomAmount = Number(booking.amount);
+      const dailyRoomChargesSum = bookingIncidentals
+        .filter(item => item.description?.startsWith('Daily Room Charge'))
+        .reduce((sum, item) => sum + Number(item.amount), 0);
+
+      const roomAmount = Math.max(0, Number(booking.amount) - dailyRoomChargesSum);
       const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0);
       const totalCharges = roomAmount + incidentalsAmount;
       const totalPaid = bookingPayments.reduce((sum, item) => sum + Number(item.amount), 0);
@@ -921,7 +942,30 @@ export default function FrontOfficeTerminal() {
 
           {/* TAB SYSTEM */}
           <div className="flex flex-col w-full gap-6">
-            <div className="flex items-center gap-1 bg-white/[0.02] border border-white/[0.05] p-1 rounded-2xl w-full md:w-fit overflow-x-auto no-scrollbar scroll-smooth">
+            {/* Mobile Dropdown Tab Selector */}
+            <div className="block md:hidden w-full relative">
+              <select
+                value={activeTab}
+                onChange={(e) => {
+                  setActiveTab(e.target.value as 'tape' | 'arrivals' | 'departures' | 'house' | 'all' | 'balances');
+                  setSearchQuery('');
+                }}
+                className="w-full appearance-none bg-zinc-900 border border-white/10 rounded-2xl py-3.5 pl-4 pr-12 text-xs text-white font-bold uppercase tracking-wider focus:outline-none focus:border-indigo-500/50 cursor-pointer hover:bg-zinc-800 transition-all shadow-xl active:scale-[0.99]"
+              >
+                <option value="tape" className="bg-[#0c0c0e] text-white">📅 Tape Chart</option>
+                <option value="arrivals" className="bg-[#0c0c0e] text-white">👤 Arrivals Today ({getArrivalsToday().length})</option>
+                <option value="departures" className="bg-[#0c0c0e] text-white">🚪 Departures Today</option>
+                <option value="house" className="bg-[#0c0c0e] text-white">🛏️ In-House</option>
+                <option value="balances" className="bg-[#0c0c0e] text-white">💵 Pending Payments</option>
+                <option value="all" className="bg-[#0c0c0e] text-white">🔍 Reservations</option>
+              </select>
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-400">
+                <ChevronsUpDown size={14} />
+              </div>
+            </div>
+
+            {/* Desktop Row Tabs */}
+            <div className="hidden md:flex items-center gap-1 bg-white/[0.02] border border-white/[0.05] p-1 rounded-2xl w-fit overflow-x-auto no-scrollbar scroll-smooth">
               {[
                 { id: 'tape', label: 'Tape Chart', icon: Calendar },
                 { id: 'arrivals', label: 'Arrivals Today', icon: UserCheck },
@@ -1216,7 +1260,7 @@ export default function FrontOfficeTerminal() {
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed top-0 right-0 h-full w-[450px] bg-[#0a0a0c] border-l border-white/[0.08] shadow-2xl z-50 flex flex-col"
+              className="fixed top-0 right-0 h-full w-full sm:w-[450px] bg-[#0a0a0c] border-l border-white/[0.08] shadow-2xl z-50 flex flex-col"
             >
               {/* Header */}
               <div className="p-6 border-b border-white/[0.06] bg-zinc-900/40 backdrop-blur-md flex items-center justify-between">
@@ -1243,33 +1287,7 @@ export default function FrontOfficeTerminal() {
                     )}
                   </div>
 
-                  {/* Physical Check-In / Out Timestamps */}
-                  {(selectedBooking.check_in_time || selectedBooking.check_out_time) && (
-                    <div className="flex flex-col gap-1.5 mt-3.5 pt-3 border-t border-white/[0.04] text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                      {selectedBooking.check_in_time && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-zinc-500">Actual Check-In:</span>
-                          <span className="text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded-md font-bold">
-                            {new Date(selectedBooking.check_in_time).toLocaleString(undefined, {
-                              dateStyle: 'medium',
-                              timeStyle: 'short'
-                            })}
-                          </span>
-                        </div>
-                      )}
-                      {selectedBooking.check_out_time && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-zinc-500">Actual Check-Out:</span>
-                          <span className="text-rose-400 font-mono bg-rose-500/10 px-2 py-0.5 rounded-md font-bold">
-                            {new Date(selectedBooking.check_out_time).toLocaleString(undefined, {
-                              dateStyle: 'medium',
-                              timeStyle: 'short'
-                            })}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
+
                 </div>
                 
                 <div className="flex items-center gap-2">
@@ -1292,8 +1310,101 @@ export default function FrontOfficeTerminal() {
               </div>
 
               <div className="flex-1 overflow-y-auto p-6 space-y-8">
-                {/* 0. BILLING & FOLIO LEDGER (Only for Checked In guests) */}
-                {selectedBooking.status === 'Checked In' && (
+                {/* Physical Check-In / Out Timestamps */}
+                {(selectedBooking.check_in_time || selectedBooking.check_out_time) && (
+                  <div className="space-y-3 pb-6 border-b border-white/[0.04]">
+                    <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                      <Clock size={14} className="text-indigo-400" /> Physical Timestamps
+                    </h3>
+                    <div className="bg-black/40 border border-white/[0.04] rounded-2xl p-4 space-y-3">
+                      {selectedBooking.check_in_time && (
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                            <span className="text-zinc-500">Actual Check-In:</span>
+                            {!isEditingCheckInTime ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded-md font-bold normal-case">
+                                  {new Date(selectedBooking.check_in_time).toLocaleString(undefined, {
+                                    dateStyle: 'medium',
+                                    timeStyle: 'short'
+                                  })}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTempCheckInTime(toLocalDatetimeString(selectedBooking.check_in_time));
+                                    setIsEditingCheckInTime(true);
+                                  }}
+                                  className="text-indigo-400 hover:text-indigo-300 font-bold hover:underline capitalize text-[10px]"
+                                >
+                                  Change
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="datetime-local"
+                                  value={tempCheckInTime}
+                                  onChange={(e) => setTempCheckInTime(e.target.value)}
+                                  className="bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white focus:outline-none focus:border-indigo-500 transition-all font-mono"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (!tempCheckInTime) return;
+                                    setActionLoading(true);
+                                    try {
+                                      const utcIsoString = new Date(tempCheckInTime).toISOString();
+                                      const res = await updateCheckInTime(selectedBooking.id, utcIsoString);
+                                      if (res.error) {
+                                        alert(res.error);
+                                      } else {
+                                        setSelectedBooking(prev => prev ? { ...prev, check_in_time: utcIsoString } : null);
+                                        loadDashboardData();
+                                        setIsEditingCheckInTime(false);
+                                      }
+                                    } catch (err) {
+                                      console.error(err);
+                                      alert("Invalid date format.");
+                                    } finally {
+                                      setActionLoading(false);
+                                    }
+                                  }}
+                                  disabled={actionLoading}
+                                  className="text-emerald-400 hover:text-emerald-300 font-bold hover:underline disabled:opacity-50 text-[10px]"
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsEditingCheckInTime(false)}
+                                  disabled={actionLoading}
+                                  className="text-zinc-500 hover:text-zinc-400 font-bold hover:underline disabled:opacity-50 text-[10px]"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {selectedBooking.check_out_time && (
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                          <span className="text-zinc-500">Actual Check-Out:</span>
+                          <span className="text-rose-400 font-mono bg-rose-500/10 px-2 py-0.5 rounded-md font-bold normal-case">
+                            {new Date(selectedBooking.check_out_time).toLocaleString(undefined, {
+                              dateStyle: 'medium',
+                              timeStyle: 'short'
+                            })}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 0. BILLING & FOLIO LEDGER (For Checked In and Checked Out guests) */}
+                {(selectedBooking.status === 'Checked In' || selectedBooking.status === 'Checked Out') && (
                   <div className="space-y-3 pb-6 border-b border-white/[0.04]">
                     <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-2">
                       <DollarSign size={14} /> Billing & Folio Ledger

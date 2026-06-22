@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { getRevenueData } from '@/app/actions/analytics';
+import { getAuditLogs } from '@/app/actions/audit';
 import { UserProfile } from '@/lib/types';
 
 
@@ -37,7 +38,11 @@ import {
   ChevronsUpDown,
   Lock,
   Brush,
-  Moon
+  Moon,
+  Calendar,
+  Receipt,
+  X,
+  RefreshCw
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -154,6 +159,99 @@ export default function Dashboard() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [revenueData, setRevenueData] = useState<{date: string, revenue: number}[]>([]);
   
+  // --- AUDIT LOGS STATES ---
+  const [showActivityDrawer, setShowActivityDrawer] = useState(false);
+  const [activityLogs, setActivityLogs] = useState<any[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+
+  const fetchLogs = async () => {
+    if (!property?.id) return;
+    setLogsLoading(true);
+    try {
+      const res = await getAuditLogs(property.id, 50);
+      if (res.success && res.data) {
+        setActivityLogs(res.data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch logs:", err);
+    } finally {
+      setLogsLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    if (showActivityDrawer && property?.id) {
+      fetchLogs();
+    }
+  }, [showActivityDrawer, property?.id]);
+  
+  
+  // --- PAST DAYS AUDIT STATES ---
+  const [auditDate, setAuditDate] = useState<string>('');
+  const [auditLoading, setAuditLoading] = useState<boolean>(false);
+  const [auditResults, setAuditResults] = useState<{
+    ran: boolean;
+    roomsSold: number;
+    bookingRevenue: number;
+    cashCollected: number;
+    bookings: any[];
+    payments: any[];
+  } | null>(null);
+
+  // Set default audit date to today's local date
+  React.useEffect(() => {
+    const d = new Date();
+    const offset = d.getTimezoneOffset();
+    const localDate = new Date(d.getTime() - (offset * 60 * 1000));
+    setAuditDate(localDate.toISOString().substring(0, 10));
+  }, []);
+
+  const runPastDaysAudit = async () => {
+    if (!auditDate || !property?.id) return;
+    setAuditLoading(true);
+    try {
+      const startOfDay = `${auditDate}T00:00:00.000`;
+      const endOfDay = `${auditDate}T23:59:59.999`;
+
+      const [bookingsRes, paymentsResult] = await Promise.all([
+        supabase
+          .from('bookings')
+          .select('*')
+          .eq('property_id', property.id)
+          .gte('created_at', startOfDay)
+          .lte('created_at', endOfDay),
+        supabase
+          .from('payments')
+          .select('*')
+          .eq('property_id', property.id)
+          .gte('created_at', startOfDay)
+          .lte('created_at', endOfDay)
+      ]);
+
+      if (bookingsRes.error) throw bookingsRes.error;
+      if (paymentsResult.error) throw paymentsResult.error;
+
+      const filteredBookings = (bookingsRes.data || []).filter(b => b.status !== 'Cancelled');
+      const roomsSold = filteredBookings.length;
+      const bookingRevenue = filteredBookings.reduce((sum, b) => sum + Number(b.amount || 0), 0);
+      const cashCollected = (paymentsResult.data || []).reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+      setAuditResults({
+        ran: true,
+        roomsSold,
+        bookingRevenue,
+        cashCollected,
+        bookings: filteredBookings,
+        payments: paymentsResult.data || []
+      });
+    } catch (err) {
+      console.error("Audit query failed:", err);
+      alert("Failed to run performance audit. Please try again.");
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
   const supabase = createClient();
   const router = useRouter();
 
@@ -714,6 +812,101 @@ export default function Dashboard() {
             {/* ===== RIGHT COLUMN ===== */}
             <div className="col-span-12 xl:col-span-4 space-y-6">
 
+              {/* PAST DAYS AUDIT WIDGET */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15 }}
+                className="bg-zinc-900/40 backdrop-blur-md border border-white/[0.06] rounded-2xl p-6 shadow-[0_8px_30px_rgb(0,0,0,0.12)]"
+              >
+                <div className="flex items-center gap-2 mb-4">
+                  <Calendar size={15} className="text-indigo-400" />
+                  <h3 className="text-[11px] font-bold text-zinc-400 uppercase tracking-[0.15em]">Past Days Audit</h3>
+                </div>
+
+                <p className="text-[11px] text-zinc-500 mb-4 leading-relaxed">
+                  Select any past date to audit revenue, rooms sold, and actual payments collected.
+                </p>
+
+                <div className="flex gap-2 mb-6">
+                  <div className="relative flex-1">
+                    <input
+                      type="date"
+                      value={auditDate}
+                      onChange={(e) => setAuditDate(e.target.value)}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-3 text-xs text-white font-bold focus:outline-none focus:border-indigo-500/50 [color-scheme:dark] cursor-pointer"
+                    />
+                  </div>
+                  <button
+                    onClick={runPastDaysAudit}
+                    disabled={auditLoading || !auditDate}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all shadow-lg flex items-center gap-1.5 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {auditLoading ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <Search size={13} />
+                    )}
+                    Run Audit
+                  </button>
+                </div>
+
+                {auditResults && auditResults.ran && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-3 gap-2.5">
+                      {/* Rooms Sold */}
+                      <div className="bg-white/[0.02] border border-white/[0.04] rounded-xl p-3 text-center">
+                        <span className="text-[9px] font-bold text-zinc-500 uppercase block mb-1">Rooms Sold</span>
+                        <span className="text-base font-black text-emerald-400 font-mono">{auditResults.roomsSold}</span>
+                      </div>
+
+                      {/* Booked Revenue */}
+                      <div className="bg-white/[0.02] border border-white/[0.04] rounded-xl p-3 text-center">
+                        <span className="text-[9px] font-bold text-zinc-500 uppercase block mb-1">Booked Rev</span>
+                        <span className="text-base font-black text-indigo-400 font-mono">${auditResults.bookingRevenue}</span>
+                      </div>
+
+                      {/* Cash Collected */}
+                      <div className="bg-white/[0.02] border border-white/[0.04] rounded-xl p-3 text-center">
+                        <span className="text-[9px] font-bold text-zinc-500 uppercase block mb-1">Cash Coll</span>
+                        <span className="text-base font-black text-violet-400 font-mono">${auditResults.cashCollected}</span>
+                      </div>
+                    </div>
+
+                    {/* Details list */}
+                    {(auditResults.bookings.length > 0 || auditResults.payments.length > 0) ? (
+                      <div className="pt-3 border-t border-white/[0.04] space-y-2 max-h-[180px] overflow-y-auto no-scrollbar">
+                        <span className="text-[8px] font-black text-zinc-600 uppercase tracking-widest block mb-1">Audit Logs</span>
+                        
+                        {/* Bookings */}
+                        {auditResults.bookings.map((b: any) => (
+                          <div key={b.id} className="flex justify-between items-center text-[10px] bg-white/[0.01] px-2.5 py-1.5 rounded-lg border border-white/[0.02]">
+                            <div className="truncate max-w-[120px]">
+                              <span className="text-zinc-300 font-semibold block truncate">{b.guest_name}</span>
+                              <span className="text-[8px] text-zinc-600 uppercase font-bold">Room Booked</span>
+                            </div>
+                            <span className="font-mono text-indigo-400 font-bold">${b.amount}</span>
+                          </div>
+                        ))}
+
+                        {/* Payments */}
+                        {auditResults.payments.map((p: any) => (
+                          <div key={p.id} className="flex justify-between items-center text-[10px] bg-white/[0.01] px-2.5 py-1.5 rounded-lg border border-white/[0.02]">
+                            <div className="truncate max-w-[120px]">
+                              <span className="text-zinc-300 font-semibold block truncate">Payment Logged</span>
+                              <span className="text-[8px] text-violet-500 uppercase font-bold">{p.payment_method || 'Unknown'}</span>
+                            </div>
+                            <span className="font-mono text-violet-400 font-bold">+${p.amount}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-zinc-600 italic text-center py-2">No operations logged on this date.</p>
+                    )}
+                  </div>
+                )}
+              </motion.div>
+
               {/* TEAM MANAGEMENT CTA */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
@@ -796,6 +989,11 @@ export default function Dashboard() {
                     return (
                       <button
                         key={item.label}
+                        onClick={() => {
+                          if (item.label === 'Recent Activity') {
+                            setShowActivityDrawer(true);
+                          }
+                        }}
                         className="w-full flex items-center gap-3.5 p-3.5 hover:bg-white/[0.03] rounded-xl transition-all group border border-transparent hover:border-white/[0.06]"
                       >
                         <div className={`p-2 rounded-lg ${c.bg} ${c.text} border ${c.border} group-hover:scale-105 transition-transform`}>
@@ -896,6 +1094,165 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* ACTIVITY LOG DRAWER */}
+      <AnimatePresence>
+        {showActivityDrawer && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowActivityDrawer(false)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+            />
+            {/* Drawer */}
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed top-0 right-0 h-full w-[500px] max-w-full bg-[#0a0a0c] border-l border-white/[0.08] shadow-2xl z-[100] flex flex-col"
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-white/[0.06] bg-zinc-900/40 backdrop-blur-md flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    <Clock className="text-violet-400 animate-pulse" size={20} />
+                    Activity & Audit Feed
+                  </h2>
+                  <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-1">
+                    Real-time operational logs
+                  </p>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={fetchLogs}
+                    disabled={logsLoading}
+                    className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-violet-400 transition-all disabled:opacity-50"
+                    title="Refresh Feed"
+                  >
+                    <RefreshCw size={16} className={logsLoading ? 'animate-spin' : ''} />
+                  </button>
+                  <button 
+                    onClick={() => setShowActivityDrawer(false)}
+                    className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Feed Content */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                {logsLoading ? (
+                  <div className="h-full flex flex-col items-center justify-center space-y-3">
+                    <Loader2 size={32} className="text-violet-500 animate-spin" />
+                    <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wider">Syncing logs...</p>
+                  </div>
+                ) : activityLogs.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center p-8 border border-dashed border-white/5 rounded-3xl bg-white/[0.01]">
+                    <Clock size={36} className="text-zinc-600 mb-3" />
+                    <p className="text-zinc-400 font-bold uppercase tracking-wider text-xs">No Activity Logs Found</p>
+                    <p className="text-zinc-600 text-[10px] mt-1">Once front-office actions are made, logs will appear here.</p>
+                  </div>
+                ) : (
+                  <div className="relative pl-4 border-l border-white/[0.06] ml-2 space-y-6 text-left">
+                    {activityLogs.map((log: any) => {
+                      const badge = formatLogAction(log.action);
+                      const operator = log.profiles?.full_name || log.profiles?.email || 'Automated System';
+                      
+                      return (
+                        <div key={log.id} className="relative group text-left">
+                          {/* Timeline bullet */}
+                          <div className="absolute -left-[21px] top-1.5 w-2.5 h-2.5 rounded-full bg-zinc-800 border border-white/20 group-hover:border-violet-500 group-hover:bg-violet-500/20 transition-all duration-300" />
+                          
+                          <div className="bg-zinc-900/30 border border-white/[0.04] hover:border-white/[0.08] p-4 rounded-2xl space-y-2 transition-all">
+                            {/* Metadata row */}
+                            <div className="flex items-start justify-between gap-2 flex-wrap">
+                              <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${badge.color}`}>
+                                {badge.label}
+                              </span>
+                              <span className="text-[10px] text-zinc-600 font-mono">
+                                {new Date(log.created_at).toLocaleTimeString(undefined, {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })} &bull; {new Date(log.created_at).toLocaleDateString(undefined, {
+                                  month: 'short',
+                                  day: 'numeric'
+                                })}
+                              </span>
+                            </div>
+
+                            {/* Details text */}
+                            <p className="text-xs font-medium text-zinc-300 normal-case leading-relaxed">
+                              {renderLogDetails(log)}
+                            </p>
+
+                            {/* Operator info */}
+                            <div className="flex items-center gap-1.5 text-[9px] font-semibold text-zinc-500 tracking-wide uppercase pt-1 border-t border-white/[0.02]">
+                              <span className="text-zinc-600">Operator:</span>
+                              <span className="text-zinc-400 font-medium normal-case">{operator}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }
+
+// --- LOG LOGIC HELPERS ---
+const formatLogAction = (action: string) => {
+  switch (action) {
+    case 'GUEST_CHECK_IN':
+      return { label: 'Guest Check-In', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' };
+    case 'GUEST_CHECK_OUT':
+      return { label: 'Guest Check-Out', color: 'text-rose-400 bg-rose-500/10 border-rose-500/20' };
+    case 'UNDO_CHECK_OUT':
+      return { label: 'Undo Checkout', color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' };
+    case 'INCIDENTAL_CHARGE_POSTED':
+      return { label: 'Charge Posted', color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20' };
+    case 'PAYMENT_RECEIVED':
+      return { label: 'Payment Received', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' };
+    case 'CHECK_IN_TIME_MODIFIED':
+      return { label: 'Time Adjusted', color: 'text-violet-400 bg-violet-500/10 border-violet-500/20' };
+    case 'AUTO_CHECK_IN_TIME_RECORDED':
+      return { label: 'Check-In Tracked', color: 'text-zinc-400 bg-zinc-500/10 border-zinc-500/20' };
+    default:
+      return { label: action.replace(/_/g, ' '), color: 'text-zinc-400 bg-zinc-500/10 border-zinc-500/20' };
+  }
+};
+
+const renderLogDetails = (log: any) => {
+  const { action, details } = log;
+  if (!details) return '';
+
+  switch (action) {
+    case 'GUEST_CHECK_IN':
+      return `Checked in guest ${details.guestName || 'N/A'}${details.paymentRecorded ? ` (Recorded payment of ₹${details.paymentAmount})` : ''}`;
+    case 'GUEST_CHECK_OUT':
+      return `Checked out guest ${details.guestName || 'N/A'}${details.totalCharges ? ` (Folio settled for ₹${details.totalPayments})` : ''}`;
+    case 'UNDO_CHECK_OUT':
+      return `Reverted checkout for guest ${details.guestName || 'N/A'}`;
+    case 'INCIDENTAL_CHARGE_POSTED':
+      return `Posted charge of ₹${Number(details.amount).toFixed(2)} (${details.description || 'no description'})`;
+    case 'PAYMENT_RECEIVED':
+      return `Received payment of ₹${Number(details.amount).toFixed(2)} via ${details.method || 'N/A'}${details.transactionId ? ` (Txn: ${details.transactionId})` : ''}`;
+    case 'CHECK_IN_TIME_MODIFIED':
+      return `Manually adjusted check-in time for ${details.guestName || 'N/A'} to ${details.newCheckInTime ? new Date(details.newCheckInTime).toLocaleString() : 'N/A'}`;
+    case 'AUTO_CHECK_IN_TIME_RECORDED':
+      return `Auto-recorded physical check-in time for ${details.guestName || 'N/A'} at ${details.checkInTime ? new Date(details.checkInTime).toLocaleString() : 'N/A'}`;
+    default:
+      return JSON.stringify(details);
+  }
+};

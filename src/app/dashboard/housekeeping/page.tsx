@@ -157,8 +157,21 @@ export default function HousekeepingTerminal() {
   }, [property?.id, supabase]);
 
 
+  const getTrueHousekeepingStatus = (room: RoomWithProfile) => {
+    const activeBooking = bookings.find(b => b.room_id === room.id && b.status === 'Checked In');
+    if (activeBooking && room.status !== 'Blocked') {
+      // If a guest is checked in, the physical room status cannot be 'Dirty' or 'Available'.
+      // It must be 'Occupied' (stayover service required), unless it is currently being cleaned or is clean.
+      if (room.status === 'Dirty' || room.status === 'Available') {
+        return 'Occupied';
+      }
+    }
+    return room.status;
+  };
+
   const getGuestContext = (room: RoomWithProfile): { label: string, color: string, condition: string, detail?: string } => {
-    if (room.status === 'Blocked') {
+    const status = getTrueHousekeepingStatus(room);
+    if (status === 'Blocked') {
       const block = activeBlocks?.find(b => b.room_id === room.id);
       return { 
         label: 'Out of Order / Maintenance', 
@@ -192,11 +205,11 @@ export default function HousekeepingTerminal() {
 
     // Determine Physical Condition
     let condition = '';
-    if (room.status === 'Dirty') condition = 'Needs Deep Clean';
-    if (room.status === 'Cleaning') condition = 'Cleaning in Progress...';
-    if (room.status === 'Clean') condition = 'Ready for Inspection';
-    if (room.status === 'Available') condition = 'Ready for Guest';
-    if (room.status === 'Occupied') condition = 'Service Required';
+    if (status === 'Dirty') condition = 'Needs Deep Clean';
+    if (status === 'Cleaning') condition = 'Cleaning in Progress...';
+    if (status === 'Clean') condition = 'Ready for Inspection';
+    if (status === 'Available') condition = 'Ready for Guest';
+    if (status === 'Occupied') condition = 'Service Required';
 
     return { label, color, condition };
   };
@@ -219,11 +232,11 @@ export default function HousekeepingTerminal() {
   
   
   
-      const getFilteredRooms = () => {
-    if (activeTab === 'todo') return rooms.filter(r => r.status?.toLowerCase() === 'dirty');
-    if (activeTab === 'cleaning') return rooms.filter(r => r.status?.toLowerCase() === 'cleaning');
-    if (activeTab === 'inspect') return rooms.filter(r => r.status?.toLowerCase() === 'clean');
-    if (activeTab === 'stayovers') return rooms.filter(r => r.status?.toLowerCase() === 'occupied');
+  const getFilteredRooms = () => {
+    if (activeTab === 'todo') return rooms.filter(r => getTrueHousekeepingStatus(r)?.toLowerCase() === 'dirty');
+    if (activeTab === 'cleaning') return rooms.filter(r => getTrueHousekeepingStatus(r)?.toLowerCase() === 'cleaning');
+    if (activeTab === 'inspect') return rooms.filter(r => getTrueHousekeepingStatus(r)?.toLowerCase() === 'clean');
+    if (activeTab === 'stayovers') return rooms.filter(r => getTrueHousekeepingStatus(r)?.toLowerCase() === 'occupied');
     if (activeTab === 'all') return rooms;
     return [];
   };
@@ -288,24 +301,43 @@ export default function HousekeepingTerminal() {
 
       {/* MAIN */}
       <main className="flex-1 flex flex-col overflow-hidden">
-        <header className="p-8 border-b border-white/[0.04] bg-[#08080a] flex flex-col gap-6">
+        <header className="p-4 md:p-8 border-b border-white/[0.04] bg-[#08080a] flex flex-col gap-4 md:gap-6">
           <div className="flex justify-between items-center">
             <div>
-              <h2 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
+              <h2 className="text-xl sm:text-3xl font-bold text-white tracking-tight flex items-center gap-2 sm:gap-3">
                 <Brush className="text-indigo-400" />
                 Housekeeping Terminal
               </h2>
-              <p className="text-zinc-500 text-sm mt-1">Operational Room Management & Quality Control</p>
+              <p className="text-zinc-500 text-xs sm:text-sm mt-1">Operational Room Management & Quality Control</p>
             </div>
           </div>
 
           {/* SUB-TABS */}
-          <div className="flex items-center gap-1 bg-white/[0.02] border border-white/[0.05] p-1 rounded-2xl w-fit">
+          {/* Mobile Dropdown Tab Selector */}
+          <div className="block md:hidden w-full relative">
+            <select
+              value={activeTab}
+              onChange={(e) => setActiveTab(e.target.value as 'todo' | 'cleaning' | 'inspect' | 'stayovers' | 'all')}
+              className="w-full appearance-none bg-zinc-900 border border-white/10 rounded-2xl py-3.5 pl-4 pr-12 text-xs text-white font-bold uppercase tracking-wider focus:outline-none focus:border-indigo-500/50 cursor-pointer hover:bg-zinc-800 transition-all shadow-xl active:scale-[0.99]"
+            >
+              <option value="todo" className="bg-[#0c0c0e] text-white">⏰ To Clean ({rooms.filter(r => getTrueHousekeepingStatus(r)?.toLowerCase() === 'dirty').length})</option>
+              <option value="cleaning" className="bg-[#0c0c0e] text-white">▶️ In Progress ({rooms.filter(r => getTrueHousekeepingStatus(r)?.toLowerCase() === 'cleaning').length})</option>
+              <option value="inspect" className="bg-[#0c0c0e] text-white">🛡️ To Inspect ({rooms.filter(r => getTrueHousekeepingStatus(r)?.toLowerCase() === 'clean').length})</option>
+              <option value="stayovers" className="bg-[#0c0c0e] text-white">👤 Stayover Service ({rooms.filter(r => getTrueHousekeepingStatus(r)?.toLowerCase() === 'occupied').length})</option>
+              <option value="all" className="bg-[#0c0c0e] text-white">📊 All Rooms ({rooms.length})</option>
+            </select>
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-400 flex items-center">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+            </div>
+          </div>
+
+          {/* Desktop Sub-Tabs */}
+          <div className="hidden md:flex items-center gap-1 bg-white/[0.02] border border-white/[0.05] p-1 rounded-2xl w-fit">
             {[
-              { id: 'todo', label: 'To Clean', icon: Clock, count: rooms.filter(r => r.status?.toLowerCase() === 'dirty').length },
-              { id: 'cleaning', label: 'In Progress', icon: Play, count: rooms.filter(r => r.status?.toLowerCase() === 'cleaning').length },
-              { id: 'inspect', label: 'To Inspect', icon: ShieldCheck, count: rooms.filter(r => r.status?.toLowerCase() === 'clean').length },
-              { id: 'stayovers', label: 'Stayover Service', icon: UserCheck, count: rooms.filter(r => r.status?.toLowerCase() === 'occupied').length },
+              { id: 'todo', label: 'To Clean', icon: Clock, count: rooms.filter(r => getTrueHousekeepingStatus(r)?.toLowerCase() === 'dirty').length },
+              { id: 'cleaning', label: 'In Progress', icon: Play, count: rooms.filter(r => getTrueHousekeepingStatus(r)?.toLowerCase() === 'cleaning').length },
+              { id: 'inspect', label: 'To Inspect', icon: ShieldCheck, count: rooms.filter(r => getTrueHousekeepingStatus(r)?.toLowerCase() === 'clean').length },
+              { id: 'stayovers', label: 'Stayover Service', icon: UserCheck, count: rooms.filter(r => getTrueHousekeepingStatus(r)?.toLowerCase() === 'occupied').length },
               { id: 'all', label: 'All Rooms', icon: Activity, count: rooms.length },
             ].map((tab) => (
               <button
@@ -336,110 +368,113 @@ export default function HousekeepingTerminal() {
                   <CheckCircle2 size={48} className="text-zinc-800 mb-4" />
                   <p className="text-zinc-500 font-bold uppercase tracking-[0.2em] text-[10px]">No Rooms in this queue</p>
                 </motion.div>
-              ) : getFilteredRooms().map((room) => (
-                <motion.div
-                  key={room.id}
-                  layout
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                  className="bg-zinc-900/40 backdrop-blur-xl border border-white/[0.06] rounded-3xl p-6 relative group hover:border-indigo-500/30 transition-all shadow-2xl"
-                >
-                  <div className="flex justify-between items-start mb-6">
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <h4 className="text-3xl font-black text-white tracking-tighter">#{room.room_number}</h4>
-                        
-                        {/* THE REQUESTED HOUSEKEEPING STATUS BADGES */}
-                        <div className="flex items-center gap-1">
-                          {room.status?.toLowerCase() === 'dirty' && <span className="bg-rose-500 text-white px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(244,63,94,0.4)]">Dirty</span>}
-                          {room.status?.toLowerCase() === 'available' && <span className="bg-emerald-500 text-white px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(16,185,129,0.4)]">Ready</span>}
-                          {room.status?.toLowerCase() === 'cleaning' && <span className="bg-amber-500 text-black px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(245,158,11,0.4)]">Cleaning</span>}
-                          {room.status?.toLowerCase() === 'clean' && <span className="bg-cyan-500 text-white px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(6,182,212,0.4)]">Inspect</span>}
-                          {room.status?.toLowerCase() === 'blocked' && <span className="bg-red-600 text-white px-2 py-1 rounded flex items-center gap-1 text-[9px] font-black uppercase tracking-widest animate-pulse shadow-[0_0_10px_rgba(220,38,38,0.6)]"><ShieldAlert size={10}/> Maintenance</span>}
-                          {room.status?.toLowerCase() === 'occupied' && <span className="bg-indigo-500 text-white px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(99,102,241,0.4)]">Occupied</span>}
+              ) : getFilteredRooms().map((room) => {
+                const trueStatus = getTrueHousekeepingStatus(room);
+                return (
+                  <motion.div
+                    key={room.id}
+                    layout
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                    className="bg-zinc-900/40 backdrop-blur-xl border border-white/[0.06] rounded-3xl p-6 relative group hover:border-indigo-500/30 transition-all shadow-2xl"
+                  >
+                    <div className="flex justify-between items-start mb-6">
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <h4 className="text-3xl font-black text-white tracking-tighter">#{room.room_number}</h4>
+                          
+                          {/* THE REQUESTED HOUSEKEEPING STATUS BADGES */}
+                          <div className="flex items-center gap-1">
+                            {trueStatus?.toLowerCase() === 'dirty' && <span className="bg-rose-500 text-white px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(244,63,94,0.4)]">Dirty</span>}
+                            {trueStatus?.toLowerCase() === 'available' && <span className="bg-emerald-500 text-white px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(16,185,129,0.4)]">Ready</span>}
+                            {trueStatus?.toLowerCase() === 'cleaning' && <span className="bg-amber-500 text-black px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(245,158,11,0.4)]">Cleaning</span>}
+                            {trueStatus?.toLowerCase() === 'clean' && <span className="bg-cyan-500 text-white px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(6,182,212,0.4)]">Inspect</span>}
+                            {trueStatus?.toLowerCase() === 'blocked' && <span className="bg-red-600 text-white px-2 py-1 rounded flex items-center gap-1 text-[9px] font-black uppercase tracking-widest animate-pulse shadow-[0_0_10px_rgba(220,38,38,0.6)]"><ShieldAlert size={10}/> Maintenance</span>}
+                            {trueStatus?.toLowerCase() === 'occupied' && <span className="bg-indigo-500 text-white px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(99,102,241,0.4)]">Occupied</span>}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1">
+                          <span className={"text-[8px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-tighter w-fit " + getGuestContext(room).color}>
+                             Guest Context: {getGuestContext(room).label}
+                          </span>
+                          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">{room.type}</p>
                         </div>
                       </div>
+                      
+                      {getGuestContext(room).detail && (
+                        <div className="px-3 py-2 bg-rose-500/10 border border-rose-500/20 rounded-lg flex items-start gap-2 mt-3 mb-2">
+                          <AlertTriangle size={12} className="text-rose-400 shrink-0 mt-0.5" />
+                          <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest leading-relaxed">{getGuestContext(room).detail}</p>
+                        </div>
+                      )}
+                      
+                      {trueStatus === 'Cleaning' && (
+                        <div className="flex flex-col items-end">
+                          <div className="px-2 py-1 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-center gap-1.5 mb-1">
+                            <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
+                            <span className="text-[9px] font-black text-amber-500 uppercase">{calculateDuration(room.cleaning_started_at)}</span>
+                          </div>
+                          <p className="text-[8px] font-bold text-zinc-600 uppercase tracking-tighter">Started by {room.profiles?.full_name || 'Staff'}</p>
+                        </div>
+                      )}
 
-                      <div className="flex flex-col gap-1">
-                        <span className={"text-[8px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-tighter w-fit " + getGuestContext(room).color}>
-                           Guest Context: {getGuestContext(room).label}
-                        </span>
-                        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">{room.type}</p>
-                      </div>
+                      {trueStatus === 'Clean' && (
+                        <div className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full flex items-center gap-2 shadow-lg shadow-emerald-500/5">
+                          <CheckCircle size={12} className="text-emerald-500" />
+                          <span className="text-[9px] font-black text-emerald-500 uppercase">Ready for Inspection</span>
+                        </div>
+                      )}
                     </div>
-                    
-                    {getGuestContext(room).detail && (
-                      <div className="px-3 py-2 bg-rose-500/10 border border-rose-500/20 rounded-lg flex items-start gap-2 mt-3 mb-2">
-                        <AlertTriangle size={12} className="text-rose-400 shrink-0 mt-0.5" />
-                        <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest leading-relaxed">{getGuestContext(room).detail}</p>
-                      </div>
-                    )}
-                    
-                    {room.status === 'Cleaning' && (
-                      <div className="flex flex-col items-end">
-                        <div className="px-2 py-1 bg-amber-500/10 border border-amber-500/20 rounded-lg flex items-center gap-1.5 mb-1">
-                          <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
-                          <span className="text-[9px] font-black text-amber-500 uppercase">{calculateDuration(room.cleaning_started_at)}</span>
-                        </div>
-                        <p className="text-[8px] font-bold text-zinc-600 uppercase tracking-tighter">Started by {room.profiles?.full_name || 'Staff'}</p>
-                      </div>
-                    )}
 
-                    {room.status === 'Clean' && (
-                      <div className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full flex items-center gap-2 shadow-lg shadow-emerald-500/5">
-                        <CheckCircle size={12} className="text-emerald-500" />
-                        <span className="text-[9px] font-black text-emerald-500 uppercase">Ready for Inspection</span>
-                      </div>
-                    )}
-                  </div>
+                    <div className="space-y-3">
+                      {trueStatus === 'Dirty' && (
+                        <button 
+                          onClick={() => handleAction(room.id, 'start')}
+                          disabled={!!actionLoading}
+                          className="w-full bg-white text-black hover:bg-indigo-500 hover:text-white font-black uppercase tracking-widest text-[10px] py-4 rounded-2xl transition-all flex items-center justify-center gap-3 shadow-xl active:scale-[0.98]"
+                        >
+                          {actionLoading === room.id ? <Loader2 size={16} className="animate-spin" /> : <><Play size={16} fill="currentColor" /> Start Cleaning</>}
+                        </button>
+                      )}
 
-                  <div className="space-y-3">
-                    {room.status === 'Dirty' && (
-                      <button 
-                        onClick={() => handleAction(room.id, 'start')}
-                        disabled={!!actionLoading}
-                        className="w-full bg-white text-black hover:bg-indigo-500 hover:text-white font-black uppercase tracking-widest text-[10px] py-4 rounded-2xl transition-all flex items-center justify-center gap-3 shadow-xl active:scale-[0.98]"
-                      >
-                        {actionLoading === room.id ? <Loader2 size={16} className="animate-spin" /> : <><Play size={16} fill="currentColor" /> Start Cleaning</>}
-                      </button>
-                    )}
+                      {trueStatus === 'Cleaning' && (
+                        <button 
+                          onClick={() => handleAction(room.id, 'finish')}
+                          disabled={!!actionLoading}
+                          className="w-full bg-amber-500 hover:bg-amber-400 text-black font-black uppercase tracking-widest text-[10px] py-4 rounded-2xl transition-all flex items-center justify-center gap-3 shadow-xl active:scale-[0.98]"
+                        >
+                          {actionLoading === room.id ? <Loader2 size={16} className="animate-spin" /> : <><CheckCircle size={16} /> Mark Finished</>}
+                        </button>
+                      )}
 
-                    {room.status === 'Cleaning' && (
-                      <button 
-                        onClick={() => handleAction(room.id, 'finish')}
-                        disabled={!!actionLoading}
-                        className="w-full bg-amber-500 hover:bg-amber-400 text-black font-black uppercase tracking-widest text-[10px] py-4 rounded-2xl transition-all flex items-center justify-center gap-3 shadow-xl active:scale-[0.98]"
-                      >
-                        {actionLoading === room.id ? <Loader2 size={16} className="animate-spin" /> : <><CheckCircle size={16} /> Mark Finished</>}
-                      </button>
-                    )}
-
-                    {room.status === 'Clean' && (
-                      <button 
-                        onClick={() => handleAction(room.id, 'inspect')}
-                        disabled={!!actionLoading || !canInspect()}
-                        className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white font-black uppercase tracking-widest text-[10px] py-4 rounded-2xl transition-all flex items-center justify-center gap-3 shadow-xl active:scale-[0.98]"
-                      >
-                        {actionLoading === room.id ? <Loader2 size={16} className="animate-spin" /> : <><ShieldCheck size={18} /> Approve Room</>}
-                      </button>
-                    )}
-                    
-                    {room.status === 'Clean' && !canInspect() && (
-                      <p className="text-[9px] text-rose-500 font-bold flex items-center justify-center gap-1.5"><Lock size={10} /> Supervisor access required to approve.</p>
-                    )}
-                    {room.status === 'Occupied' && (
-                      <button 
-                        onClick={() => alert("Stayover service logged. Daily towels and linens refreshed.")}
-                        className="w-full bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white font-black uppercase tracking-widest text-[10px] py-4 rounded-2xl transition-all flex items-center justify-center gap-3 shadow-xl active:scale-[0.98]"
-                      >
-                        <Sparkles size={16} /> Log Daily Service
-                      </button>
-                    )}
-                  </div>
-                </motion.div>
-              ))}
+                      {trueStatus === 'Clean' && (
+                        <button 
+                          onClick={() => handleAction(room.id, 'inspect')}
+                          disabled={!!actionLoading || !canInspect()}
+                          className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white font-black uppercase tracking-widest text-[10px] py-4 rounded-2xl transition-all flex items-center justify-center gap-3 shadow-xl active:scale-[0.98]"
+                        >
+                          {actionLoading === room.id ? <Loader2 size={16} className="animate-spin" /> : <><ShieldCheck size={18} /> Approve Room</>}
+                        </button>
+                      )}
+                      
+                      {trueStatus === 'Clean' && !canInspect() && (
+                        <p className="text-[9px] text-rose-500 font-bold flex items-center justify-center gap-1.5"><Lock size={10} /> Supervisor access required to approve.</p>
+                      )}
+                      {trueStatus === 'Occupied' && (
+                        <button 
+                          onClick={() => alert("Stayover service logged. Daily towels and linens refreshed.")}
+                          className="w-full bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white font-black uppercase tracking-widest text-[10px] py-4 rounded-2xl transition-all flex items-center justify-center gap-3 shadow-xl active:scale-[0.98]"
+                        >
+                          <Sparkles size={16} /> Log Daily Service
+                        </button>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })}
             </AnimatePresence>
           </div>
         </div>

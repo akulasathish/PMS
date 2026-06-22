@@ -404,9 +404,14 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
 
   const { data: incidentals } = await supabaseAdmin
     .from('incidental_charges')
-    .select('amount')
+    .select('amount, description')
     .eq('booking_id', bookingId);
     
+  const dailyRoomChargesSum = incidentals
+    ?.filter(item => item.description?.startsWith('Daily Room Charge'))
+    ?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
+
+  const roomAmount = Math.max(0, Number(booking.amount) - dailyRoomChargesSum);
   const totalIncidentals = incidentals?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
 
   const { data: payments } = await supabaseAdmin
@@ -417,7 +422,7 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
   const totalPayments = payments?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
 
   // Calculate the Balance Due
-  const totalCharges = Number(booking.amount) + totalIncidentals;
+  const totalCharges = roomAmount + totalIncidentals;
   const balanceDue = totalCharges - totalPayments;
 
   // 2. ENFORCE ZERO BALANCE
@@ -512,3 +517,124 @@ export async function recordCheckInTime(bookingId: string) {
   revalidatePath('/dashboard/front-office');
   return { success: true, checkInTime: now };
 }
+
+/**
+ * Reverts a mistaken guest checkout, setting the booking back to 'Checked In' and room back to 'Occupied'
+ */
+export async function undoCheckOutGuest(bookingId: string, roomId: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { error: 'Unauthorized. Only authorized personnel can perform this action.' };
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // 1. Fetch booking to verify existence and check status
+  const { data: booking, error: bookingErr } = await supabaseAdmin
+    .from('bookings')
+    .select('status, property_id, guest_name')
+    .eq('id', bookingId)
+    .single();
+
+  if (bookingErr || !booking) return { error: 'Booking not found.' };
+
+  if (booking.status !== 'Checked Out') {
+    return { error: 'Only checked-out bookings can have their checkout undone.' };
+  }
+
+  // 2. Revert booking status back to 'Checked In' and clear check_out_time
+  const { error: bookingError } = await supabaseAdmin
+    .from('bookings')
+    .update({ 
+      status: 'Checked In',
+      check_out_time: null
+    })
+    .eq('id', bookingId);
+
+  if (bookingError) {
+    console.error("Failed to undo check-out:", bookingError);
+    return { error: `Booking Update Error: ${bookingError.message}` };
+  }
+
+  // 3. Mark the room back as 'Occupied'
+  const { error: roomError } = await supabaseAdmin
+    .from('rooms')
+    .update({ status: 'Occupied' })
+    .eq('id', roomId);
+
+  if (roomError) {
+    console.error("Failed to update room status during undo check-out:", roomError);
+    return { error: `Room Update Error: ${roomError.message}` };
+  }
+
+  // 4. Audit Log
+  await logAction({
+    propertyId: booking.property_id,
+    action: 'UNDO_CHECK_OUT',
+    details: { guestName: booking.guest_name, bookingId },
+    userId: user.id
+  });
+
+  revalidatePath('/dashboard/front-office');
+  revalidatePath('/dashboard/front-office', 'page');
+  revalidatePath('/dashboard/housekeeping');
+
+  return { success: true };
+}
+
+/**
+ * Update actual check-in time of a guest manually
+ */
+export async function updateCheckInTime(bookingId: string, checkInTime: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { error: 'Unauthorized. Only authorized personnel can modify check-in times.' };
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // Fetch the booking first for audit logging
+  const { data: booking, error: fetchError } = await supabaseAdmin
+    .from('bookings')
+    .select('property_id, guest_name, check_in_time')
+    .eq('id', bookingId)
+    .single();
+
+  if (fetchError || !booking) {
+    console.error("Failed to fetch booking for time change:", fetchError);
+    return { error: "Booking not found." };
+  }
+
+  const { error: updateError } = await supabaseAdmin
+    .from('bookings')
+    .update({ check_in_time: checkInTime })
+    .eq('id', bookingId);
+
+  if (updateError) {
+    console.error("Failed to update check-in time:", updateError);
+    return { error: `Update Failed: ${updateError.message}` };
+  }
+
+  // Record audit log
+  await logAction({
+    propertyId: booking.property_id,
+    action: 'CHECK_IN_TIME_MODIFIED',
+    details: {
+      guestName: booking.guest_name,
+      bookingId,
+      oldCheckInTime: booking.check_in_time,
+      newCheckInTime: checkInTime
+    },
+    userId: user.id
+  });
+
+  revalidatePath('/dashboard/front-office');
+  revalidatePath('/dashboard/front-office', 'page');
+
+  return { success: true };
+}
+

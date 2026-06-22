@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { getFolioSummary, postIncidentalCharge, postPayment, postProposedTimeCharge, waiveProposedTimeCharge } from '@/app/actions/folio';
-import { checkOutGuest } from '@/app/actions/booking';
+import { checkOutGuest, undoCheckOutGuest } from '@/app/actions/booking';
 
 interface FolioModalProps {
   bookingId: string;
@@ -142,6 +142,19 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
     }
   };
 
+  const handleUndoCheckout = async () => {
+    setActionLoading(true);
+    setError('');
+    
+    const res = await undoCheckOutGuest(bookingId, roomId);
+    if (res.error) {
+      setError(res.error);
+      setActionLoading(false);
+    } else {
+      onSuccess();
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
@@ -175,42 +188,52 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
             <Loader2 className="animate-spin text-indigo-500" size={32} />
           </div>
         ) : (
-          <div className="flex flex-1 min-h-0">
+          <div className="flex flex-col lg:flex-row flex-1 min-h-0 overflow-y-auto">
             
             {/* Left Sidebar - Navigation & Summary */}
-            <div className="w-64 border-r border-white/5 p-6 flex flex-col gap-2">
+            <div className="w-full lg:w-64 border-b lg:border-b-0 lg:border-r border-white/5 p-4 lg:p-6 flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0 bg-[#0f0f11] lg:bg-transparent">
               <button 
                 onClick={() => setActiveTab('summary')}
-                className={`p-3 rounded-xl text-left transition-colors ${activeTab === 'summary' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}
+                className={`p-3 rounded-xl text-left transition-colors sm:flex-1 lg:flex-none ${activeTab === 'summary' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}
               >
                 <div className="text-xs font-bold uppercase tracking-wider mb-1">Folio Ledger</div>
                 <div className="text-2xl font-bold text-white">₹{folio?.balanceDue?.toFixed(2)}</div>
                 <div className="text-[10px] text-zinc-500 mt-1">Balance Due</div>
               </button>
 
-              <div className="h-px bg-white/5 my-4" />
+              <div className="hidden lg:block h-px bg-white/5 my-4" />
 
               <button 
                 onClick={() => setActiveTab('charge')}
-                className={`p-3 rounded-xl text-sm font-medium text-left flex items-center gap-3 transition-colors ${activeTab === 'charge' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}
+                className={`p-3 rounded-xl text-sm font-medium text-left flex items-center gap-3 transition-colors sm:flex-1 lg:flex-none ${activeTab === 'charge' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}
               >
                 <Plus size={16} /> Post Charge
               </button>
               <button 
                 onClick={() => setActiveTab('payment')}
-                className={`p-3 rounded-xl text-sm font-medium text-left flex items-center gap-3 transition-colors ${activeTab === 'payment' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}
+                className={`p-3 rounded-xl text-sm font-medium text-left flex items-center gap-3 transition-colors sm:flex-1 lg:flex-none ${activeTab === 'payment' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}
               >
                 <Banknote size={16} /> Log Payment
               </button>
 
-              <div className="mt-auto pt-6">
-                <button
-                  onClick={handleFinalCheckout}
-                  disabled={Math.abs(folio?.balanceDue || 0) > 0.01 || actionLoading}
-                  className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-zinc-800 disabled:text-zinc-500 text-black font-bold uppercase tracking-wider text-xs transition-colors flex items-center justify-center gap-2"
-                >
-                  {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <><ShieldCheck size={16} /> Checkout Guest</>}
-                </button>
+              <div className="sm:mt-0 lg:mt-auto pt-4 sm:pt-0 lg:pt-6 sm:ml-auto lg:ml-0 shrink-0">
+                {folio?.bookingStatus === 'Checked Out' ? (
+                  <button
+                    onClick={handleUndoCheckout}
+                    disabled={actionLoading}
+                    className="w-full py-3 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold uppercase tracking-wider text-xs transition-colors flex items-center justify-center gap-2"
+                  >
+                    {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <><X size={16} /> Revert Checkout</>}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleFinalCheckout}
+                    disabled={Math.abs(folio?.balanceDue || 0) > 0.01 || actionLoading}
+                    className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-zinc-800 disabled:text-zinc-500 text-black font-bold uppercase tracking-wider text-xs transition-colors flex items-center justify-center gap-2"
+                  >
+                    {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <><ShieldCheck size={16} /> Checkout Guest</>}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -300,7 +323,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                       </motion.div>
                     )}
 
-                    <div className="grid grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                       
                       {/* Charges Column */}
                       <div>

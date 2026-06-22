@@ -157,7 +157,15 @@ export async function getFolioSummary(bookingId: string) {
     .eq('booking_id', bookingId)
     .order('created_at', { ascending: true });
 
-  const totalCharges = Number(booking.amount) + (incidentals?.reduce((sum, item) => sum + Number(item.amount), 0) || 0);
+  // Sum of any daily room charges posted by the night audit
+  const dailyRoomChargesSum = incidentals
+    ?.filter(item => item.description.startsWith('Daily Room Charge'))
+    ?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
+
+  // The base room amount shown on the folio is the booking total minus already-posted daily charges
+  const roomAmount = Math.max(0, Number(booking.amount) - dailyRoomChargesSum);
+
+  const totalCharges = roomAmount + (incidentals?.reduce((sum, item) => sum + Number(item.amount), 0) || 0);
   const totalPayments = payments?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
   const balanceDue = totalCharges - totalPayments;
 
@@ -223,7 +231,8 @@ export async function getFolioSummary(bookingId: string) {
   return {
     success: true,
     data: {
-      roomAmount: Number(booking.amount),
+      roomAmount,
+      bookingStatus: booking.status,
       incidentals: incidentals || [],
       payments: payments || [],
       totalCharges,
