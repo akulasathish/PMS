@@ -155,6 +155,10 @@ export default function FrontOfficeTerminal() {
   const [activeCheckoutBooking, setActiveCheckoutBooking] = useState<{bookingId: string, roomId: string, guestName: string, amount: number} | null>(null);
   const [activeBlockRoom, setActiveBlockRoom] = useState<Room | null>(null);
 
+  // Cash Handover and Close Counter states
+  const [isCloseCashModalOpen, setIsCloseCashModalOpen] = useState(false);
+  const [handedOverCashInput, setHandedOverCashInput] = useState('');
+
   // Backdated Check-In Time Change State
   const [isEditingCheckInTime, setIsEditingCheckInTime] = useState(false);
   const [tempCheckInTime, setTempCheckInTime] = useState('');
@@ -824,6 +828,9 @@ export default function FrontOfficeTerminal() {
     const actualClosingCash = savedRecord?.closing_cash !== null && savedRecord?.closing_cash !== undefined 
       ? Number(savedRecord.closing_cash) 
       : null;
+    const handedOverCash = savedRecord?.handed_over_cash !== null && savedRecord?.handed_over_cash !== undefined
+      ? Number(savedRecord.handed_over_cash)
+      : 0;
     return {
       openingCash,
       cashPayments,
@@ -833,6 +840,7 @@ export default function FrontOfficeTerminal() {
       upiExpenses,
       expectedClosingCash,
       actualClosingCash,
+      handedOverCash,
       isClosed: actualClosingCash !== null
     };
   };
@@ -877,11 +885,8 @@ export default function FrontOfficeTerminal() {
     }
   };
 
-  const handleCloseCash = async (closingAmount: number) => {
+  const handleCloseCash = async (closingAmount: number, handedOverAmount: number = 0) => {
     if (!property?.id) return;
-    if (!confirm(`Are you sure you want to CLOSE the cash counter for ${formatFriendlyDate(selectedLedgerDate)} at ₹${closingAmount.toFixed(2)}? This sets the opening balance for the next day.`)) {
-      return;
-    }
     setIsSavingExpense(true);
     try {
       const record = dailyCashBalances.find(b => b.date === selectedLedgerDate);
@@ -889,7 +894,10 @@ export default function FrontOfficeTerminal() {
       if (record) {
         const res = await supabase
           .from('daily_cash_balances')
-          .update({ closing_cash: closingAmount })
+          .update({ 
+            closing_cash: closingAmount,
+            handed_over_cash: handedOverAmount
+          })
           .eq('id', record.id);
         error = res.error;
       } else {
@@ -899,7 +907,8 @@ export default function FrontOfficeTerminal() {
             property_id: property.id,
             date: selectedLedgerDate,
             opening_cash: getOpeningCashForDate(selectedLedgerDate),
-            closing_cash: closingAmount
+            closing_cash: closingAmount,
+            handed_over_cash: handedOverAmount
           });
         error = res.error;
       }
@@ -926,7 +935,10 @@ export default function FrontOfficeTerminal() {
     try {
       const { error } = await supabase
         .from('daily_cash_balances')
-        .update({ closing_cash: null })
+        .update({ 
+          closing_cash: null,
+          handed_over_cash: 0.00
+        })
         .eq('id', record.id);
       if (error) {
         alert("Error re-opening cash: " + error.message);
@@ -1364,11 +1376,14 @@ export default function FrontOfficeTerminal() {
       doc.text("3. CASH COUNTER RECONCILIATION", 15, currentY);
       doc.text("4. TRUE PERIOD SALES TOTAL", 110, currentY);
 
+      const stats = getLedgerTotalsForDate(selectedLedgerDate);
       const reconciliationFormula = [
         ["Yesterday Cash Balance (Opening)", `+ Rs. ${openingCash.toFixed(2)}`],
         ["Today Cash Received (Tariff + Food)", `+ Rs. ${todayCashCollected.toFixed(2)}`],
         ["Today Cash Expenses (Subtracted)", `- Rs. ${cashExpenses.toFixed(2)}`],
-        ["Total Cash In Counter Drawer", `Rs. ${cashInCounter.toFixed(2)}`]
+        ["Expected Cash In Counter Drawer", `Rs. ${stats.expectedClosingCash.toFixed(2)}`],
+        ["Handed Over to Finance", `- Rs. ${stats.handedOverCash.toFixed(2)}`],
+        ["Remaining Counter Float (Closing)", `Rs. ${(stats.isClosed ? stats.actualClosingCash : (stats.expectedClosingCash - stats.handedOverCash))?.toFixed(2)}`]
       ];
 
       autoTable(doc, {
@@ -1410,9 +1425,9 @@ export default function FrontOfficeTerminal() {
       doc.text("5. CASHIER HANDOVER SIGN-OFF VERIFICATION", 15, currentY);
 
       const handoverRows = [
-        ["Expected Cash in Drawer:", `Rs. ${cashInCounter.toFixed(2)}`, "Outgoing Cashier Name & Sign:", ""],
-        ["Actual Handover Cash:", "Rs. _________________", "Incoming Cashier Name & Sign:", ""],
-        ["Discrepancy (if any):", "Rs. _________________", "Manager Approval & Sign:", ""]
+        ["Expected Cash in Drawer:", `Rs. ${stats.expectedClosingCash.toFixed(2)}`, "Outgoing Cashier Name & Sign:", ""],
+        ["Actual Handover Cash:", stats.isClosed ? `Rs. ${stats.handedOverCash.toFixed(2)}` : "Rs. _________________", "Incoming Cashier Name & Sign:", ""],
+        ["Remaining Counter Float:", stats.isClosed ? `Rs. ${stats.actualClosingCash?.toFixed(2)}` : "Rs. _________________", "Manager Approval & Sign:", ""]
       ];
 
       autoTable(doc, {
@@ -1635,11 +1650,14 @@ export default function FrontOfficeTerminal() {
       doc.text("3. CASH COUNTER RECONCILIATION", 15, currentY);
       doc.text("4. TRUE DAILY SALES TOTAL", 110, currentY);
 
+      const stats = getLedgerTotalsForDate(selectedLedgerDate);
       const reconciliationFormula = [
         ["Yesterday Cash Balance (Opening)", `+ Rs. ${openingCash.toFixed(2)}`],
         ["Today Cash Received (Tariff + Food)", `+ Rs. ${todayCashCollected.toFixed(2)}`],
         ["Today Cash Expenses (Subtracted)", `- Rs. ${cashExpenses.toFixed(2)}`],
-        ["Total Cash In Counter Drawer", `Rs. ${cashInCounter.toFixed(2)}`]
+        ["Expected Cash In Counter Drawer", `Rs. ${stats.expectedClosingCash.toFixed(2)}`],
+        ["Handed Over to Finance", `- Rs. ${stats.handedOverCash.toFixed(2)}`],
+        ["Remaining Counter Float (Closing)", `Rs. ${(stats.isClosed ? stats.actualClosingCash : (stats.expectedClosingCash - stats.handedOverCash))?.toFixed(2)}`]
       ];
 
       autoTable(doc, {
@@ -1795,17 +1813,28 @@ export default function FrontOfficeTerminal() {
               <Banknote className="text-emerald-400" size={16} />
             </div>
             <div>
-              <p className="text-2xl font-black text-emerald-400">₹{stats.expectedClosingCash.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+              <p className="text-2xl font-black text-emerald-400">
+                ₹{(stats.isClosed ? stats.actualClosingCash : stats.expectedClosingCash)?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </p>
               <div className="text-[9px] text-zinc-500 mt-1 uppercase font-bold space-y-0.5">
                 <p>Opening: +₹{stats.openingCash.toFixed(2)}</p>
                 <p>Collected: +₹{stats.cashPayments.toFixed(2)}</p>
                 <p>Expenses: -₹{stats.cashExpenses.toFixed(2)}</p>
+                {stats.isClosed && (
+                  <>
+                    <p className="text-rose-400/80">Handed Over: -₹{stats.handedOverCash.toFixed(2)}</p>
+                    <p className="text-emerald-400 font-black">Remaining Float: ₹{stats.actualClosingCash?.toFixed(2)}</p>
+                  </>
+                )}
               </div>
             </div>
             <div className="pt-2">
               {!stats.isClosed ? (
                 <button
-                  onClick={() => handleCloseCash(stats.expectedClosingCash)}
+                  onClick={() => {
+                    setHandedOverCashInput('');
+                    setIsCloseCashModalOpen(true);
+                  }}
                   disabled={isSavingExpense}
                   className="w-full bg-emerald-600/10 hover:bg-emerald-600 hover:text-black border border-emerald-500/20 text-emerald-400 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all"
                 >
@@ -3199,6 +3228,137 @@ export default function FrontOfficeTerminal() {
           </>
         )}
       </AnimatePresence>
+      {isCloseCashModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-md bg-zinc-900 border border-white/10 rounded-[32px] overflow-hidden shadow-2xl p-8"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center gap-2">
+                <Banknote className="text-emerald-400" size={20} />
+                <h3 className="text-sm font-black text-white uppercase tracking-widest">Close Cash Counter</h3>
+              </div>
+              <button 
+                onClick={() => setIsCloseCashModalOpen(false)} 
+                className="text-zinc-500 hover:text-white transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              {/* Ledger Summary */}
+              <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 space-y-3">
+                <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Expected Drawer Summary</span>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs text-zinc-400">
+                    <span>Starting Opening Cash:</span>
+                    <span className="font-semibold">₹{stats.openingCash.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-emerald-400">
+                    <span>(+) Cash Payments Collected:</span>
+                    <span className="font-semibold">₹{stats.cashPayments.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-rose-400">
+                    <span>(-) Cash Expenses Paid:</span>
+                    <span className="font-semibold">₹{stats.cashExpenses.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="border-t border-white/5 pt-2 flex justify-between text-sm font-bold text-white">
+                    <span>Expected Closing Balance:</span>
+                    <span>₹{stats.expectedClosingCash.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Handover Input */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex justify-between">
+                  <span>Handover to Finance Dept</span>
+                  <span className="text-emerald-400">Expected: ₹{stats.expectedClosingCash.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                    <span className="text-zinc-500 text-xs">₹</span>
+                  </div>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max={stats.expectedClosingCash}
+                    placeholder="Enter amount handed over to finance..."
+                    value={handedOverCashInput}
+                    onChange={(e) => setHandedOverCashInput(e.target.value)}
+                    className="w-full bg-black/40 border border-white/5 rounded-2xl pl-8 pr-4 py-3 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/50 transition-colors"
+                  />
+                </div>
+                <p className="text-[9px] text-zinc-500 uppercase font-semibold">
+                  Specify how much physical cash is handed over to the finance team. The rest remains in the counter drawer.
+                </p>
+              </div>
+
+              {/* Calculated Float Remaining */}
+              {(() => {
+                const handoverValue = parseFloat(handedOverCashInput) || 0;
+                const remainingFloat = Math.max(0, stats.expectedClosingCash - handoverValue);
+                const isOverLimit = handoverValue > stats.expectedClosingCash;
+                const isNegative = handoverValue < 0;
+                const isInvalid = isOverLimit || isNegative;
+
+                return (
+                  <div className="space-y-4">
+                    <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-2xl p-4 flex justify-between items-center">
+                      <div>
+                        <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest block">Remaining Counter Float</span>
+                        <span className="text-[10px] text-zinc-400">To be carried forward as opening cash</span>
+                      </div>
+                      <span className={`text-lg font-black ${isInvalid ? 'text-rose-400' : 'text-emerald-400'}`}>
+                        ₹{remainingFloat.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+
+                    {isOverLimit && (
+                      <div className="flex items-center gap-2 text-rose-400 bg-rose-500/5 border border-rose-500/10 p-3 rounded-xl text-xs">
+                        <AlertCircle size={14} className="shrink-0" />
+                        <span>Handover amount cannot exceed the expected drawer cash!</span>
+                      </div>
+                    )}
+
+                    {isNegative && (
+                      <div className="flex items-center gap-2 text-rose-400 bg-rose-500/5 border border-rose-500/10 p-3 rounded-xl text-xs">
+                        <AlertCircle size={14} className="shrink-0" />
+                        <span>Handover amount cannot be negative!</span>
+                      </div>
+                    )}
+
+                    <div className="flex gap-3 pt-2">
+                      <button
+                        onClick={() => setIsCloseCashModalOpen(false)}
+                        className="flex-1 bg-white/5 hover:bg-white/10 border border-white/5 text-white py-3 rounded-2xl text-xs font-bold transition-all uppercase tracking-wider"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (isInvalid) return;
+                          setIsCloseCashModalOpen(false);
+                          await handleCloseCash(remainingFloat, handoverValue);
+                        }}
+                        disabled={isSavingExpense || isInvalid}
+                        className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-30 text-black py-3 rounded-2xl text-xs font-black transition-all uppercase tracking-wider"
+                      >
+                        {isSavingExpense ? "Closing..." : "Confirm & Close"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       {showBookingModal && (
         <BookingModal 
           isOpen={showBookingModal} 

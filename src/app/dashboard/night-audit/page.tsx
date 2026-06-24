@@ -527,6 +527,11 @@ export default function NightAuditPage() {
   const cashInCounter = openingCash + todayCashCollected - cashExpenses;
   const totalSaleAmount = reconData.total.Cash + reconData.total.UPI + reconData.total.SWIPE + reconData.total.Others;
 
+  const currentCashRecord = dailyCashBalances.find(b => b.date === businessDate);
+  const handedOverCash = currentCashRecord?.handed_over_cash ? Number(currentCashRecord.handed_over_cash) : 0;
+  const actualClosingCash = currentCashRecord?.closing_cash !== null && currentCashRecord?.closing_cash !== undefined ? Number(currentCashRecord.closing_cash) : null;
+  const isClosed = actualClosingCash !== null;
+
   // Step 3: PDF download action
   const handleDownloadPDF = async () => {
     try {
@@ -648,7 +653,9 @@ export default function NightAuditPage() {
         ["Yesterday Cash Balance (Opening)", `+ Rs. ${openingCash.toFixed(2)}`],
         ["Today Cash Received (Tariff + Food)", `+ Rs. ${todayCashCollected.toFixed(2)}`],
         ["Today Cash Expenses (Subtracted)", `- Rs. ${cashExpenses.toFixed(2)}`],
-        ["Total Cash In Counter Drawer", `Rs. ${cashInCounter.toFixed(2)}`]
+        ["Expected Cash In Counter Drawer", `Rs. ${cashInCounter.toFixed(2)}`],
+        ["Handed Over to Finance", `- Rs. ${handedOverCash.toFixed(2)}`],
+        ["Remaining Counter Float (Closing)", `Rs. ${(isClosed ? actualClosingCash : (cashInCounter - handedOverCash))?.toFixed(2)}`]
       ];
 
       autoTable(doc, {
@@ -707,20 +714,28 @@ export default function NightAuditPage() {
     // First save daily cash snapshot inside daily_cash_balances
     try {
       const record = dailyCashBalances.find(b => b.date === businessDate);
-      if (record) {
-        await supabase
-          .from('daily_cash_balances')
-          .update({ closing_cash: cashInCounter })
-          .eq('id', record.id);
-      } else {
-        await supabase
-          .from('daily_cash_balances')
-          .insert({
-            property_id: property.id,
-            date: businessDate,
-            opening_cash: openingCash,
-            closing_cash: cashInCounter
-          });
+      const isAlreadyClosed = record && record.closing_cash !== null && record.closing_cash !== undefined;
+      
+      if (!isAlreadyClosed) {
+        if (record) {
+          await supabase
+            .from('daily_cash_balances')
+            .update({ 
+              closing_cash: cashInCounter,
+              handed_over_cash: 0.00
+            })
+            .eq('id', record.id);
+        } else {
+          await supabase
+            .from('daily_cash_balances')
+            .insert({
+              property_id: property.id,
+              date: businessDate,
+              opening_cash: openingCash,
+              closing_cash: cashInCounter,
+              handed_over_cash: 0.00
+            });
+        }
       }
     } catch (e) {
       console.error("Failed to save closing balance snapshot:", e);
@@ -1383,10 +1398,22 @@ export default function NightAuditPage() {
                               <td className="border border-zinc-800 p-3 text-center text-rose-500 font-bold">-</td>
                               <td className="border border-zinc-800 p-3 text-right font-mono text-rose-400">Rs. {cashExpenses.toFixed(2)}</td>
                             </tr>
-                            <tr className="bg-amber-500/5 text-amber-400 font-bold">
-                              <td className="border border-zinc-800 p-3.5 text-zinc-200">Cash in Counter Drawer</td>
-                              <td className="border border-zinc-800 p-3.5 text-center text-amber-400 font-bold">=</td>
-                              <td className="border border-zinc-800 p-3.5 text-right font-mono text-amber-400 text-sm">Rs. {cashInCounter.toFixed(2)}</td>
+                            <tr className="hover:bg-white/[0.01]">
+                              <td className="border border-zinc-800 p-3 text-zinc-400">Expected Drawer Cash</td>
+                              <td className="border border-zinc-800 p-3 text-center text-amber-500 font-bold">=</td>
+                              <td className="border border-zinc-800 p-3 text-right font-mono text-zinc-200">Rs. {cashInCounter.toFixed(2)}</td>
+                            </tr>
+                            <tr className="hover:bg-white/[0.01]">
+                              <td className="border border-zinc-800 p-3 text-zinc-400">Handover to Finance Department</td>
+                              <td className="border border-zinc-800 p-3 text-center text-rose-500 font-bold">-</td>
+                              <td className="border border-zinc-800 p-3 text-right font-mono text-rose-400">Rs. {handedOverCash.toFixed(2)}</td>
+                            </tr>
+                            <tr className="bg-emerald-500/5 text-emerald-400 font-bold">
+                              <td className="border border-zinc-800 p-3.5 text-zinc-200">Remaining Counter Float (Closing Balance)</td>
+                              <td className="border border-zinc-800 p-3.5 text-center text-emerald-400 font-bold">=</td>
+                              <td className="border border-zinc-800 p-3.5 text-right font-mono text-emerald-400 text-sm">
+                                Rs. {(isClosed ? actualClosingCash : (cashInCounter - handedOverCash))?.toFixed(2)}
+                              </td>
                             </tr>
                           </tbody>
                         </table>
