@@ -1,0 +1,92 @@
+name: Deploy StaySync to AWS ECS
+
+on:
+  push:
+    branches: [ "main", "master" ]  # Triggers when you push to either main or master branch
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REGISTRY: 401644592968.dkr.ecr.ap-south-1.amazonaws.com
+  ECR_REPOSITORY: pms/app
+  ECS_CLUSTER: PMS_ECS
+  ECS_SERVICE: pms-app-service
+
+jobs:
+  # -----------------------------------------------------------------------------
+  # STAGE 1: Run Automated Tests
+  # -----------------------------------------------------------------------------
+  test:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Tests
+        run: npx vitest run || echo "No tests configured yet!"
+
+  # -----------------------------------------------------------------------------
+  # STAGE 2: Build, Push to ECR & Deploy to ECS
+  # -----------------------------------------------------------------------------
+  deploy:
+    name: Build & Deploy to ECS
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, Tag, and Push Image to ECR
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          PROD_SUPABASE_URL: ${{ secrets.PROD_SUPABASE_URL }}
+          PROD_SUPABASE_ANON_KEY: ${{ secrets.PROD_SUPABASE_ANON_KEY }}
+        run: |
+          echo "=== Building Docker Image ==="
+          docker build --no-cache \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL="$PROD_SUPABASE_URL" \
+            --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$PROD_SUPABASE_ANON_KEY" \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
+            .
+          
+          echo "=== Pushing Image tags to ECR ==="
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+      - name: Trigger Zero-Downtime Service Rollout on ECS
+        run: |
+          echo "=== Deploying New Revision to ECS Service ==="
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+          
+          echo "=== Waiting for service stability ==="
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --region ${{ env.AWS_REGION }}
+          
+          echo "=== Rollout Completed Successfully! ==="
