@@ -40,6 +40,10 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
   // Track selected payment method
   const [paymentMethod, setPaymentMethod] = useState('UPI');
 
+  // Post charge dropdown states
+  const [chargeCategory, setChargeCategory] = useState('Food & Water');
+  const [customDescription, setCustomDescription] = useState('');
+
   const loadFolio = async () => {
     setLoading(true);
     setError('');
@@ -96,6 +100,15 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
     const formData = new FormData(e.currentTarget);
     formData.append('bookingId', bookingId);
     formData.append('propertyId', propertyId);
+
+    // Dynamically set description from category selection
+    const finalDescription = chargeCategory === 'Others' ? customDescription.trim() : chargeCategory;
+    if (!finalDescription) {
+      setError('Please provide a description or select a category.');
+      setActionLoading(false);
+      return;
+    }
+    formData.set('description', finalDescription);
     
     const res = await postIncidentalCharge(formData);
     if (res.error) {
@@ -104,6 +117,8 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
     } else {
       await loadFolio();
       setActiveTab('summary');
+      setChargeCategory('Food & Water');
+      setCustomDescription('');
       setActionLoading(false);
     }
   };
@@ -420,12 +435,32 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                       
                       <form onSubmit={handlePostCharge} className="space-y-4">
                         <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Description</label>
-                          <input 
-                            name="description" type="text" required placeholder="e.g. Minibar - Water"
-                            className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all"
-                          />
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Charge Category</label>
+                          <select 
+                            value={chargeCategory}
+                            onChange={(e) => setChargeCategory(e.target.value)}
+                            className="w-full bg-black/40 border border-white/10 rounded-xl py-3.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all appearance-none"
+                          >
+                            <option value="Food & Water" className="bg-zinc-900 text-white">Food & Water</option>
+                            <option value="Late Checkout" className="bg-zinc-900 text-white">Late Checkout</option>
+                            <option value="Early Check-In" className="bg-zinc-900 text-white">Early Check-In</option>
+                            <option value="Previous Stay Past Due" className="bg-zinc-900 text-white">Previous Stay Pending Dues</option>
+                            <option value="Others" className="bg-zinc-900 text-white">Others</option>
+                          </select>
                         </div>
+
+                        {chargeCategory === 'Others' && (
+                          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Custom Description</label>
+                            <input 
+                              type="text" required placeholder="e.g. Minibar, Laundry, Damages"
+                              value={customDescription}
+                              onChange={(e) => setCustomDescription(e.target.value)}
+                              className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all"
+                            />
+                          </motion.div>
+                        )}
+
                         <div className="space-y-1.5">
                           <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Amount (₹)</label>
                           <input 

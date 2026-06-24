@@ -83,6 +83,20 @@ const isRoomRelatedCharge = (desc: string): boolean => {
   );
 };
 
+const isCardRoomCharge = (desc: string): boolean => {
+  const d = (desc || '').toLowerCase();
+  if (
+    d.includes('early check-in') ||
+    d.includes('early checkin') ||
+    d.includes('late checkout') ||
+    d.includes('late check-out')
+  ) {
+    return false;
+  }
+  return isRoomRelatedCharge(desc);
+};
+
+
 export default function FrontOfficeTerminal() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -656,8 +670,17 @@ export default function FrontOfficeTerminal() {
     const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0);
     const totalCharges = roomAmount + incidentalsAmount;
     const totalPaid = bookingPayments.reduce((sum, item) => sum + Number(item.amount), 0);
-    const balanceDue = totalCharges - totalPaid;
-    const hasDues = balanceDue > 0.01;
+
+    // Compute room-only charges for the card (Standard Room Tariff + Past Stay Dues only, EXCLUDING food & water, early check-in, and late checkout)
+    const cardChargesTotal = roomAmount + bookingIncidentals
+      .filter(inc => isCardRoomCharge(inc.description || ''))
+      .reduce((sum, inc) => sum + Number(inc.amount), 0);
+
+    const excludedChargesTotal = totalCharges - cardChargesTotal;
+    const cardPaid = Math.max(0, totalPaid - excludedChargesTotal);
+    const cardBalanceDue = Math.max(0, cardChargesTotal - cardPaid);
+    
+    const hasDues = cardBalanceDue > 0.01;
 
     return (
       <motion.div 
@@ -701,9 +724,10 @@ export default function FrontOfficeTerminal() {
           <div className="text-left sm:text-right">
             <p className="text-[10px] text-zinc-600 font-black uppercase tracking-tighter">Amount Due</p>
             <p className={`text-sm font-black ${hasDues ? 'text-rose-400' : 'text-emerald-400'}`}>
-              ₹{balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ₹{cardBalanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
           </div>
+
           
           <div className="flex gap-2">
             {booking.status === 'Confirmed' && (
@@ -1162,54 +1186,53 @@ export default function FrontOfficeTerminal() {
       
       // Calculate identical metrics as Night Audit to guarantee absolute precision
       const dayPayments = payments.filter(p => getPaymentDateStr(p) === selectedLedgerDate);
-      const dayIncidentals = incidentals.filter(inc => {
-        if (!inc.created_at) return false;
-        const dateStr = inc.created_at.substring(0, 10);
-        return dateStr === selectedLedgerDate && !isRoomRelatedCharge(inc.description || '');
-      });
 
       let roomCash = 0, roomUPI = 0, roomSwipe = 0, roomOthers = 0;
       let foodCash = 0, foodUPI = 0, foodSwipe = 0, foodOthers = 0;
-
-      const bookingIncidentals: { [bookingId: string]: number } = {};
-      dayIncidentals.forEach(inc => {
-        bookingIncidentals[inc.booking_id] = (bookingIncidentals[inc.booking_id] || 0) + Number(inc.amount);
-      });
 
       dayPayments.forEach(p => {
         const amt = Number(p.amount);
         const method = p.method;
         const bkId = p.booking_id;
-        const incAmt = bookingIncidentals[bkId] || 0;
+        
+        // Find all incidentals and payments for this booking
+        const bookingIncidentals = incidentals.filter(inc => inc.booking_id === bkId);
+        const bookingPayments = payments.filter(pm => pm.booking_id === bkId);
 
-        if (incAmt > 0) {
-          const fBAmount = Math.min(amt, incAmt);
-          const roomAmount = Math.max(0, amt - fBAmount);
-          bookingIncidentals[bkId] -= fBAmount;
+        // Sum food & water charges
+        const foodChargesTotal = bookingIncidentals
+          .filter(inc => !isRoomRelatedCharge(inc.description || ''))
+          .reduce((sum, inc) => sum + Number(inc.amount), 0);
 
-          if (method === 'Cash') {
-            foodCash += fBAmount;
-            roomCash += roomAmount;
-          } else if (method === 'UPI') {
-            foodUPI += fBAmount;
-            roomUPI += roomAmount;
-          } else if (method === 'SWIPE') {
-            foodSwipe += fBAmount;
-            roomSwipe += roomAmount;
-          } else {
-            foodOthers += fBAmount;
-            roomOthers += roomAmount;
-          }
+        // Sort booking payments chronologically
+        const sortedBkPayments = [...bookingPayments].sort((a, b) => {
+          const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+          return tA - tB;
+        });
+
+        const pIndex = sortedBkPayments.findIndex(pm => pm.id === p.id);
+        const prevPaid = sortedBkPayments.slice(0, pIndex).reduce((sum, pm) => sum + Number(pm.amount), 0);
+        const totalPaidToDate = prevPaid + amt;
+
+        const foodCoveredPrev = Math.min(foodChargesTotal, prevPaid);
+        const foodCoveredToDate = Math.min(foodChargesTotal, totalPaidToDate);
+
+        const foodAlloc = Math.max(0, foodCoveredToDate - foodCoveredPrev);
+        const roomAlloc = Math.max(0, amt - foodAlloc);
+
+        if (method === 'Cash') {
+          foodCash += foodAlloc;
+          roomCash += roomAlloc;
+        } else if (method === 'UPI') {
+          foodUPI += foodAlloc;
+          roomUPI += roomAlloc;
+        } else if (method === 'SWIPE') {
+          foodSwipe += foodAlloc;
+          roomSwipe += roomAlloc;
         } else {
-          if (method === 'Cash') {
-            roomCash += amt;
-          } else if (method === 'UPI') {
-            roomUPI += amt;
-          } else if (method === 'SWIPE') {
-            roomSwipe += amt;
-          } else {
-            roomOthers += amt;
-          }
+          foodOthers += foodAlloc;
+          roomOthers += roomAlloc;
         }
       });
 
@@ -1434,54 +1457,53 @@ export default function FrontOfficeTerminal() {
       
       // Split calculation logic matching Step 3
       const dayPayments = payments.filter(p => getPaymentDateStr(p) === selectedLedgerDate);
-      const dayIncidentals = incidentals.filter(inc => {
-        if (!inc.created_at) return false;
-        const dateStr = inc.created_at.substring(0, 10);
-        return dateStr === selectedLedgerDate && !isRoomRelatedCharge(inc.description || '');
-      });
 
       let roomCash = 0, roomUPI = 0, roomSwipe = 0, roomOthers = 0;
       let foodCash = 0, foodUPI = 0, foodSwipe = 0, foodOthers = 0;
-
-      const bookingIncidentals: { [bookingId: string]: number } = {};
-      dayIncidentals.forEach(inc => {
-        bookingIncidentals[inc.booking_id] = (bookingIncidentals[inc.booking_id] || 0) + Number(inc.amount);
-      });
 
       dayPayments.forEach(p => {
         const amt = Number(p.amount);
         const method = p.method;
         const bkId = p.booking_id;
-        const incAmt = bookingIncidentals[bkId] || 0;
+        
+        // Find all incidentals and payments for this booking
+        const bookingIncidentals = incidentals.filter(inc => inc.booking_id === bkId);
+        const bookingPayments = payments.filter(pm => pm.booking_id === bkId);
 
-        if (incAmt > 0) {
-          const fBAmount = Math.min(amt, incAmt);
-          const roomAmount = Math.max(0, amt - fBAmount);
-          bookingIncidentals[bkId] -= fBAmount;
+        // Sum food & water charges
+        const foodChargesTotal = bookingIncidentals
+          .filter(inc => !isRoomRelatedCharge(inc.description || ''))
+          .reduce((sum, inc) => sum + Number(inc.amount), 0);
 
-          if (method === 'Cash') {
-            foodCash += fBAmount;
-            roomCash += roomAmount;
-          } else if (method === 'UPI') {
-            foodUPI += fBAmount;
-            roomUPI += roomAmount;
-          } else if (method === 'SWIPE') {
-            foodSwipe += fBAmount;
-            roomSwipe += roomAmount;
-          } else {
-            foodOthers += fBAmount;
-            roomOthers += roomAmount;
-          }
+        // Sort booking payments chronologically
+        const sortedBkPayments = [...bookingPayments].sort((a, b) => {
+          const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+          return tA - tB;
+        });
+
+        const pIndex = sortedBkPayments.findIndex(pm => pm.id === p.id);
+        const prevPaid = sortedBkPayments.slice(0, pIndex).reduce((sum, pm) => sum + Number(pm.amount), 0);
+        const totalPaidToDate = prevPaid + amt;
+
+        const foodCoveredPrev = Math.min(foodChargesTotal, prevPaid);
+        const foodCoveredToDate = Math.min(foodChargesTotal, totalPaidToDate);
+
+        const foodAlloc = Math.max(0, foodCoveredToDate - foodCoveredPrev);
+        const roomAlloc = Math.max(0, amt - foodAlloc);
+
+        if (method === 'Cash') {
+          foodCash += foodAlloc;
+          roomCash += roomAlloc;
+        } else if (method === 'UPI') {
+          foodUPI += foodAlloc;
+          roomUPI += roomAlloc;
+        } else if (method === 'SWIPE') {
+          foodSwipe += foodAlloc;
+          roomSwipe += roomAlloc;
         } else {
-          if (method === 'Cash') {
-            roomCash += amt;
-          } else if (method === 'UPI') {
-            roomUPI += amt;
-          } else if (method === 'SWIPE') {
-            roomSwipe += amt;
-          } else {
-            roomOthers += amt;
-          }
+          foodOthers += foodAlloc;
+          roomOthers += roomAlloc;
         }
       });
 
@@ -2031,12 +2053,29 @@ export default function FrontOfficeTerminal() {
       const totalPaid = bookingPayments.reduce((sum, item) => sum + Number(item.amount), 0);
       const balanceDue = totalCharges - totalPaid;
 
+      // Classify room charges vs food & water charges
+      const roomChargesTotal = roomAmount + bookingIncidentals
+        .filter(inc => isRoomRelatedCharge(inc.description || ''))
+        .reduce((sum, inc) => sum + Number(inc.amount), 0);
+
+      const foodChargesTotal = bookingIncidentals
+        .filter(inc => !isRoomRelatedCharge(inc.description || ''))
+        .reduce((sum, inc) => sum + Number(inc.amount), 0);
+
+      // Payments cover food & water first
+      const foodPending = Math.max(0, foodChargesTotal - totalPaid);
+      const roomPending = Math.max(0, balanceDue - foodPending);
+
       return {
         booking,
         roomNum,
         roomType: room?.type || 'N/A',
         roomAmount,
         incidentalsAmount,
+        roomChargesTotal,
+        foodChargesTotal,
+        foodPending,
+        roomPending,
         totalCharges,
         totalPaid,
         balanceDue
@@ -2131,8 +2170,8 @@ export default function FrontOfficeTerminal() {
                   <tr className="bg-black/40 border-b border-white/[0.06] text-[10px] font-black text-zinc-500 uppercase tracking-widest">
                     <th className="p-4 pl-6">Room / Sl No</th>
                     <th className="p-4">Guest Details</th>
-                    <th className="p-4 text-right">Base Rent</th>
-                    <th className="p-4 text-right">Incidentals</th>
+                    <th className="p-4 text-right">ROOM Charges (Pending)</th>
+                    <th className="p-4 text-right">Food & Water (Pending)</th>
                     <th className="p-4 text-right">Total Charges</th>
                     <th className="p-4 text-right text-emerald-400">Total Paid</th>
                     <th className="p-4 text-right text-rose-400 font-bold bg-rose-500/5">Balance Due</th>
@@ -2140,7 +2179,7 @@ export default function FrontOfficeTerminal() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.02]">
-                  {balanceItems.map(({ booking, roomNum, roomType, roomAmount, incidentalsAmount, totalCharges, totalPaid, balanceDue }) => {
+                  {balanceItems.map(({ booking, roomNum, roomType, roomAmount, incidentalsAmount, roomChargesTotal, foodChargesTotal, foodPending, roomPending, totalCharges, totalPaid, balanceDue }) => {
                     const hasDues = balanceDue > 0.01;
                     return (
                       <tr key={booking.id} className="hover:bg-white/[0.01] transition-colors">
@@ -2177,14 +2216,14 @@ export default function FrontOfficeTerminal() {
                           </div>
                         </td>
 
-                        {/* Rent */}
+                        {/* ROOM Charges (Pending) */}
                         <td className="p-4 text-right align-middle font-semibold text-zinc-300">
-                          ₹{roomAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          ₹{roomPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
 
-                        {/* Incidentals */}
+                        {/* Food & Water (Pending) */}
                         <td className="p-4 text-right align-middle font-semibold text-zinc-400">
-                          ₹{incidentalsAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          ₹{foodPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
 
                         {/* Total Charges */}

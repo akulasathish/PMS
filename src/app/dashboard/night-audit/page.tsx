@@ -455,57 +455,53 @@ export default function NightAuditPage() {
   // Step 3: Reconciliation calculation matrix
   const getReconciliationData = () => {
     const dayPayments = payments.filter(p => getPaymentDateStr(p) === businessDate);
-    
-    // Supplementary charges (F&B / incidentals) logged today
-    const dayIncidentals = incidentals.filter(inc => {
-      if (!inc.created_at) return false;
-      const dateStr = inc.created_at.substring(0, 10);
-      return dateStr === businessDate && !isRoomRelatedCharge(inc.description || '');
-    });
 
     let roomCash = 0, roomUPI = 0, roomSwipe = 0, roomOthers = 0;
     let foodCash = 0, foodUPI = 0, foodSwipe = 0, foodOthers = 0;
-
-    // Split logic: allocate overall booking payment mode to F&B log first, then Room
-    const bookingIncidentals: { [bookingId: string]: number } = {};
-    dayIncidentals.forEach(inc => {
-      bookingIncidentals[inc.booking_id] = (bookingIncidentals[inc.booking_id] || 0) + Number(inc.amount);
-    });
 
     dayPayments.forEach(p => {
       const amt = Number(p.amount);
       const method = p.method;
       const bkId = p.booking_id;
-      const incAmt = bookingIncidentals[bkId] || 0;
+      
+      // Find all incidentals and payments for this booking
+      const bookingIncidentals = incidentals.filter(inc => inc.booking_id === bkId);
+      const bookingPayments = payments.filter(pm => pm.booking_id === bkId);
 
-      if (incAmt > 0) {
-        const fBAmount = Math.min(amt, incAmt);
-        const roomAmount = Math.max(0, amt - fBAmount);
-        bookingIncidentals[bkId] -= fBAmount;
+      // Sum food & water charges
+      const foodChargesTotal = bookingIncidentals
+        .filter(inc => !isRoomRelatedCharge(inc.description || ''))
+        .reduce((sum, inc) => sum + Number(inc.amount), 0);
 
-        if (method === 'Cash') {
-          foodCash += fBAmount;
-          roomCash += roomAmount;
-        } else if (method === 'UPI') {
-          foodUPI += fBAmount;
-          roomUPI += roomAmount;
-        } else if (method === 'SWIPE') {
-          foodSwipe += fBAmount;
-          roomSwipe += roomAmount;
-        } else {
-          foodOthers += fBAmount;
-          roomOthers += roomAmount;
-        }
+      // Sort booking payments chronologically
+      const sortedBkPayments = [...bookingPayments].sort((a, b) => {
+        const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return tA - tB;
+      });
+
+      const pIndex = sortedBkPayments.findIndex(pm => pm.id === p.id);
+      const prevPaid = sortedBkPayments.slice(0, pIndex).reduce((sum, pm) => sum + Number(pm.amount), 0);
+      const totalPaidToDate = prevPaid + amt;
+
+      const foodCoveredPrev = Math.min(foodChargesTotal, prevPaid);
+      const foodCoveredToDate = Math.min(foodChargesTotal, totalPaidToDate);
+
+      const foodAlloc = Math.max(0, foodCoveredToDate - foodCoveredPrev);
+      const roomAlloc = Math.max(0, amt - foodAlloc);
+
+      if (method === 'Cash') {
+        foodCash += foodAlloc;
+        roomCash += roomAlloc;
+      } else if (method === 'UPI') {
+        foodUPI += foodAlloc;
+        roomUPI += roomAlloc;
+      } else if (method === 'SWIPE') {
+        foodSwipe += foodAlloc;
+        roomSwipe += roomAlloc;
       } else {
-        if (method === 'Cash') {
-          roomCash += amt;
-        } else if (method === 'UPI') {
-          roomUPI += amt;
-        } else if (method === 'SWIPE') {
-          roomSwipe += amt;
-        } else {
-          roomOthers += amt;
-        }
+        foodOthers += foodAlloc;
+        roomOthers += roomAlloc;
       }
     });
 
