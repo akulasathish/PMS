@@ -107,6 +107,7 @@ interface CashBalance {
   date: string;
   opening_cash: number;
   closing_cash: number | null;
+  handed_over_cash?: number | null;
 }
 
 const isRoomRelatedCharge = (desc: string): boolean => {
