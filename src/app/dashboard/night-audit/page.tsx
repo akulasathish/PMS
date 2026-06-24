@@ -109,6 +109,27 @@ interface CashBalance {
   closing_cash: number | null;
 }
 
+const isRoomRelatedCharge = (desc: string): boolean => {
+  const d = (desc || '').toLowerCase();
+  return (
+    d.startsWith('daily room charge') ||
+    d.includes('early check-in') ||
+    d.includes('early checkin') ||
+    d.includes('late checkout') ||
+    d.includes('late check-out') ||
+    d.includes('past due') ||
+    d.includes('past dues') ||
+    d.includes('tariff') ||
+    d.includes('room charge') ||
+    d.includes('dues') ||
+    d.includes('due amount') ||
+    d.includes('balance transfer') ||
+    d.includes('extra guest') ||
+    d.includes('extra bed') ||
+    d.includes('upgrade')
+  );
+};
+
 export default function NightAuditPage() {
   const [property, setProperty] = useState<Property | null>(null);
   const [businessDate, setBusinessDate] = useState<string>('');
@@ -439,7 +460,7 @@ export default function NightAuditPage() {
     const dayIncidentals = incidentals.filter(inc => {
       if (!inc.created_at) return false;
       const dateStr = inc.created_at.substring(0, 10);
-      return dateStr === businessDate && !inc.description?.startsWith('Daily Room Charge');
+      return dateStr === businessDate && !isRoomRelatedCharge(inc.description || '');
     });
 
     let roomCash = 0, roomUPI = 0, roomSwipe = 0, roomOthers = 0;
