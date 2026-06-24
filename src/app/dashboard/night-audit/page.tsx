@@ -6,11 +6,9 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { 
-  checkInGuest, 
   checkOutGuest 
 } from '@/app/actions/booking';
 import { 
-  markArrivalNoShow, 
   extendBookingStay, 
   postDailyRoomCharges, 
   executeDateRollover 
@@ -28,18 +26,19 @@ import {
   LayoutDashboard,
   DoorOpen,
   Activity,
-  Users,
-  Settings,
-  Lock,
   Brush,
-  ChevronRight,
   Calendar,
   Check,
   Award,
   ChevronLeft,
   RefreshCw,
   LogOut,
-  Building
+  Plus,
+  Trash2,
+  Download,
+  Receipt,
+  PiggyBank,
+  Settings
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -74,19 +73,73 @@ interface Property {
   name: string;
 }
 
+interface PaymentLog {
+  id: string;
+  booking_id: string;
+  property_id: string;
+  amount: number;
+  method: string;
+  created_at: string;
+}
+
+interface IncidentalCharge {
+  id: string;
+  booking_id: string;
+  property_id: string;
+  amount: number;
+  description: string;
+  created_at: string;
+}
+
+interface Expense {
+  id: string;
+  property_id: string;
+  description: string;
+  category: string;
+  amount: number;
+  payment_method: string;
+  date: string;
+}
+
+interface CashBalance {
+  id: string;
+  property_id: string;
+  date: string;
+  opening_cash: number;
+  closing_cash: number | null;
+}
+
 export default function NightAuditPage() {
   const [property, setProperty] = useState<Property | null>(null);
   const [businessDate, setBusinessDate] = useState<string>('');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [payments, setPayments] = useState<PaymentLog[]>([]);
+  const [incidentals, setIncidentals] = useState<IncidentalCharge[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [dailyCashBalances, setDailyCashBalances] = useState<CashBalance[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   // Wizard state
-  const [activeStep, setActiveStep] = useState<number>(1); // 1: Operational Check, 2: Post Charges, 3: Rollover
+  const [activeStep, setActiveStep] = useState<number>(1); // 1: Operational Check, 2: Post Charges, 3: Reconciliation & Rollover
   const [isChargesPosted, setIsChargesPosted] = useState<boolean>(false);
   const [isRolloverComplete, setIsRolloverComplete] = useState<boolean>(false);
   const [rolloverSummary, setRolloverSummary] = useState<any>(null);
+
+  // Custom daily rates overrides (Step 2)
+  const [customRates, setCustomRates] = useState<{ [bookingId: string]: string }>({});
+
+  // Inline Expense inputs (Step 3)
+  const [newExpDesc, setNewExpDesc] = useState('');
+  const [newExpAmount, setNewExpAmount] = useState('');
+  const [newExpMethod, setNewExpMethod] = useState('Cash');
+  const [newExpCat, setNewExpCategory] = useState('General');
+  const [isSavingExpense, setIsSavingExpense] = useState(false);
+
+  // Opening Cash Override Input (Step 3)
+  const [openingCashOverride, setOpeningCashOverride] = useState('');
+  const [isEditingOpening, setIsOpeningEditable] = useState(false);
 
   // Selected booking for extension modal
   const [extendingBooking, setExtendingBooking] = useState<Booking | null>(null);
@@ -114,20 +167,52 @@ export default function NightAuditPage() {
       }
 
       if (activeId && activeId !== 'undefined') {
-        const [propRes, settingsRes, bookingsRes, roomsRes] = await Promise.all([
+        const [
+          propRes, 
+          settingsRes, 
+          bookingsRes, 
+          roomsRes, 
+          paymentsRes, 
+          incidentalsRes, 
+          expensesRes, 
+          balancesRes
+        ] = await Promise.all([
           supabase.from('properties').select('id, name').eq('id', activeId).single(),
           supabase.from('app_settings').select('value').eq('key', 'business_date').single(),
           supabase.from('bookings').select('*').eq('property_id', activeId),
-          supabase.from('rooms').select('*').eq('property_id', activeId)
+          supabase.from('rooms').select('*').eq('property_id', activeId),
+          supabase.from('payments').select('*').eq('property_id', activeId),
+          supabase.from('incidental_charges').select('*').eq('property_id', activeId),
+          supabase.from('expenses').select('*').eq('property_id', activeId),
+          supabase.from('daily_cash_balances').select('*').eq('property_id', activeId)
         ]);
 
         if (propRes.data) setProperty(propRes.data);
 
-        const activeDate = settingsRes.data?.value || '2026-06-21';
+        const activeDate = settingsRes.data?.value || '2026-06-24';
         setBusinessDate(activeDate);
 
         if (bookingsRes.data) setBookings(bookingsRes.data);
         if (roomsRes.data) setRooms(roomsRes.data);
+        if (paymentsRes.data) setPayments(paymentsRes.data);
+        if (incidentalsRes.data) setIncidentals(incidentalsRes.data);
+        if (expensesRes.data) setExpenses(expensesRes.data);
+        if (balancesRes.data) setDailyCashBalances(balancesRes.data);
+
+        // Pre-populate custom rates state with average daily rates
+        const ratesMap: { [id: string]: string } = {};
+        if (bookingsRes.data) {
+          bookingsRes.data.forEach(bk => {
+            if (bk.status === 'Checked In') {
+              const start = new Date(bk.check_in);
+              const end = new Date(bk.check_out);
+              const nights = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+              const dailyRate = Number(bk.amount) / nights;
+              ratesMap[bk.id] = dailyRate.toFixed(2);
+            }
+          });
+        }
+        setCustomRates(ratesMap);
       }
     } catch (err) {
       console.error("Night Audit Load Error:", err);
@@ -145,16 +230,17 @@ export default function NightAuditPage() {
     router.refresh();
   };
 
-  // Filter lists based on business date
-  const pendingArrivals = bookings.filter(b => 
-    b.check_in === businessDate && b.status === 'Confirmed'
-  );
+  const getPaymentDateStr = (p: any) => {
+    if (!p.created_at) return '';
+    return p.created_at.substring(0, 10);
+  };
 
+  // Filter lists based on business date (Only Departures are critical operational items for Step 1)
   const pendingDepartures = bookings.filter(b => 
     b.check_out === businessDate && b.status === 'Checked In'
   );
 
-  // Helper to get next business date safely without timezone offset leaks
+  // Helper to get next business date safely
   const getNextBusinessDateStr = (dateStr: string) => {
     if (!dateStr) return '';
     const parts = dateStr.split('-');
@@ -171,39 +257,10 @@ export default function NightAuditPage() {
 
   const nextBusinessDate = getNextBusinessDateStr(businessDate);
 
-  const activeStayovers = bookings.filter(b => 
-    b.status === 'Checked In' && 
-    b.check_out !== businessDate &&
-    (b.check_out ? b.check_out.substring(0, 10) : '') !== nextBusinessDate
-  );
-
   // All guests currently checked in
   const checkedInBookings = bookings.filter(b => b.status === 'Checked In');
 
-  // Step 1 Actions
-  const handleCheckIn = async (bookingId: string) => {
-    setActionLoading(bookingId);
-    const res = await checkInGuest(bookingId);
-    if (res.success) {
-      await loadNightAuditData();
-    } else {
-      alert(res.error || "Check-in failed");
-    }
-    setActionLoading(null);
-  };
-
-  const handleNoShow = async (bookingId: string) => {
-    if (!confirm("Are you sure you want to mark this booking as No-Show/Cancelled?")) return;
-    setActionLoading(bookingId);
-    const res = await markArrivalNoShow(bookingId);
-    if (res.success) {
-      await loadNightAuditData();
-    } else {
-      alert(res.error || "Failed to process No-Show");
-    }
-    setActionLoading(null);
-  };
-
+  // Step 1 Actions (Departures resolution)
   const handleCheckOut = async (bookingId: string, roomId: string) => {
     setActionLoading(bookingId);
     const res = await checkOutGuest(bookingId, roomId);
@@ -217,7 +274,6 @@ export default function NightAuditPage() {
 
   const openExtensionModal = (booking: Booking) => {
     setExtendingBooking(booking);
-    // Default next day
     const nextDay = new Date(booking.check_out);
     nextDay.setDate(nextDay.getDate() + 1);
     setExtensionDate(nextDay.toISOString().substring(0, 10));
@@ -236,46 +292,431 @@ export default function NightAuditPage() {
     setActionLoading(null);
   };
 
-  // Step 2 Actions
+  // Step 2 Action: Atomic Batch Posting
   const handlePostCharges = async () => {
     if (!property) return;
     setActionLoading('post-charges');
     
-    // Prepare list of bookings to charge with calculated daily rate
-    const chargesList = activeStayovers.map(b => {
-      const start = new Date(b.check_in);
-      const end = new Date(b.check_out);
-      const nights = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
-      const dailyRate = Number(b.amount) / nights;
-      
-      return {
-        id: b.id,
-        amount: parseFloat(dailyRate.toFixed(2)),
-        guestName: b.guest_name
-      };
-    });
+    // Prepare list of bookings to charge with user's precise customized rate
+    const chargesList = checkedInBookings
+      .filter(b => b.check_out !== businessDate && (b.check_out ? b.check_out.substring(0, 10) : '') !== nextBusinessDate)
+      .map(b => {
+        const amtStr = customRates[b.id] || "0.00";
+        return {
+          id: b.id,
+          amount: parseFloat(parseFloat(amtStr).toFixed(2)),
+          guestName: b.guest_name
+        };
+      });
 
     const res = await postDailyRoomCharges(property.id, businessDate, chargesList);
     if (res.success) {
       setIsChargesPosted(true);
-      setActiveStep(3); // Advance to rollover
+      setActiveStep(3); // Advance to final reconciliation review board
     } else {
       alert(res.error || "Charges posting failed");
     }
     setActionLoading(null);
   };
 
-  // Step 3 Actions
+  // Inline Expense Handling
+  const handleAddExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!property?.id) return;
+    const amountVal = parseFloat(newExpAmount);
+    if (isNaN(amountVal) || amountVal <= 0 || !newExpDesc.trim()) {
+      alert("Please enter a valid description and amount.");
+      return;
+    }
+    setIsSavingExpense(true);
+    try {
+      const { error } = await supabase
+        .from('expenses')
+        .insert({
+          property_id: property.id,
+          description: newExpDesc.trim(),
+          category: newExpCat,
+          amount: amountVal,
+          payment_method: newExpMethod,
+          date: businessDate
+        });
+      if (error) {
+        alert("Error saving expense: " + error.message);
+      } else {
+        setNewExpDesc('');
+        setNewExpAmount('');
+        await loadNightAuditData();
+      }
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setIsSavingExpense(false);
+    }
+  };
+
+  const handleDeleteExpense = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this expense?")) return;
+    try {
+      const { error } = await supabase
+        .from('expenses')
+        .delete()
+        .eq('id', id);
+      if (error) {
+        alert("Error deleting expense: " + error.message);
+      } else {
+        await loadNightAuditData();
+      }
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    }
+  };
+
+  // Opening Cash Balances (Yesterday Cash)
+  const getYesterdayCash = () => {
+    if (openingCashOverride) return parseFloat(openingCashOverride) || 0;
+
+    const savedCurrent = dailyCashBalances.find(b => b.date === businessDate);
+    if (savedCurrent && savedCurrent.opening_cash !== undefined) {
+      return Number(savedCurrent.opening_cash);
+    }
+
+    const pastBalances = dailyCashBalances
+      .filter(b => b.date < businessDate && b.closing_cash !== null && b.closing_cash !== undefined)
+      .sort((a, b) => b.date.localeCompare(a.date));
+
+    if (pastBalances.length > 0) {
+      return Number(pastBalances[0].closing_cash);
+    }
+
+    return 500; // Default fallback to match sample mockup
+  };
+
+  const handleSaveOpeningCash = async () => {
+    if (!property?.id) return;
+    const amountVal = parseFloat(openingCashOverride);
+    if (isNaN(amountVal) || amountVal < 0) {
+      alert("Please enter a valid cash balance.");
+      return;
+    }
+    setIsSavingExpense(true);
+    try {
+      const record = dailyCashBalances.find(b => b.date === businessDate);
+      let error;
+      if (record) {
+        const res = await supabase
+          .from('daily_cash_balances')
+          .update({ opening_cash: amountVal })
+          .eq('id', record.id);
+        error = res.error;
+      } else {
+        const res = await supabase
+          .from('daily_cash_balances')
+          .insert({
+            property_id: property.id,
+            date: businessDate,
+            opening_cash: amountVal
+          });
+        error = res.error;
+      }
+      if (error) {
+        alert("Error saving opening cash: " + error.message);
+      } else {
+        setIsOpeningEditable(false);
+        await loadNightAuditData();
+      }
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setIsSavingExpense(false);
+    }
+  };
+
+  // Step 3: Reconciliation calculation matrix
+  const getReconciliationData = () => {
+    const dayPayments = payments.filter(p => getPaymentDateStr(p) === businessDate);
+    
+    // Supplementary charges (F&B / incidentals) logged today
+    const dayIncidentals = incidentals.filter(inc => {
+      if (!inc.created_at) return false;
+      const dateStr = inc.created_at.substring(0, 10);
+      return dateStr === businessDate && !inc.description?.startsWith('Daily Room Charge');
+    });
+
+    let roomCash = 0, roomUPI = 0, roomSwipe = 0, roomOthers = 0;
+    let foodCash = 0, foodUPI = 0, foodSwipe = 0, foodOthers = 0;
+
+    // Split logic: allocate overall booking payment mode to F&B log first, then Room
+    const bookingIncidentals: { [bookingId: string]: number } = {};
+    dayIncidentals.forEach(inc => {
+      bookingIncidentals[inc.booking_id] = (bookingIncidentals[inc.booking_id] || 0) + Number(inc.amount);
+    });
+
+    dayPayments.forEach(p => {
+      const amt = Number(p.amount);
+      const method = p.method;
+      const bkId = p.booking_id;
+      const incAmt = bookingIncidentals[bkId] || 0;
+
+      if (incAmt > 0) {
+        const fBAmount = Math.min(amt, incAmt);
+        const roomAmount = Math.max(0, amt - fBAmount);
+        bookingIncidentals[bkId] -= fBAmount;
+
+        if (method === 'Cash') {
+          foodCash += fBAmount;
+          roomCash += roomAmount;
+        } else if (method === 'UPI') {
+          foodUPI += fBAmount;
+          roomUPI += roomAmount;
+        } else if (method === 'SWIPE') {
+          foodSwipe += fBAmount;
+          roomSwipe += roomAmount;
+        } else {
+          foodOthers += fBAmount;
+          roomOthers += roomAmount;
+        }
+      } else {
+        if (method === 'Cash') {
+          roomCash += amt;
+        } else if (method === 'UPI') {
+          roomUPI += amt;
+        } else if (method === 'SWIPE') {
+          roomSwipe += amt;
+        } else {
+          roomOthers += amt;
+        }
+      }
+    });
+
+    return {
+      room: { Cash: roomCash, UPI: roomUPI, SWIPE: roomSwipe, Others: roomOthers },
+      food: { Cash: foodCash, UPI: foodUPI, SWIPE: foodSwipe, Others: foodOthers },
+      total: {
+        Cash: roomCash + foodCash,
+        UPI: roomUPI + foodUPI,
+        SWIPE: roomSwipe + foodSwipe,
+        Others: roomOthers + foodOthers
+      }
+    };
+  };
+
+  const reconData = getReconciliationData();
+  const dayExpenses = expenses.filter(e => e.date === businessDate);
+  const totalExpenses = dayExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+  const cashExpenses = dayExpenses.filter(e => e.payment_method === 'Cash').reduce((sum, e) => sum + Number(e.amount), 0);
+
+  const openingCash = getYesterdayCash();
+  const todayCashCollected = reconData.total.Cash;
+  const cashInCounter = openingCash + todayCashCollected - cashExpenses;
+  const totalSaleAmount = reconData.total.Cash + reconData.total.UPI + reconData.total.SWIPE + reconData.total.Others;
+
+  // Step 3: PDF download action
+  const handleDownloadPDF = async () => {
+    try {
+      const { jsPDF } = await import('jspdf');
+      const { default: autoTable } = await import('jspdf-autotable');
+
+      const doc = new jsPDF();
+      
+      // Luxury dark header block
+      doc.setFillColor(10, 10, 12); // #0a0a0c
+      doc.rect(0, 0, 210, 36, 'F');
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(15);
+      doc.setFont("helvetica", "bold");
+      doc.text("STAYSYNC PMS - DAILY NIGHT AUDIT RECONCILIATION", 15, 14);
+      
+      doc.setFontSize(8.5);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(156, 163, 175); // gray-400
+      doc.text(`PROPERTY: ${property?.name || 'StaySync Boutique Property'}`, 15, 22);
+      doc.text(`BUSINESS DATE: ${businessDate}`, 15, 28);
+      doc.text(`GENERATED ON: ${new Date().toLocaleString()}`, 135, 28);
+
+      // Section 1: Categories breakdown table
+      let currentY = 46;
+      doc.setTextColor(10, 10, 12);
+      doc.setFontSize(10.5);
+      doc.setFont("helvetica", "bold");
+      doc.text("1. SALES REVENUE BREAKDOWN CATEGORIES", 15, currentY);
+
+      const salesHeaders = ["Category", "Cash", "PhonePe UPI", "Swipe Card", "Others (Custom)", "Total"];
+      const salesRows = [
+        [
+          "Room Tariff", 
+          `Rs. ${reconData.room.Cash.toFixed(2)}`, 
+          `Rs. ${reconData.room.UPI.toFixed(2)}`, 
+          `Rs. ${reconData.room.SWIPE.toFixed(2)}`, 
+          `Rs. ${reconData.room.Others.toFixed(2)}`,
+          `Rs. ${(reconData.room.Cash + reconData.room.UPI + reconData.room.SWIPE + reconData.room.Others).toFixed(2)}`
+        ],
+        [
+          "Food & Water", 
+          `Rs. ${reconData.food.Cash.toFixed(2)}`, 
+          `Rs. ${reconData.food.UPI.toFixed(2)}`, 
+          `Rs. ${reconData.food.SWIPE.toFixed(2)}`, 
+          `Rs. ${reconData.food.Others.toFixed(2)}`,
+          `Rs. ${(reconData.food.Cash + reconData.food.UPI + reconData.food.SWIPE + reconData.food.Others).toFixed(2)}`
+        ],
+        [
+          "TOTAL", 
+          `Rs. ${reconData.total.Cash.toFixed(2)}`, 
+          `Rs. ${reconData.total.UPI.toFixed(2)}`, 
+          `Rs. ${reconData.total.SWIPE.toFixed(2)}`, 
+          `Rs. ${reconData.total.Others.toFixed(2)}`,
+          `Rs. ${totalSaleAmount.toFixed(2)}`
+        ]
+      ];
+
+      autoTable(doc, {
+        startY: currentY + 3,
+        head: [salesHeaders],
+        body: salesRows,
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 3, font: 'helvetica' },
+        headStyles: { fillColor: [71, 85, 105], textColor: [255, 255, 255], fontStyle: 'bold' },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 35 },
+          1: { halign: 'right' },
+          2: { halign: 'right' },
+          3: { halign: 'right' },
+          4: { halign: 'right' },
+          5: { halign: 'right', fontStyle: 'bold' }
+        }
+      });
+
+      // Section 2: Expenses
+      currentY = (doc as any).lastAutoTable.finalY + 10;
+      doc.setFontSize(10.5);
+      doc.setFont("helvetica", "bold");
+      doc.text("2. TOTAL EXPENSES REGISTER", 15, currentY);
+
+      const expRows = dayExpenses.map((ex, i) => [
+        i + 1,
+        ex.description,
+        ex.category,
+        ex.payment_method,
+        `Rs. ${ex.amount.toFixed(2)}`
+      ]);
+
+      if (expRows.length === 0) {
+        expRows.push(["-", "No localized expenses logged today.", "-", "-", "Rs. 0.00"]);
+      } else {
+        expRows.push(["", "TOTAL", "", "", `Rs. ${totalExpenses.toFixed(2)}`]);
+      }
+
+      autoTable(doc, {
+        startY: currentY + 3,
+        head: [["S.No", "Description / Vendor", "Category", "Payment Mode", "Amount"]],
+        body: expRows,
+        theme: 'striped',
+        styles: { fontSize: 8, cellPadding: 3, font: 'helvetica' },
+        headStyles: { fillColor: [115, 115, 115], textColor: [255, 255, 255], fontStyle: 'bold' },
+        columnStyles: {
+          0: { cellWidth: 15, halign: 'center' },
+          1: { cellWidth: 70, fontStyle: 'bold' },
+          4: { halign: 'right', fontStyle: 'bold' }
+        }
+      });
+
+      // Section 3 & 4: Dual columnar summary
+      currentY = (doc as any).lastAutoTable.finalY + 10;
+      doc.setFontSize(10.5);
+      doc.setFont("helvetica", "bold");
+      doc.text("3. CASH COUNTER RECONCILIATION", 15, currentY);
+      doc.text("4. TRUE DAILY SALES TOTAL", 110, currentY);
+
+      const reconciliationFormula = [
+        ["Yesterday Cash Balance (Opening)", `+ Rs. ${openingCash.toFixed(2)}`],
+        ["Today Cash Received (Tariff + Food)", `+ Rs. ${todayCashCollected.toFixed(2)}`],
+        ["Today Cash Expenses (Subtracted)", `- Rs. ${cashExpenses.toFixed(2)}`],
+        ["Total Cash In Counter Drawer", `Rs. ${cashInCounter.toFixed(2)}`]
+      ];
+
+      autoTable(doc, {
+        startY: currentY + 3,
+        body: reconciliationFormula,
+        theme: 'plain',
+        styles: { fontSize: 8, cellPadding: 3.5, font: 'helvetica' },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 60 },
+          1: { halign: 'right', fontStyle: 'bold', cellWidth: 30 }
+        },
+        margin: { left: 15 }
+      });
+
+      const paymentSalesSummary = [
+        ["Cash Collections", `Rs. ${reconData.total.Cash.toFixed(2)}`],
+        ["PhonePe UPI Collections", `Rs. ${reconData.total.UPI.toFixed(2)}`],
+        ["Swipe Card Collections", `Rs. ${reconData.total.SWIPE.toFixed(2)}`],
+        ["Others (Custom Payment Modes)", `Rs. ${reconData.total.Others.toFixed(2)}`],
+        ["TOTAL SALE FOR THE DAY", `Rs. ${totalSaleAmount.toFixed(2)}`]
+      ];
+
+      autoTable(doc, {
+        startY: currentY + 3,
+        body: paymentSalesSummary,
+        theme: 'plain',
+        styles: { fontSize: 8, cellPadding: 3.5, font: 'helvetica' },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 60 },
+          1: { halign: 'right', fontStyle: 'bold', cellWidth: 30 }
+        },
+        margin: { left: 110 }
+      });
+
+      // Verification Footers
+      const lastY = (doc as any).lastAutoTable.finalY + 15;
+      doc.setDrawColor(226, 232, 240);
+      doc.line(15, lastY, 195, lastY);
+      doc.setFontSize(7.5);
+      doc.setFont("helvetica", "italic");
+      doc.setTextColor(148, 163, 184);
+      doc.text("* Reconciled automatically under database-level atomicity. Signature marks required for cashier shifts.", 15, lastY + 4);
+
+      doc.save(`Night_Audit_Report_${businessDate}.pdf`);
+    } catch (err) {
+      console.error("PDF Generate error:", err);
+      alert("Failed to build PDF. Please check console.");
+    }
+  };
+
+  // Step 3 Action: Finalize Rollover
   const handleExecuteRollover = async () => {
     if (!property) return;
     setActionLoading('rollover');
+    
+    // First save daily cash snapshot inside daily_cash_balances
+    try {
+      const record = dailyCashBalances.find(b => b.date === businessDate);
+      if (record) {
+        await supabase
+          .from('daily_cash_balances')
+          .update({ closing_cash: cashInCounter })
+          .eq('id', record.id);
+      } else {
+        await supabase
+          .from('daily_cash_balances')
+          .insert({
+            property_id: property.id,
+            date: businessDate,
+            opening_cash: openingCash,
+            closing_cash: cashInCounter
+          });
+      }
+    } catch (e) {
+      console.error("Failed to save closing balance snapshot:", e);
+    }
+
+    // Advance business date
     const res = await executeDateRollover(property.id, businessDate);
     if (res.success) {
       setRolloverSummary({
         closedDate: businessDate,
         openedDate: res.nextBusinessDate,
         roomsMarkedDirty: res.roomsMarkedDirty,
-        bookingsChargedCount: activeStayovers.length,
+        bookingsChargedCount: checkedInBookings.length,
         propertyName: property.name
       });
       setIsRolloverComplete(true);
@@ -285,7 +726,7 @@ export default function NightAuditPage() {
     setActionLoading(null);
   };
 
-  const isStep1Clear = pendingArrivals.length === 0 && pendingDepartures.length === 0;
+  const isStep1Clear = pendingDepartures.length === 0;
 
   if (isLoading) {
     return (
@@ -395,23 +836,20 @@ export default function NightAuditPage() {
           {!isRolloverComplete && (
             <div className="grid grid-cols-3 gap-4 bg-zinc-950/40 p-1.5 rounded-2xl border border-white/[0.04]">
               {[
-                { step: 1, label: "Operational Check", desc: "Resolve Arrivals/Departures" },
+                { step: 1, label: "Operational Check", desc: "Verify Departures" },
                 { step: 2, label: "Posting Charges", desc: "Post room rates to folios" },
-                { step: 3, label: "Close & Rollover", desc: "Advance Date & housekeeping" },
+                { step: 3, label: "Rollover & Reconciliation", desc: "Financial summary & Roll" },
               ].map((s) => {
                 const isActive = activeStep === s.step;
                 const isCompleted = activeStep > s.step;
                 return (
                   <button
                     key={s.step}
-                    disabled={s.step > activeStep && !isCompleted}
                     onClick={() => setActiveStep(s.step)}
                     className={`flex items-center gap-3.5 p-3 rounded-xl text-left transition-all relative overflow-hidden ${
                       isActive 
                         ? 'bg-zinc-900/80 border border-white/[0.08] text-white shadow-[0_0_15px_rgba(99,102,241,0.05)]' 
-                        : isCompleted
-                          ? 'text-emerald-400 hover:bg-white/[0.02]'
-                          : 'text-zinc-600 cursor-not-allowed'
+                        : 'text-zinc-400 hover:text-white hover:bg-white/[0.02]'
                     }`}
                   >
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs border transition-colors ${
@@ -484,7 +922,7 @@ export default function NightAuditPage() {
                   </div>
                 </div>
 
-                {/* FINISH CTA */}
+                {/* Return CTA */}
                 <button
                   onClick={() => {
                     router.push('/dashboard');
@@ -516,7 +954,7 @@ export default function NightAuditPage() {
                     </div>
                     <div className="flex-1">
                       <h4 className="text-[14px] font-bold text-white">Operational Checklist Clean</h4>
-                      <p className="text-xs text-zinc-500 mt-0.5">All departures and arrivals for today ({businessDate}) are resolved. No actions needed.</p>
+                      <p className="text-xs text-zinc-500 mt-0.5">All scheduled guest departures for today ({businessDate}) are fully checked out or extended. No pending blocks.</p>
                     </div>
                     <button
                       onClick={() => setActiveStep(2)}
@@ -532,127 +970,66 @@ export default function NightAuditPage() {
                       <AlertTriangle size={20} />
                     </div>
                     <div className="flex-1">
-                      <h4 className="text-[14px] font-bold text-white">Unresolved Day Actions Present</h4>
-                      <p className="text-xs text-zinc-500 mt-0.5">You have departures that must check out, or arrivals that must check in or be marked as no-shows before you can run rollover.</p>
+                      <h4 className="text-[14px] font-bold text-white">Pending Departures Must Be Resolved</h4>
+                      <p className="text-xs text-zinc-500 mt-0.5">You have active guests scheduled to depart today who haven't checked out. Please check them out or extend their stay below.</p>
                     </div>
                   </div>
                 )}
 
-                {/* LISTS SECTIONS */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  
-                  {/* PENDING ARRIVALS LIST */}
-                  <div className="bg-zinc-900/40 border border-white/[0.06] rounded-2.5xl p-6 backdrop-blur-sm space-y-4">
-                    <div className="flex justify-between items-center pb-3 border-b border-white/[0.04]">
-                      <div>
-                        <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                          <Users size={16} className="text-indigo-400" />
-                          Pending Arrivals
-                        </h4>
-                        <p className="text-[10px] text-zinc-600 mt-0.5">Check-in scheduled for {businessDate}</p>
-                      </div>
-                      <span className="text-[10px] font-bold bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-md">
-                        {pendingArrivals.length} Left
-                      </span>
+                {/* PENDING DEPARTURES REGISTER */}
+                <div className="bg-zinc-900/40 border border-white/[0.06] rounded-2.5xl p-6 backdrop-blur-sm space-y-4 max-w-2xl mx-auto">
+                  <div className="flex justify-between items-center pb-3 border-b border-white/[0.04]">
+                    <div>
+                      <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                        <DoorOpen size={16} className="text-amber-400" />
+                        Pending Departures
+                      </h4>
+                      <p className="text-[10px] text-zinc-600 mt-0.5">Check-out scheduled for {businessDate}</p>
                     </div>
-
-                    {pendingArrivals.length === 0 ? (
-                      <div className="py-10 text-center text-zinc-600 text-xs italic flex flex-col items-center gap-2">
-                        <CheckCircle2 size={18} className="text-emerald-500/40" />
-                        No pending arrivals left.
-                      </div>
-                    ) : (
-                      <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
-                        {pendingArrivals.map((bk) => (
-                          <div 
-                            key={bk.id}
-                            className="p-4 bg-zinc-950/40 border border-white/[0.04] rounded-xl hover:border-white/[0.08] transition-all space-y-3"
-                          >
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <h5 className="text-[13px] font-bold text-zinc-200">{bk.guest_name}</h5>
-                                <p className="text-[10px] text-zinc-600 mt-0.5">Room: {rooms.find(r => r.id === bk.room_id)?.room_number || 'N/A'}</p>
-                              </div>
-                              <span className="text-[11px] font-bold text-white">${bk.amount}</span>
-                            </div>
-                            <div className="flex items-center gap-2 pt-1">
-                              <button
-                                disabled={actionLoading !== null}
-                                onClick={() => handleCheckIn(bk.id)}
-                                className="flex-1 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 border border-indigo-500/20 rounded-lg py-2 text-[11px] font-bold transition-all disabled:opacity-50"
-                              >
-                                {actionLoading === bk.id ? <Loader2 size={12} className="animate-spin mx-auto" /> : 'Check In'}
-                              </button>
-                              <button
-                                disabled={actionLoading !== null}
-                                onClick={() => handleNoShow(bk.id)}
-                                className="flex-1 bg-zinc-800/40 hover:bg-zinc-800/80 text-zinc-400 border border-white/5 rounded-lg py-2 text-[11px] font-bold transition-all disabled:opacity-50"
-                              >
-                                Mark No-Show
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    <span className="text-[10px] font-bold bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-md">
+                      {pendingDepartures.length} Left
+                    </span>
                   </div>
 
-                  {/* PENDING DEPARTURES LIST */}
-                  <div className="bg-zinc-900/40 border border-white/[0.06] rounded-2.5xl p-6 backdrop-blur-sm space-y-4">
-                    <div className="flex justify-between items-center pb-3 border-b border-white/[0.04]">
-                      <div>
-                        <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                          <DoorOpen size={16} className="text-amber-400" />
-                          Pending Departures
-                        </h4>
-                        <p className="text-[10px] text-zinc-600 mt-0.5">Check-out scheduled for {businessDate}</p>
-                      </div>
-                      <span className="text-[10px] font-bold bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-md">
-                        {pendingDepartures.length} Left
-                      </span>
+                  {pendingDepartures.length === 0 ? (
+                    <div className="py-14 text-center text-zinc-600 text-xs italic flex flex-col items-center gap-2">
+                      <CheckCircle2 size={24} className="text-emerald-500/40" />
+                      All departures cleared.
                     </div>
-
-                    {pendingDepartures.length === 0 ? (
-                      <div className="py-10 text-center text-zinc-600 text-xs italic flex flex-col items-center gap-2">
-                        <CheckCircle2 size={18} className="text-emerald-500/40" />
-                        No pending departures left.
-                      </div>
-                    ) : (
-                      <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
-                        {pendingDepartures.map((bk) => (
-                          <div 
-                            key={bk.id}
-                            className="p-4 bg-zinc-950/40 border border-white/[0.04] rounded-xl hover:border-white/[0.08] transition-all space-y-3"
-                          >
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <h5 className="text-[13px] font-bold text-zinc-200">{bk.guest_name}</h5>
-                                <p className="text-[10px] text-zinc-600 mt-0.5">Room: {rooms.find(r => r.id === bk.room_id)?.room_number || 'N/A'}</p>
-                              </div>
-                              <span className="text-[11px] font-bold text-white">${bk.amount}</span>
+                  ) : (
+                    <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
+                      {pendingDepartures.map((bk) => (
+                        <div 
+                          key={bk.id}
+                          className="p-4 bg-zinc-950/40 border border-white/[0.04] rounded-xl hover:border-white/[0.08] transition-all space-y-3"
+                        >
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h5 className="text-[13px] font-bold text-zinc-200">{bk.guest_name}</h5>
+                              <p className="text-[10px] text-zinc-600 mt-0.5">Room: {rooms.find(r => r.id === bk.room_id)?.room_number || 'N/A'}</p>
                             </div>
-                            <div className="flex items-center gap-2 pt-1">
-                              <button
-                                disabled={actionLoading !== null}
-                                onClick={() => handleCheckOut(bk.id, bk.room_id)}
-                                className="flex-1 bg-amber-600/10 hover:bg-amber-600/20 text-amber-400 border border-amber-500/20 rounded-lg py-2 text-[11px] font-bold transition-all disabled:opacity-50"
-                              >
-                                {actionLoading === bk.id ? <Loader2 size={12} className="animate-spin mx-auto" /> : 'Check Out'}
-                              </button>
-                              <button
-                                disabled={actionLoading !== null}
-                                onClick={() => openExtensionModal(bk)}
-                                className="flex-1 bg-zinc-800/40 hover:bg-zinc-800/80 text-zinc-400 border border-white/5 rounded-lg py-2 text-[11px] font-bold transition-all disabled:opacity-50"
-                              >
-                                Extend Stay
-                              </button>
-                            </div>
+                            <span className="text-[11px] font-bold text-white">Rs. {bk.amount}</span>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
+                          <div className="flex items-center gap-2 pt-1">
+                            <button
+                              disabled={actionLoading !== null}
+                              onClick={() => handleCheckOut(bk.id, bk.room_id)}
+                              className="flex-1 bg-amber-600/10 hover:bg-amber-600/20 text-amber-400 border border-amber-500/20 rounded-lg py-2 text-[11px] font-bold transition-all disabled:opacity-50"
+                            >
+                              {actionLoading === bk.id ? <Loader2 size={12} className="animate-spin mx-auto" /> : 'Check Out Guest'}
+                            </button>
+                            <button
+                              disabled={actionLoading !== null}
+                              onClick={() => openExtensionModal(bk)}
+                              className="flex-1 bg-zinc-800/40 hover:bg-zinc-800/80 text-zinc-400 border border-white/5 rounded-lg py-2 text-[11px] font-bold transition-all disabled:opacity-50"
+                            >
+                              Extend Stay
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
               </motion.div>
@@ -672,44 +1049,56 @@ export default function NightAuditPage() {
                   <div>
                     <h3 className="text-md font-bold text-white flex items-center gap-2">
                       <DollarSign size={18} className="text-emerald-400" />
-                      Auto-Posting Daily Folio Room Charges
+                      Auto-Posting Daily Folio Room Charges (Adjustable Dynamic Rates)
                     </h3>
                     <p className="text-xs text-zinc-500 mt-1 leading-relaxed">
-                      Below are the active stayover guests currently in <strong className="text-zinc-400 font-semibold">Checked In</strong> status who will have their room rate posted to their folios for the date <strong className="text-indigo-400 font-semibold">{businessDate}</strong>. Guests checking out today are excluded from these charges.
+                      Below are the active stayovers currently checked in. The system pre-calculates their average rate, but you can **manually edit any rate input field** below to post the precise room tariff agreed for this specific date (<strong className="text-indigo-400 font-semibold">{businessDate}</strong>).
                     </p>
                   </div>
 
-                  {/* CHARGES TABLE */}
+                  {/* CHARGES TABLE WITH EDITABLE INPUTS */}
                   <div className="border border-white/[0.04] rounded-xl overflow-hidden bg-black/20">
                     <div className="grid grid-cols-12 gap-4 text-[10px] text-zinc-500 uppercase tracking-[0.15em] font-bold p-4 bg-zinc-950/40 border-b border-white/[0.04]">
                       <div className="col-span-4">Guest</div>
-                      <div className="col-span-2">Room</div>
-                      <div className="col-span-2">Duration</div>
-                      <div className="col-span-2">Total Reservation</div>
-                      <div className="col-span-2 text-right">Daily Post Charge</div>
+                      <div className="col-span-3">Room</div>
+                      <div className="col-span-3">Reservation Total</div>
+                      <div className="col-span-2 text-right">Daily Post Rate (Editable)</div>
                     </div>
 
-                    {activeStayovers.length === 0 ? (
+                    {checkedInBookings.filter(b => b.check_out !== businessDate && (b.check_out ? b.check_out.substring(0, 10) : '') !== nextBusinessDate).length === 0 ? (
                       <div className="py-14 text-center text-zinc-600 text-xs italic">
                         No active stayovers remaining today. You can proceed directly to rollover.
                       </div>
                     ) : (
                       <div className="divide-y divide-white/[0.03]">
-                        {activeStayovers.map((bk) => {
-                          const start = new Date(bk.check_in);
-                          const end = new Date(bk.check_out);
-                          const nights = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
-                          const dailyRate = Number(bk.amount) / nights;
-                          return (
-                             <div key={bk.id} className="grid grid-cols-12 gap-4 items-center p-4 text-xs">
-                              <div className="col-span-4 font-semibold text-zinc-200">{bk.guest_name}</div>
-                              <div className="col-span-2 text-zinc-400">Room {rooms.find(r => r.id === bk.room_id)?.room_number || 'N/A'}</div>
-                              <div className="col-span-2 text-zinc-500">{nights} Nights ({bk.check_in} - {bk.check_out})</div>
-                              <div className="col-span-2 text-zinc-500">${bk.amount}</div>
-                              <div className="col-span-2 text-right font-bold text-emerald-400">${dailyRate.toFixed(2)}</div>
-                            </div>
-                          );
-                        })}
+                        {checkedInBookings
+                          .filter(b => b.check_out !== businessDate && (b.check_out ? b.check_out.substring(0, 10) : '') !== nextBusinessDate)
+                          .map((bk) => {
+                            return (
+                               <div key={bk.id} className="grid grid-cols-12 gap-4 items-center p-4 text-xs">
+                                <div className="col-span-4 font-semibold text-zinc-200">{bk.guest_name}</div>
+                                <div className="col-span-3 text-zinc-400">Room {rooms.find(r => r.id === bk.room_id)?.room_number || 'N/A'} ({rooms.find(r => r.id === bk.room_id)?.type || 'N/A'})</div>
+                                <div className="col-span-3 text-zinc-500">Rs. {bk.amount} ({bk.check_in} to {bk.check_out})</div>
+                                <div className="col-span-2 text-right">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <span className="text-zinc-600 text-[10px]">Rs.</span>
+                                    <input
+                                      type="number"
+                                      value={customRates[bk.id] || ''}
+                                      onChange={(e) => {
+                                        setCustomRates({
+                                          ...customRates,
+                                          [bk.id]: e.target.value
+                                        });
+                                      }}
+                                      className="w-24 bg-zinc-950 border border-white/[0.08] rounded-lg px-2 py-1 text-right text-emerald-400 font-bold focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20"
+                                      placeholder="0.00"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                       </div>
                     )}
                   </div>
@@ -721,7 +1110,7 @@ export default function NightAuditPage() {
                       className="flex items-center gap-2 text-zinc-500 hover:text-white font-bold text-xs transition-colors"
                     >
                       <ChevronLeft size={14} />
-                      Back to Operational Check
+                      Back to Departures Check
                     </button>
 
                     <button
@@ -730,7 +1119,7 @@ export default function NightAuditPage() {
                       className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-600/40 text-white px-6 py-3 rounded-xl font-bold text-xs flex items-center gap-2 transition-all active:scale-[0.98] shadow-lg shadow-emerald-950/20"
                     >
                       {actionLoading === 'post-charges' ? <Loader2 size={14} className="animate-spin" /> : <DollarSign size={14} />}
-                      Post Charges & Advance to Rollover
+                      Post Charges & Advance to Reconciliation
                     </button>
                   </div>
 
@@ -739,57 +1128,300 @@ export default function NightAuditPage() {
 
             ) : (
               
-              /* STEP 3: CLOSE & ROLLOVER */
+              /* STEP 3: RECONCILIATION & ROLLOVER (THE CALCULATIONS BOARD) */
               <motion.div
                 key="step3"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="space-y-6 max-w-2xl mx-auto"
+                className="space-y-8"
               >
-                <div className="bg-zinc-900/40 border border-white/[0.06] rounded-2.5xl p-8 backdrop-blur-sm space-y-6">
-                  
-                  <div className="text-center space-y-2">
-                    <div className="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mx-auto mb-3">
-                      <Sun size={24} className="animate-pulse" />
+                {/* Visual spec layout header */}
+                <div className="bg-zinc-900/40 border border-white/[0.06] rounded-2.5xl p-7 backdrop-blur-sm space-y-6">
+                  <div className="flex justify-between items-start pb-4 border-b border-white/[0.04]">
+                    <div>
+                      <h3 className="text-[15px] font-bold text-white flex items-center gap-2">
+                        <Receipt size={18} className="text-violet-400" />
+                        Daily Financial Audit & Counter Reconciliation
+                      </h3>
+                      <p className="text-xs text-zinc-500 mt-1 leading-relaxed">
+                        Verify the calculated sales and expenses balance below against your cashier drawer before executing the rollover.
+                      </p>
                     </div>
-                    <h3 className="text-[16px] font-bold text-white">Execute Day Rollover & Sync</h3>
-                    <p className="text-xs text-zinc-500 max-w-md mx-auto leading-relaxed">
-                      You are about to close operational date <strong className="text-zinc-400 font-semibold">{businessDate}</strong> and officially rollover the property's PMS.
-                    </p>
+                    <button
+                      onClick={handleDownloadPDF}
+                      className="bg-white/5 hover:bg-white/10 text-white border border-white/[0.08] px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all"
+                    >
+                      <Download size={14} />
+                      Download PDF Report
+                    </button>
                   </div>
 
-                  {/* ACTION LIST HIGHLIGHTS */}
-                  <div className="bg-zinc-950/50 border border-white/[0.04] rounded-2xl p-5 space-y-4 text-xs">
-                    <span className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest block mb-1">What Rollover Executing</span>
+                  {/* 1. ROOM TARIFF & F&B BREAKDOWN (REAL TABLE WITH GRIDLINES) */}
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider pl-1">1. Sales breakdown category matrix</h4>
+                    <div className="overflow-x-auto rounded-xl border border-zinc-800">
+                      <table className="w-full border-collapse border border-zinc-800 text-left text-xs">
+                        <thead>
+                          <tr className="bg-zinc-950/80 text-[10px] text-zinc-500 uppercase tracking-widest font-bold">
+                            <th className="border border-zinc-800 p-3.5">Category</th>
+                            <th className="border border-zinc-800 p-3.5 text-right">Cash</th>
+                            <th className="border border-zinc-800 p-3.5 text-right">PhonePe UPI</th>
+                            <th className="border border-zinc-800 p-3.5 text-right">Swipe</th>
+                            <th className="border border-zinc-800 p-3.5 text-right">Others (Custom)</th>
+                            <th className="border border-zinc-800 p-3.5 text-right bg-zinc-950">Row Total</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-800">
+                          <tr className="hover:bg-white/[0.01]">
+                            <td className="border border-zinc-800 p-3.5 font-semibold text-zinc-200">Room Tariff</td>
+                            <td className="border border-zinc-800 p-3.5 text-right text-zinc-300 font-mono">Rs. {reconData.room.Cash.toFixed(2)}</td>
+                            <td className="border border-zinc-800 p-3.5 text-right text-zinc-300 font-mono">Rs. {reconData.room.UPI.toFixed(2)}</td>
+                            <td className="border border-zinc-800 p-3.5 text-right text-zinc-300 font-mono">Rs. {reconData.room.SWIPE.toFixed(2)}</td>
+                            <td className="border border-zinc-800 p-3.5 text-right text-zinc-300 font-mono">Rs. {reconData.room.Others.toFixed(2)}</td>
+                            <td className="border border-zinc-800 p-3.5 text-right text-zinc-300 font-mono font-semibold bg-zinc-950/20">
+                              Rs. {(reconData.room.Cash + reconData.room.UPI + reconData.room.SWIPE + reconData.room.Others).toFixed(2)}
+                            </td>
+                          </tr>
+                          <tr className="hover:bg-white/[0.01]">
+                            <td className="border border-zinc-800 p-3.5 font-semibold text-zinc-200">Food & Water Bill</td>
+                            <td className="border border-zinc-800 p-3.5 text-right text-zinc-300 font-mono">Rs. {reconData.food.Cash.toFixed(2)}</td>
+                            <td className="border border-zinc-800 p-3.5 text-right text-zinc-300 font-mono">Rs. {reconData.food.UPI.toFixed(2)}</td>
+                            <td className="border border-zinc-800 p-3.5 text-right text-zinc-300 font-mono">Rs. {reconData.food.SWIPE.toFixed(2)}</td>
+                            <td className="border border-zinc-800 p-3.5 text-right text-zinc-300 font-mono">Rs. {reconData.food.Others.toFixed(2)}</td>
+                            <td className="border border-zinc-800 p-3.5 text-right text-zinc-300 font-mono font-semibold bg-zinc-950/20">
+                              Rs. {(reconData.food.Cash + reconData.food.UPI + reconData.food.SWIPE + reconData.food.Others).toFixed(2)}
+                            </td>
+                          </tr>
+                          <tr className="bg-zinc-900/40 text-emerald-400 font-bold">
+                            <td className="border border-zinc-800 p-4 text-zinc-200">TOTAL :</td>
+                            <td className="border border-zinc-800 p-4 text-right font-mono">Rs. {reconData.total.Cash.toFixed(2)}</td>
+                            <td className="border border-zinc-800 p-4 text-right font-mono">Rs. {reconData.total.UPI.toFixed(2)}</td>
+                            <td className="border border-zinc-800 p-4 text-right font-mono">Rs. {reconData.total.SWIPE.toFixed(2)}</td>
+                            <td className="border border-zinc-800 p-4 text-right font-mono">Rs. {reconData.total.Others.toFixed(2)}</td>
+                            <td className="border border-zinc-800 p-4 text-right font-mono text-emerald-300 bg-emerald-950/10">
+                              Rs. {totalSaleAmount.toFixed(2)}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* 2. EXPENSES LEDGER BOARD */}
+                  <div className="space-y-4 pt-2">
+                    <div className="flex justify-between items-center pl-1">
+                      <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">2. Daily expenses ledger</h4>
+                      <span className="text-xs font-bold text-zinc-500 font-mono bg-zinc-950 px-3 py-1 rounded-md border border-zinc-800">
+                        Total Expenses: <span className="text-rose-400">Rs. {totalExpenses.toFixed(2)}</span>
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      
+                      {/* Expenses List Table with Gridlines */}
+                      <div className="md:col-span-2 border border-zinc-800 rounded-xl bg-black/25 overflow-hidden max-h-[220px] overflow-y-auto">
+                        <table className="w-full text-left border-collapse text-xs border border-zinc-800">
+                          <thead>
+                            <tr className="bg-zinc-950/80 text-[10px] text-zinc-500 uppercase tracking-widest font-bold">
+                              <th className="border border-zinc-800 p-3 pl-4">Description / Vendor</th>
+                              <th className="border border-zinc-800 p-3">Category</th>
+                              <th className="border border-zinc-800 p-3">Method</th>
+                              <th className="border border-zinc-800 p-3 text-right">Amount</th>
+                              <th className="border border-zinc-800 p-3 text-center">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-800">
+                            {dayExpenses.length === 0 ? (
+                              <tr>
+                                <td colSpan={5} className="p-8 text-center text-zinc-600 italic">No localized expenses logged today.</td>
+                              </tr>
+                            ) : (
+                              dayExpenses.map((ex) => (
+                                <tr key={ex.id} className="hover:bg-white/[0.01]">
+                                  <td className="border border-zinc-800 p-3 pl-4 font-semibold text-zinc-300">{ex.description}</td>
+                                  <td className="border border-zinc-800 p-3 text-zinc-500">{ex.category}</td>
+                                  <td className="border border-zinc-800 p-3 text-zinc-500">{ex.payment_method}</td>
+                                  <td className="border border-zinc-800 p-3 text-right font-mono font-bold text-zinc-300">Rs. {Number(ex.amount).toFixed(2)}</td>
+                                  <td className="border border-zinc-800 p-3 text-center">
+                                    <button 
+                                      onClick={() => handleDeleteExpense(ex.id)}
+                                      className="text-zinc-600 hover:text-rose-400 p-1.5 rounded-lg transition-colors"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Add Expense Form */}
+                      <form onSubmit={handleAddExpense} className="bg-zinc-950/40 border border-white/[0.04] p-4 rounded-xl space-y-3 text-xs flex flex-col justify-between">
+                        <div>
+                          <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest block pl-1 mb-2">Add Localized Expense</span>
+                          <input
+                            type="text"
+                            required
+                            placeholder="Expense Description (e.g. Petrol)"
+                            value={newExpDesc}
+                            onChange={(e) => setNewExpDesc(e.target.value)}
+                            className="w-full bg-black/60 border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500/50"
+                          />
+                          <div className="grid grid-cols-2 gap-2 mt-2">
+                            <input
+                              type="number"
+                              required
+                              placeholder="Amount (Rs.)"
+                              value={newExpAmount}
+                              onChange={(e) => setNewExpAmount(e.target.value)}
+                              className="w-full bg-black/60 border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500/50"
+                            />
+                            <select
+                              value={newExpMethod}
+                              onChange={(e) => setNewExpMethod(e.target.value)}
+                              className="w-full bg-black/60 border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs text-zinc-400 focus:outline-none focus:border-indigo-500/50"
+                            >
+                              <option value="Cash">Cash</option>
+                              <option value="UPI">UPI</option>
+                            </select>
+                          </div>
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={isSavingExpense}
+                          className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 rounded-lg transition-all flex items-center justify-center gap-1 mt-3"
+                        >
+                          <Plus size={14} />
+                          Log Expense
+                        </button>
+                      </form>
+
+                    </div>
+                  </div>
+
+                  {/* 3 & 4. COUNTER CASH & SALES SUMMARY TABLES */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t border-white/[0.04]">
                     
-                    <div className="flex gap-3">
-                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-1.5" />
-                      <div>
-                        <strong className="text-zinc-300">Increment business Date:</strong>
-                        <p className="text-zinc-500 mt-0.5">The central PMS date advances by +1 day (to {new Date(new Date(businessDate).setDate(new Date(businessDate).getDate() + 1)).toISOString().substring(0, 10)})</p>
+                    {/* Column 3: Cash Counter Reconciliation Table with Gridlines */}
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center pl-1">
+                        <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                          <PiggyBank size={15} className="text-amber-400" />
+                          3. Cash Counter Reconciliation
+                        </h4>
+                        {!isEditingOpening ? (
+                          <button 
+                            onClick={() => {
+                              setOpeningCashOverride(openingCash.toString());
+                              setIsOpeningEditable(true);
+                            }}
+                            className="text-[10px] text-indigo-400 font-bold hover:underline"
+                          >
+                            Set Opening
+                          </button>
+                        ) : (
+                          <div className="flex gap-2">
+                            <button onClick={handleSaveOpeningCash} className="text-[10px] text-emerald-400 font-bold">Save</button>
+                            <button onClick={() => setIsOpeningEditable(false)} className="text-[10px] text-zinc-500 font-bold">Cancel</button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="overflow-hidden rounded-xl border border-zinc-800 bg-black/25">
+                        <table className="w-full border-collapse border border-zinc-800 text-left text-xs">
+                          <thead>
+                            <tr className="bg-zinc-950/80 text-[10px] text-zinc-500 uppercase tracking-widest font-bold">
+                              <th className="border border-zinc-800 p-3">Reconciliation Step</th>
+                              <th className="border border-zinc-800 p-3 text-center w-12">Sign</th>
+                              <th className="border border-zinc-800 p-3 text-right w-36">Amount</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-800">
+                            <tr className="hover:bg-white/[0.01]">
+                              <td className="border border-zinc-800 p-3 text-zinc-400">Yesterday Cash Balance (Opening Drawer)</td>
+                              <td className="border border-zinc-800 p-3 text-center text-zinc-500 font-bold">+</td>
+                              <td className="border border-zinc-800 p-3 text-right font-mono text-zinc-200">
+                                {isEditingOpening ? (
+                                  <input
+                                    type="number"
+                                    value={openingCashOverride}
+                                    onChange={(e) => setOpeningCashOverride(e.target.value)}
+                                    className="w-24 bg-black border border-indigo-500/40 rounded px-1.5 py-0.5 text-right font-mono focus:outline-none"
+                                  />
+                                ) : (
+                                  `Rs. ${openingCash.toFixed(2)}`
+                                )}
+                              </td>
+                            </tr>
+                            <tr className="hover:bg-white/[0.01]">
+                              <td className="border border-zinc-800 p-3 text-zinc-400">Today Cash Received (Tariff + Food)</td>
+                              <td className="border border-zinc-800 p-3 text-center text-emerald-500 font-bold">+</td>
+                              <td className="border border-zinc-800 p-3 text-right font-mono text-emerald-400">Rs. {todayCashCollected.toFixed(2)}</td>
+                            </tr>
+                            <tr className="hover:bg-white/[0.01]">
+                              <td className="border border-zinc-800 p-3 text-zinc-400">Expenses Paid in Cash</td>
+                              <td className="border border-zinc-800 p-3 text-center text-rose-500 font-bold">-</td>
+                              <td className="border border-zinc-800 p-3 text-right font-mono text-rose-400">Rs. {cashExpenses.toFixed(2)}</td>
+                            </tr>
+                            <tr className="bg-amber-500/5 text-amber-400 font-bold">
+                              <td className="border border-zinc-800 p-3.5 text-zinc-200">Cash in Counter Drawer</td>
+                              <td className="border border-zinc-800 p-3.5 text-center text-amber-400 font-bold">=</td>
+                              <td className="border border-zinc-800 p-3.5 text-right font-mono text-amber-400 text-sm">Rs. {cashInCounter.toFixed(2)}</td>
+                            </tr>
+                          </tbody>
+                        </table>
                       </div>
                     </div>
 
-                    <div className="flex gap-3">
-                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-1.5" />
-                      <div>
-                        <strong className="text-zinc-300">Synchronize Housekeeping Room Status:</strong>
-                        <p className="text-zinc-500 mt-0.5">All rooms currently registered as "Occupied" will be instantly marked as "Dirty" on the Housekeeping Board.</p>
+                    {/* Column 4: Total Sale For the Day Table with Gridlines */}
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center pl-1">
+                        <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                          4. True Daily Sales Total
+                        </h4>
+                      </div>
+
+                      <div className="overflow-hidden rounded-xl border border-zinc-800 bg-black/25">
+                        <table className="w-full border-collapse border border-zinc-800 text-left text-xs">
+                          <thead>
+                            <tr className="bg-zinc-950/80 text-[10px] text-zinc-500 uppercase tracking-widest font-bold">
+                              <th className="border border-zinc-800 p-3">Payment Method Stream</th>
+                              <th className="border border-zinc-800 p-3 text-right w-36">Collection Total</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-800">
+                            <tr className="hover:bg-white/[0.01]">
+                              <td className="border border-zinc-800 p-3 text-zinc-400">Cash Collections</td>
+                              <td className="border border-zinc-800 p-3 text-right font-mono text-zinc-200">Rs. {reconData.total.Cash.toFixed(2)}</td>
+                            </tr>
+                            <tr className="hover:bg-white/[0.01]">
+                              <td className="border border-zinc-800 p-3 text-zinc-400">PhonePe UPI Collections</td>
+                              <td className="border border-zinc-800 p-3 text-right font-mono text-zinc-200">Rs. {reconData.total.UPI.toFixed(2)}</td>
+                            </tr>
+                            <tr className="hover:bg-white/[0.01]">
+                              <td className="border border-zinc-800 p-3 text-zinc-400">Swipe Card Collections</td>
+                              <td className="border border-zinc-800 p-3 text-right font-mono text-zinc-200">Rs. {reconData.total.SWIPE.toFixed(2)}</td>
+                            </tr>
+                            <tr className="hover:bg-white/[0.01]">
+                              <td className="border border-zinc-800 p-3 text-zinc-400">Others (Custom Payment Modes)</td>
+                              <td className="border border-zinc-800 p-3 text-right font-mono text-zinc-200">Rs. {reconData.total.Others.toFixed(2)}</td>
+                            </tr>
+                            <tr className="bg-indigo-500/5 text-indigo-400 font-bold">
+                              <td className="border border-zinc-800 p-3.5 text-zinc-200">TOTAL SALE FOR THE DAY</td>
+                              <td className="border border-zinc-800 p-3.5 text-right font-mono text-indigo-400 text-sm">Rs. {totalSaleAmount.toFixed(2)}</td>
+                            </tr>
+                          </tbody>
+                        </table>
                       </div>
                     </div>
 
-                    <div className="flex gap-3">
-                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-1.5" />
-                      <div>
-                        <strong className="text-zinc-300">Seal Operational Audit Trail:</strong>
-                        <p className="text-zinc-500 mt-0.5">Reconciles final active lists and stores a snapshot for property analytics.</p>
-                      </div>
-                    </div>
                   </div>
 
                   {/* BOTTOM ACTION CTA */}
-                  <div className="flex justify-between items-center pt-4 border-t border-white/[0.04]">
+                  <div className="flex justify-between items-center pt-6 border-t border-white/[0.04]">
                     <button
                       onClick={() => setActiveStep(2)}
                       className="flex items-center gap-2 text-zinc-500 hover:text-white font-bold text-xs transition-colors"

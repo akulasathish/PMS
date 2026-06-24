@@ -1259,343 +1259,249 @@ export default function FrontOfficeTerminal() {
 
   const generateNightAuditPDFReport = async () => {
     if (!property) return;
-    const { jsPDF } = await import('jspdf');
-    if (typeof window !== 'undefined') {
-      (window as any).jsPDF = jsPDF;
-    }
-    const { default: autoTable } = await import('jspdf-autotable');
-    const doc = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4'
-    });
+    try {
+      const { jsPDF } = await import('jspdf');
+      const { default: autoTable } = await import('jspdf-autotable');
 
-    const stats = getLedgerTotalsForDate(selectedLedgerDate);
-    
-    // Header banner (Dark luxury theme)
-    doc.setFillColor(15, 23, 42); // slate-900
-    doc.rect(0, 0, 210, 45, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(22);
-    doc.setFont("helvetica", "bold");
-    doc.text(property.name.toUpperCase(), 15, 18);
-    
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(148, 163, 184); // slate-400
-    doc.text(`Official End-of-Day Night Audit & Ledger Register`, 15, 28);
-    doc.text(`Business Date: ${formatFriendlyDate(selectedLedgerDate)}`, 15, 35);
-    
-    // Page count footer helper
-    const addFooter = (pageNumber: number) => {
-      doc.setFontSize(8);
-      doc.setFont("helvetica", "normal");
-      doc.setTextColor(148, 163, 184);
-      doc.text(`StaySync PMS - Night Audit Register | Page ${pageNumber}`, 15, 287);
-      doc.text(`Generated on: ${new Date().toLocaleString('en-IN')}`, 145, 287);
-    };
-
-    // Helper to format date-time
-    const formatDateTime = (isoStr?: string) => {
-      if (!isoStr) return 'N/A';
-      const date = new Date(isoStr);
-      const formattedDate = date.toLocaleDateString('en-IN', { 
-        day: '2-digit', 
-        month: 'short' 
+      const doc = new jsPDF();
+      
+      // Split calculation logic matching Step 3
+      const dayPayments = payments.filter(p => getPaymentDateStr(p) === selectedLedgerDate);
+      const dayIncidentals = incidentals.filter(inc => {
+        if (!inc.created_at) return false;
+        const dateStr = inc.created_at.substring(0, 10);
+        return dateStr === selectedLedgerDate && !inc.description?.startsWith('Daily Room Charge');
       });
-      const hasTime = isoStr.includes('T') && 
-                      !isoStr.endsWith('T00:00:00') && 
-                      !isoStr.endsWith('T00:00:00.000Z');
-      if (hasTime) {
-        const formattedTime = date.toLocaleTimeString('en-IN', {
-          timeZone: 'Asia/Kolkata',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: true
-        });
-        return `${formattedDate} (${formattedTime})`;
-      }
-      return formattedDate;
-    };
 
-    // Helper to extract date from incidental created_at
-    const getIncidentalDateStr = (inc: any) => {
-      if (!inc.created_at) return '';
-      try {
-        return new Date(inc.created_at).toISOString().substring(0, 10);
-      } catch {
-        return String(inc.created_at).substring(0, 10);
-      }
-    };
+      let roomCash = 0, roomUPI = 0, roomSwipe = 0, roomOthers = 0;
+      let foodCash = 0, foodUPI = 0, foodSwipe = 0, foodOthers = 0;
 
-    // Filter active bookings on selectedLedgerDate
-    const activeBookings = bookings.filter(b => {
-      const checkInDate = b.check_in_time ? getLocalYYYYMMDD(new Date(b.check_in_time)) : (b.check_in ? b.check_in.substring(0, 10) : '');
-      const checkOutDate = b.check_out_time ? getLocalYYYYMMDD(new Date(b.check_out_time)) : (b.check_out ? b.check_out.substring(0, 10) : '');
-      
-      if (['Checked In', 'Checked Out'].includes(b.status)) {
-        return checkInDate <= selectedLedgerDate && (b.status === 'Checked In' || checkOutDate >= selectedLedgerDate);
-      }
-      return false;
-    });
+      const bookingIncidentals: { [bookingId: string]: number } = {};
+      dayIncidentals.forEach(inc => {
+        bookingIncidentals[inc.booking_id] = (bookingIncidentals[inc.booking_id] || 0) + Number(inc.amount);
+      });
 
-    let totalCash = 0;
-    let totalUPI = 0;
-    let totalOther = 0;
-    let totalDue = 0;
+      dayPayments.forEach(p => {
+        const amt = Number(p.amount);
+        const method = p.method;
+        const bkId = p.booking_id;
+        const incAmt = bookingIncidentals[bkId] || 0;
 
-    const guestRows = activeBookings.map((b, idx) => {
-      const roomNum = rooms.find(r => r.id === b.room_id)?.room_number || 'N/A';
-      const paymentsOnDate = payments.filter(p => p.booking_id === b.id && getPaymentDateStr(p) === selectedLedgerDate);
-      const cashAmt = paymentsOnDate.filter(p => p.method === 'Cash').reduce((sum, p) => sum + Number(p.amount), 0);
-      const upiAmt = paymentsOnDate.filter(p => p.method === 'UPI').reduce((sum, p) => sum + Number(p.amount), 0);
-      const otherAmt = paymentsOnDate.filter(p => !['Cash', 'UPI'].includes(p.method)).reduce((sum, p) => sum + Number(p.amount), 0);
-      
-      const bookingIncidentals = incidentals.filter(i => i.booking_id === b.id);
-      const bookingPaymentsAll = payments.filter(p => p.booking_id === b.id);
-      const dailyRoomChargesSum = bookingIncidentals
-        .filter(item => item.description?.startsWith('Daily Room Charge'))
-        .reduce((sum, item) => sum + Number(item.amount), 0);
-      const roomAmount = Math.max(0, Number(b.amount) - dailyRoomChargesSum);
-      const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0);
-      const totalCharges = roomAmount + incidentalsAmount;
-      const totalPaid = bookingPaymentsAll.reduce((sum, item) => sum + Number(item.amount), 0);
-      const balanceDue = Math.max(0, totalCharges - totalPaid);
+        if (incAmt > 0) {
+          const fBAmount = Math.min(amt, incAmt);
+          const roomAmount = Math.max(0, amt - fBAmount);
+          bookingIncidentals[bkId] -= fBAmount;
 
-      totalCash += cashAmt;
-      totalUPI += upiAmt;
-      totalOther += otherAmt;
-      totalDue += balanceDue;
-
-      return [
-        idx + 1,
-        b.guest_name,
-        b.guest_phone || 'N/A',
-        formatDateTime(b.check_in_time || b.check_in),
-        formatDateTime(b.check_out_time || b.check_out),
-        roomNum,
-        cashAmt > 0 ? `Rs. ${cashAmt.toFixed(2)}` : 'Rs. 0.00',
-        upiAmt > 0 ? `Rs. ${upiAmt.toFixed(2)}` : 'Rs. 0.00',
-        otherAmt > 0 ? `Rs. ${otherAmt.toFixed(2)}` : 'Rs. 0.00',
-        `Rs. ${balanceDue.toFixed(2)}`
-      ];
-    });
-
-    // 1. Guest Rent & Collections Table
-    doc.setTextColor(15, 23, 42);
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.text("1. DAILY GUEST TRANSACTIONS & COLLECTIONS (Right Page Register)", 15, 53);
-
-    autoTable(doc, {
-      startY: 56,
-      head: [['SL', 'GUEST NAME', 'PHONE', 'C.IN/TIME', 'C.OUT/TIME', 'ROOM', 'CASH', 'UPI', 'OTHER', 'DUE']],
-      body: guestRows,
-      foot: [['', 'TOTAL COLLECTIONS TODAY', '', '', '', '', `Rs. ${totalCash.toFixed(2)}`, `Rs. ${totalUPI.toFixed(2)}`, `Rs. ${totalOther.toFixed(2)}`, `Rs. ${totalDue.toFixed(2)}` ]],
-      theme: 'grid',
-      rowPageBreak: 'avoid',
-      margin: { left: 11.5, right: 11.5 },
-      styles: { fontSize: 7.5, cellPadding: 2, valign: 'middle', font: 'helvetica' },
-      headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold' },
-      footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold' },
-      columnStyles: {
-        0: { cellWidth: 7, halign: 'center' },
-        1: { cellWidth: 28, halign: 'left' },
-        2: { cellWidth: 22, halign: 'center' },
-        3: { cellWidth: 25, halign: 'center' },
-        4: { cellWidth: 25, halign: 'center' },
-        5: { cellWidth: 12, halign: 'center' },
-        6: { cellWidth: 17, halign: 'right', fontStyle: 'bold' },
-        7: { cellWidth: 17, halign: 'right', fontStyle: 'bold' },
-        8: { cellWidth: 17, halign: 'right', fontStyle: 'bold' },
-        9: { cellWidth: 17, halign: 'right', fontStyle: 'bold', textColor: [220, 38, 38] }
-      }
-    });
-
-    // 2. Supplementary Sales / Food & Water Table - Started on a new page for perfect stability
-    doc.addPage();
-    const fWStartY = 20;
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.text("2. FOOD, WATER & INCIDENTAL CHARGES REGISTER", 15, fWStartY);
-
-    const dayIncidentals = incidentals.filter(inc => 
-      getIncidentalDateStr(inc) === selectedLedgerDate &&
-      !inc.description?.startsWith('Daily Room Charge')
-    );
-    const incidentalRows = dayIncidentals.map((inc, idx) => {
-      const bObj = bookings.find(b => b.id === inc.booking_id);
-      const roomNum = bObj ? (rooms.find(r => r.id === bObj.room_id)?.room_number || 'N/A') : 'N/A';
-      
-      // Determine payment context if mentioned
-      let paidVia = "Unpaid / Posted to Folio";
-      if (inc.description?.toLowerCase().includes("sir") || inc.description?.toLowerCase().includes("owner")) {
-        paidVia = "Direct to Owner (SIR Account)";
-      } else {
-        const hasPayment = payments.some(p => p.booking_id === inc.booking_id && getPaymentDateStr(p) === selectedLedgerDate);
-        if (hasPayment) {
-          const pMethod = payments.find(p => p.booking_id === inc.booking_id && getPaymentDateStr(p) === selectedLedgerDate)?.method;
-          paidVia = pMethod === 'Cash' ? 'Cash' : (pMethod === 'UPI' ? 'PhonePe UPI' : 'Other Method');
+          if (method === 'Cash') {
+            foodCash += fBAmount;
+            roomCash += roomAmount;
+          } else if (method === 'UPI') {
+            foodUPI += fBAmount;
+            roomUPI += roomAmount;
+          } else if (method === 'SWIPE') {
+            foodSwipe += fBAmount;
+            roomSwipe += roomAmount;
+          } else {
+            foodOthers += fBAmount;
+            roomOthers += roomAmount;
+          }
+        } else {
+          if (method === 'Cash') {
+            roomCash += amt;
+          } else if (method === 'UPI') {
+            roomUPI += amt;
+          } else if (method === 'SWIPE') {
+            roomSwipe += amt;
+          } else {
+            roomOthers += amt;
+          }
         }
-      }
+      });
 
-      return [
-        idx + 1,
-        roomNum,
-        bObj ? bObj.guest_name : 'N/A',
-        inc.description || 'Supplementary sale',
-        `Rs. ${Number(inc.amount).toFixed(2)}`,
-        paidVia
+      const reconData = {
+        room: { Cash: roomCash, UPI: roomUPI, SWIPE: roomSwipe, Others: roomOthers },
+        food: { Cash: foodCash, UPI: foodUPI, SWIPE: foodSwipe, Others: foodOthers },
+        total: {
+          Cash: roomCash + foodCash,
+          UPI: roomUPI + foodUPI,
+          SWIPE: roomSwipe + foodSwipe,
+          Others: roomOthers + foodOthers
+        }
+      };
+
+      const todayCashCollected = reconData.total.Cash;
+      const totalSaleAmount = reconData.total.Cash + reconData.total.UPI + reconData.total.SWIPE + reconData.total.Others;
+      const openingCash = getOpeningCashForDate(selectedLedgerDate);
+      const dayExpenses = expenses.filter(e => e.date === selectedLedgerDate);
+      const cashExpenses = dayExpenses.filter(e => e.payment_method === 'Cash').reduce((sum, e) => sum + Number(e.amount), 0);
+      const totalExpenses = dayExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+      const cashInCounter = openingCash + todayCashCollected - cashExpenses;
+
+      // Luxury dark header block
+      doc.setFillColor(10, 10, 12); // #0a0a0c
+      doc.rect(0, 0, 210, 36, 'F');
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(15);
+      doc.setFont("helvetica", "bold");
+      doc.text("STAYSYNC PMS - DAILY NIGHT AUDIT RECONCILIATION", 15, 14);
+      
+      doc.setFontSize(8.5);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(156, 163, 175); // gray-400
+      doc.text(`PROPERTY: ${property?.name || 'StaySync Boutique Property'}`, 15, 22);
+      doc.text(`BUSINESS DATE: ${formatFriendlyDate(selectedLedgerDate)}`, 15, 28);
+      doc.text(`GENERATED ON: ${new Date().toLocaleString()}`, 135, 28);
+
+      // Section 1: Categories breakdown table
+      let currentY = 46;
+      doc.setTextColor(10, 10, 12);
+      doc.setFontSize(10.5);
+      doc.setFont("helvetica", "bold");
+      doc.text("1. SALES REVENUE BREAKDOWN CATEGORIES", 15, currentY);
+
+      const salesHeaders = ["Category", "Cash", "PhonePe UPI", "Swipe Card", "Others (Custom)", "Total"];
+      const salesRows = [
+        [
+          "Room Tariff", 
+          `Rs. ${reconData.room.Cash.toFixed(2)}`, 
+          `Rs. ${reconData.room.UPI.toFixed(2)}`, 
+          `Rs. ${reconData.room.SWIPE.toFixed(2)}`, 
+          `Rs. ${reconData.room.Others.toFixed(2)}`,
+          `Rs. ${(reconData.room.Cash + reconData.room.UPI + reconData.room.SWIPE + reconData.room.Others).toFixed(2)}`
+        ],
+        [
+          "Food & Water", 
+          `Rs. ${reconData.food.Cash.toFixed(2)}`, 
+          `Rs. ${reconData.food.UPI.toFixed(2)}`, 
+          `Rs. ${reconData.food.SWIPE.toFixed(2)}`, 
+          `Rs. ${reconData.food.Others.toFixed(2)}`,
+          `Rs. ${(reconData.food.Cash + reconData.food.UPI + reconData.food.SWIPE + reconData.food.Others).toFixed(2)}`
+        ],
+        [
+          "TOTAL", 
+          `Rs. ${reconData.total.Cash.toFixed(2)}`, 
+          `Rs. ${reconData.total.UPI.toFixed(2)}`, 
+          `Rs. ${reconData.total.SWIPE.toFixed(2)}`, 
+          `Rs. ${reconData.total.Others.toFixed(2)}`,
+          `Rs. ${totalSaleAmount.toFixed(2)}`
+        ]
       ];
-    });
 
-    if (incidentalRows.length === 0) {
-      incidentalRows.push(["-", "-", "No supplementary / Food & Water charges logged today.", "-", "-", "-"]);
-    }
+      autoTable(doc, {
+        startY: currentY + 3,
+        head: [salesHeaders],
+        body: salesRows,
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 3, font: 'helvetica' },
+        headStyles: { fillColor: [71, 85, 105], textColor: [255, 255, 255], fontStyle: 'bold' },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 35 },
+          1: { halign: 'right' },
+          2: { halign: 'right' },
+          3: { halign: 'right' },
+          4: { halign: 'right' },
+          5: { halign: 'right', fontStyle: 'bold' }
+        }
+      });
 
-    const totalIncidentalSales = dayIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
-    incidentalRows.push(["", "", "TOTAL INCIDENTAL SALES", "", `Rs. ${totalIncidentalSales.toFixed(2)}`, ""]);
+      // Section 2: Expenses
+      currentY = (doc as any).lastAutoTable.finalY + 10;
+      doc.setFontSize(10.5);
+      doc.setFont("helvetica", "bold");
+      doc.text("2. TOTAL EXPENSES REGISTER", 15, currentY);
 
-    autoTable(doc, {
-      startY: fWStartY + 3,
-      head: [['SL', 'ROOM', 'GUEST NAME', 'CHARGE DESCRIPTION', 'AMOUNT', 'PAYMENT MODE']],
-      body: incidentalRows,
-      theme: 'grid',
-      rowPageBreak: 'avoid',
-      margin: { left: 11.5, right: 11.5 },
-      styles: { fontSize: 7.5, cellPadding: 2, valign: 'middle', font: 'helvetica' },
-      headStyles: { fillColor: [79, 70, 229], textColor: [255, 255, 255], fontStyle: 'bold' },
-      footStyles: { fillColor: [241, 245, 249], fontStyle: 'bold' },
-      columnStyles: {
-        0: { cellWidth: 8, halign: 'center' },
-        1: { cellWidth: 20, halign: 'center' },
-        4: { halign: 'right', fontStyle: 'bold' }
+      const expRows = dayExpenses.map((ex, i) => [
+        i + 1,
+        ex.description,
+        ex.category,
+        ex.payment_method,
+        `Rs. ${Number(ex.amount).toFixed(2)}`
+      ]);
+
+      if (expRows.length === 0) {
+        expRows.push(["-", "No localized expenses logged today.", "-", "-", "Rs. 0.00"]);
+      } else {
+        expRows.push(["", "TOTAL", "", "", `Rs. ${totalExpenses.toFixed(2)}`]);
       }
-    });
 
-    // Page overflow safety - check if we need to add a page break before expenses & reconciliation
-    let nextSectionY = (doc as any).lastAutoTable.finalY + 12;
-    if (nextSectionY > 185) {
-      addFooter(1);
-      doc.addPage();
-      nextSectionY = 20; // reset Y to top of new page
+      autoTable(doc, {
+        startY: currentY + 3,
+        head: [["S.No", "Description / Vendor", "Category", "Payment Mode", "Amount"]],
+        body: expRows,
+        theme: 'striped',
+        styles: { fontSize: 8, cellPadding: 3, font: 'helvetica' },
+        headStyles: { fillColor: [115, 115, 115], textColor: [255, 255, 255], fontStyle: 'bold' },
+        columnStyles: {
+          0: { cellWidth: 15, halign: 'center' },
+          1: { cellWidth: 70, fontStyle: 'bold' },
+          4: { halign: 'right', fontStyle: 'bold' }
+        }
+      });
+
+      // Section 3 & 4: Dual columnar summary
+      currentY = (doc as any).lastAutoTable.finalY + 10;
+      doc.setFontSize(10.5);
+      doc.setFont("helvetica", "bold");
+      doc.text("3. CASH COUNTER RECONCILIATION", 15, currentY);
+      doc.text("4. TRUE DAILY SALES TOTAL", 110, currentY);
+
+      const reconciliationFormula = [
+        ["Yesterday Cash Balance (Opening)", `+ Rs. ${openingCash.toFixed(2)}`],
+        ["Today Cash Received (Tariff + Food)", `+ Rs. ${todayCashCollected.toFixed(2)}`],
+        ["Today Cash Expenses (Subtracted)", `- Rs. ${cashExpenses.toFixed(2)}`],
+        ["Total Cash In Counter Drawer", `Rs. ${cashInCounter.toFixed(2)}`]
+      ];
+
+      autoTable(doc, {
+        startY: currentY + 3,
+        body: reconciliationFormula,
+        theme: 'plain',
+        styles: { fontSize: 8, cellPadding: 3.5, font: 'helvetica' },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 60 },
+          1: { halign: 'right', fontStyle: 'bold', cellWidth: 30 }
+        },
+        margin: { left: 15 }
+      });
+
+      const paymentSalesSummary = [
+        ["Cash Collections", `Rs. ${reconData.total.Cash.toFixed(2)}`],
+        ["PhonePe UPI Collections", `Rs. ${reconData.total.UPI.toFixed(2)}`],
+        ["Swipe Card Collections", `Rs. ${reconData.total.SWIPE.toFixed(2)}`],
+        ["Others (Custom Payment Modes)", `Rs. ${reconData.total.Others.toFixed(2)}`],
+        ["TOTAL SALE FOR THE DAY", `Rs. ${totalSaleAmount.toFixed(2)}`]
+      ];
+
+      autoTable(doc, {
+        startY: currentY + 3,
+        body: paymentSalesSummary,
+        theme: 'plain',
+        styles: { fontSize: 8, cellPadding: 3.5, font: 'helvetica' },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 60 },
+          1: { halign: 'right', fontStyle: 'bold', cellWidth: 30 }
+        },
+        margin: { left: 110 }
+      });
+
+      // Verification Footers
+      const lastY = (doc as any).lastAutoTable.finalY + 15;
+      doc.setDrawColor(226, 232, 240);
+      doc.line(15, lastY, 195, lastY);
+      doc.setFontSize(7.5);
+      doc.setFont("helvetica", "italic");
+      doc.setTextColor(148, 163, 184);
+      doc.text("* Reconciled automatically under database-level atomicity. Signature marks required for cashier shifts.", 15, lastY + 4);
+
+      // Output and open in a new tab (inline PDF viewer)
+      const pdfBlob = doc.output('blob');
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      window.open(pdfUrl, '_blank');
+    } catch (err) {
+      console.error("PDF Generate error:", err);
+      alert("Failed to build PDF. Please check console.");
     }
-
-    // 3. Daily Expenses Outflow Table
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.text("3. DAILY EXPENSES OUTFLOW (Left Page Expenses)", 15, nextSectionY);
-
-    const dayExpenses = expenses.filter(e => e.date === selectedLedgerDate);
-    const expensesRows = dayExpenses.map((e, idx) => [
-      idx + 1,
-      e.description,
-      e.category,
-      e.payment_method,
-      `Rs. ${Number(e.amount).toFixed(2)}`
-    ]);
-
-    if (expensesRows.length === 0) {
-      expensesRows.push(["-", "No expenses logged today", "-", "-", "Rs. 0.00"]);
-    }
-    const totalExpenses = dayExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
-    expensesRows.push([
-      "",
-      "TOTAL DAILY EXPENSES",
-      "",
-      `Cash: Rs. ${stats.cashExpenses.toFixed(2)} | UPI: Rs. ${stats.upiExpenses.toFixed(2)}`,
-      `Rs. ${totalExpenses.toFixed(2)}`
-    ]);
-
-    autoTable(doc, {
-      startY: nextSectionY + 3,
-      head: [['SL', 'EXPENSE DESCRIPTION', 'CATEGORY', 'METHOD', 'AMOUNT']],
-      body: expensesRows,
-      theme: 'grid',
-      rowPageBreak: 'avoid',
-      margin: { left: 11.5, right: 11.5 },
-      styles: { fontSize: 7.5, cellPadding: 2, valign: 'middle', font: 'helvetica' },
-      headStyles: { fillColor: [220, 38, 38], textColor: [255, 255, 255], fontStyle: 'bold' },
-      footStyles: { fillColor: [241, 245, 249], fontStyle: 'bold' },
-      columnStyles: {
-        0: { cellWidth: 8, halign: 'center' },
-        4: { halign: 'right', fontStyle: 'bold' }
-      }
-    });
-
-    // 4. Counter Cash & Sales Reconciliations (Dual Columns layout)
-    const reconStartY = (doc as any).lastAutoTable.finalY + 12;
-    
-    // Let's draw side-by-side grids or custom neat text layouts
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.text("4. CASH COUNTER RECONCILIATION", 15, reconStartY);
-    doc.text("5. TRUE DAILY SALES RECONCILIATION", 110, reconStartY);
-
-    const leftReconRows = [
-      ["[+] Opening Cash Balance", `Rs. ${stats.openingCash.toFixed(2)}`],
-      ["[+] Today's Cash Received", `Rs. ${stats.cashPayments.toFixed(2)}`],
-      ["[-] Today's Cash Expenses", `- Rs. ${stats.cashExpenses.toFixed(2)}`],
-      ["[=] Expected Counter Cash", `Rs. ${stats.expectedClosingCash.toFixed(2)}`],
-      ["[ ] Actual Closed Counter Cash", stats.actualClosingCash !== null ? `Rs. ${stats.actualClosingCash.toFixed(2)}` : "Open / Active"],
-      ["[ ] Reconciliation Status", stats.actualClosingCash !== null 
-        ? (stats.actualClosingCash === stats.expectedClosingCash ? "MATCHED (Balanced)" : `DISCREPANCY (Rs. ${(stats.actualClosingCash - stats.expectedClosingCash).toFixed(2)})`) 
-        : "OPEN DRAWER"
-      ]
-    ];
-
-    autoTable(doc, {
-      startY: reconStartY + 3,
-      body: leftReconRows,
-      theme: 'plain',
-      rowPageBreak: 'avoid',
-      styles: { fontSize: 8, cellPadding: 2.5, font: 'helvetica' },
-      columnStyles: { 
-        0: { fontStyle: 'bold', cellWidth: 50 },
-        1: { halign: 'right', fontStyle: 'bold', cellWidth: 35 }
-      },
-      margin: { left: 11.5 }
-    });
-
-    const rightSalesRows = [
-      ["Room Rent PhonePe (UPI) Collections", `Rs. ${stats.upiPayments.toFixed(2)}`],
-      ["Room Rent Cash Collections", `Rs. ${stats.cashPayments.toFixed(2)}`],
-      ["Food & Water (Incidental Sales)", `Rs. ${totalIncidentalSales.toFixed(2)}`],
-      ["Other Direct Payments (Sir Account)", `Rs. ${stats.otherPayments.toFixed(2)}`],
-      ["TOTAL GENERATED DAILY SALES", `Rs. ${(stats.upiPayments + stats.cashPayments + totalIncidentalSales + stats.otherPayments).toFixed(2)}`]
-    ];
-
-    autoTable(doc, {
-      startY: reconStartY + 3,
-      body: rightSalesRows,
-      theme: 'plain',
-      rowPageBreak: 'avoid',
-      styles: { fontSize: 8, cellPadding: 3, font: 'helvetica' },
-      columnStyles: { 
-        0: { fontStyle: 'bold', cellWidth: 55 },
-        1: { halign: 'right', fontStyle: 'bold', cellWidth: 30 }
-      },
-      margin: { left: 110 }
-    });
-
-    // Add borders / highlights to totals
-    const finalTableY = (doc as any).lastAutoTable.finalY;
-    doc.setDrawColor(203, 213, 225); // slate-300
-    doc.line(15, finalTableY + 2, 195, finalTableY + 2);
-
-    doc.setFontSize(8.5);
-    doc.setFont("helvetica", "italic");
-    doc.setTextColor(71, 85, 105);
-    doc.text("* Note: Reconciled automatically using your actual database records to prevent handwritten omissions.", 15, finalTableY + 7);
-
-    // Footer on the last page
-    const currentPageCount = (doc as any).internal.getNumberOfPages();
-    addFooter(currentPageCount);
-
-    // Output and open in a new tab
-    const pdfBlob = doc.output('blob');
-    const pdfUrl = URL.createObjectURL(pdfBlob);
-    window.open(pdfUrl, '_blank');
   };
 
   const renderExpensesView = () => {

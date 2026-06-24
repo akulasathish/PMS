@@ -127,24 +127,25 @@ export async function postDailyRoomCharges(
 
   const supabaseAdmin = getSupabaseAdmin();
 
-  const insertPromises = bookingsToCharge.map(async (bk) => {
-    const description = `Daily Room Charge - ${businessDate}`;
-    
-    // Check if charge already exists for this booking and date
-    const { data: existing } = await supabaseAdmin
-      .from('incidental_charges')
-      .select('id')
-      .eq('booking_id', bk.id)
-      .eq('description', description)
-      .limit(1);
+  const insertRows: any[] = [];
+  
+  try {
+    for (const bk of bookingsToCharge) {
+      const description = `Daily Room Charge - ${businessDate}`;
+      
+      // Check if charge already exists for this booking and date
+      const { data: existing } = await supabaseAdmin
+        .from('incidental_charges')
+        .select('id')
+        .eq('booking_id', bk.id)
+        .eq('description', description)
+        .limit(1);
 
-    if (existing && existing.length > 0) {
-      return { skipped: true, guestName: bk.guestName };
-    }
+      if (existing && existing.length > 0) {
+        continue; // Skip duplicates safely
+      }
 
-    const { error } = await supabaseAdmin
-      .from('incidental_charges')
-      .insert({
+      insertRows.push({
         booking_id: bk.id,
         property_id: propertyId,
         amount: bk.amount,
@@ -152,17 +153,20 @@ export async function postDailyRoomCharges(
         created_by: user.id,
         is_automated: true
       });
-
-    if (error) {
-      console.error(`Error posting charge for booking ${bk.id}:`, error);
-      throw new Error(`Failed to post charge for ${bk.guestName}: ${error.message}`);
     }
 
-    return { posted: true, guestName: bk.guestName };
-  });
+    if (insertRows.length === 0) {
+      return { success: true, count: 0, message: "All charges are already posted." };
+    }
 
-  try {
-    const results = await Promise.all(insertPromises);
+    // Single batch insert (guaranteed atomic "all-or-nothing" execution in PostgreSQL)
+    const { error: insertError } = await supabaseAdmin
+      .from('incidental_charges')
+      .insert(insertRows);
+
+    if (insertError) {
+      throw insertError;
+    }
     
     // Log action
     await logAction({
@@ -170,15 +174,16 @@ export async function postDailyRoomCharges(
       action: 'CHARGES_POSTED',
       details: { 
         businessDate, 
-        totalChargesPosted: results.filter(r => r.posted).length,
-        results
+        totalChargesPosted: insertRows.length,
+        results: insertRows.map(r => ({ guestName: bookingsToCharge.find(b => b.id === r.booking_id)?.guestName, amount: r.amount, posted: true }))
       },
       userId: user.id
     });
 
-    return { success: true, results };
+    return { success: true, count: insertRows.length };
   } catch (err: any) {
-    return { error: err.message || 'Failed to post charges.' };
+    console.error("Batch Room Charges Posting Error:", err);
+    return { error: err.message || 'Failed to post charges atomically.' };
   }
 }
 

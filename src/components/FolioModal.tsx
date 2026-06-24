@@ -4,11 +4,12 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, Plus, CreditCard, Banknote, Smartphone, Building2, 
-  ArrowRight, ShieldCheck, Loader2, AlertCircle 
+  ArrowRight, ShieldCheck, Loader2, AlertCircle, Printer 
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { getFolioSummary, postIncidentalCharge, postPayment, postProposedTimeCharge, waiveProposedTimeCharge } from '@/app/actions/folio';
 import { checkOutGuest, undoCheckOutGuest } from '@/app/actions/booking';
+import { generateGuestBillPDF } from '@/utils/folio-pdf';
 
 interface FolioModalProps {
   bookingId: string;
@@ -35,6 +36,9 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
   
   // UI Tabs for forms
   const [activeTab, setActiveTab] = useState<'summary' | 'charge' | 'payment'>('summary');
+  
+  // Track selected payment method
+  const [paymentMethod, setPaymentMethod] = useState('UPI');
 
   const loadFolio = async () => {
     setLoading(true);
@@ -112,6 +116,17 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
     const formData = new FormData(e.currentTarget);
     formData.append('bookingId', bookingId);
     formData.append('propertyId', propertyId);
+
+    const selectedMethod = formData.get('method') as string;
+    if (selectedMethod === 'Others') {
+      const customVal = formData.get('customMethod') as string;
+      if (!customVal || !customVal.trim()) {
+        setError('Please enter a custom payment method.');
+        setActionLoading(false);
+        return;
+      }
+      formData.set('method', customVal.trim());
+    }
     
     const res = await postPayment(formData);
     if (res.error) {
@@ -120,6 +135,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
     } else {
       await loadFolio();
       setActiveTab('summary');
+      setPaymentMethod('UPI'); // Reset to default
       setActionLoading(false);
     }
   };
@@ -216,7 +232,18 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                 <Banknote size={16} /> Log Payment
               </button>
 
-              <div className="sm:mt-0 lg:mt-auto pt-4 sm:pt-0 lg:pt-6 sm:ml-auto lg:ml-0 shrink-0">
+              <div className="sm:mt-0 lg:mt-auto pt-4 sm:pt-0 lg:pt-6 sm:ml-auto lg:ml-0 shrink-0 flex flex-col gap-2">
+                <button
+                  onClick={async () => {
+                    if (!folio) return;
+                    await generateGuestBillPDF(folio);
+                  }}
+                  disabled={actionLoading || !folio}
+                  className="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-bold uppercase tracking-wider text-xs transition-colors flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/10"
+                >
+                  <Printer size={16} /> Print / Download Bill
+                </button>
+
                 {folio?.bookingStatus === 'Checked Out' ? (
                   <button
                     onClick={handleUndoCheckout}
@@ -426,12 +453,19 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Payment Method</label>
-                            <select name="method" className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all appearance-none">
-                              <option value="UPI">UPI / QR Code</option>
+                            <select 
+                              name="method" 
+                              value={paymentMethod}
+                              onChange={(e) => setPaymentMethod(e.target.value)}
+                              className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all appearance-none"
+                            >
+                              <option value="UPI">UPI / PhonePe</option>
                               <option value="Credit Card">Credit Card</option>
+                              <option value="SWIPE">SWIPE</option>
                               <option value="Cash">Cash</option>
                               <option value="Bank Transfer">Bank Transfer</option>
                               <option value="OTA Pre-Paid">OTA Pre-Paid</option>
+                              <option value="Others">Others (Custom Mode)</option>
                             </select>
                           </div>
                           <div className="space-y-1.5">
@@ -444,6 +478,24 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                             />
                           </div>
                         </div>
+
+                        {paymentMethod === 'Others' && (
+                          <motion.div 
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            className="space-y-1.5 mt-2"
+                          >
+                            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Custom Payment Mode</label>
+                            <input 
+                              name="customMethod" 
+                              type="text" 
+                              required 
+                              placeholder="e.g. GooglePay personal, xyz"
+                              className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all"
+                            />
+                          </motion.div>
+                        )}
+
                         <div className="space-y-1.5">
                           <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Transaction ID (Optional)</label>
                           <input 

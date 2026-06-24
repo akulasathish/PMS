@@ -128,7 +128,7 @@ export async function getFolioSummary(bookingId: string) {
   // 1. Fetch base booking details
   const { data: booking, error: bookingErr } = await supabaseAdmin
     .from('bookings')
-    .select('amount, status, property_id, check_in, check_out')
+    .select('id, amount, status, property_id, check_in, check_out, check_in_time, check_out_time, guest_name, guest_email, guest_phone, room_id')
     .eq('id', bookingId)
     .single();
 
@@ -136,10 +136,23 @@ export async function getFolioSummary(bookingId: string) {
 
   const propertyId = booking.property_id;
 
-  // 2. Fetch property standard hours & custom rules
+  // 1b. Fetch room number safely
+  let roomNumber = '';
+  if (booking.room_id) {
+    const { data: roomData } = await supabaseAdmin
+      .from('rooms')
+      .select('room_number')
+      .eq('id', booking.room_id)
+      .single();
+    if (roomData) {
+      roomNumber = roomData.room_number;
+    }
+  }
+
+  // 2. Fetch property standard hours, custom rules, & branding details
   const { data: property, error: propErr } = await supabaseAdmin
     .from('properties')
-    .select('standard_checkin_time, standard_checkout_time, early_checkin_rules, late_checkout_rules')
+    .select('name, address, city, country, gst_number, state_code, standard_checkin_time, standard_checkout_time, early_checkin_rules, late_checkout_rules')
     .eq('id', propertyId)
     .single();
 
@@ -153,7 +166,7 @@ export async function getFolioSummary(bookingId: string) {
   // 4. Fetch payments
   const { data: payments, error: payErr } = await supabaseAdmin
     .from('payments')
-    .select('id, amount, method, created_at')
+    .select('id, amount, method, created_at, transaction_id')
     .eq('booking_id', bookingId)
     .order('created_at', { ascending: true });
 
@@ -231,8 +244,23 @@ export async function getFolioSummary(bookingId: string) {
   return {
     success: true,
     data: {
+      bookingId: booking.id,
       roomAmount,
       bookingStatus: booking.status,
+      checkIn: booking.check_in,
+      checkOut: booking.check_out,
+      checkInTime: booking.check_in_time,
+      checkOutTime: booking.check_out_time,
+      guestName: booking.guest_name,
+      guestEmail: booking.guest_email,
+      guestPhone: booking.guest_phone,
+      roomNumber,
+      propertyName: property?.name || 'StaySync Property',
+      propertyAddress: property?.address || '',
+      propertyCity: property?.city || '',
+      propertyCountry: property?.country || '',
+      propertyGst: property?.gst_number || '',
+      propertyStateCode: property?.state_code || '',
       incidentals: incidentals || [],
       payments: payments || [],
       totalCharges,

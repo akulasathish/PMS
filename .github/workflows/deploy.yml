@@ -2,7 +2,7 @@ name: Deploy StaySync to AWS ECS
 
 on:
   push:
-    branches: [ "main", "master" ]  # Triggers when you push to either main or master branch
+    branches: [ "main", "master", "cloud-beds-pms" ]  # Triggers when you push to main, master, or cloud-beds-pms branch
 
 env:
   AWS_REGION: ap-south-1
