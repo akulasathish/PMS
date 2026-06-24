@@ -154,8 +154,27 @@ export default function NightAuditPage() {
     b.check_out === businessDate && b.status === 'Checked In'
   );
 
+  // Helper to get next business date safely without timezone offset leaks
+  const getNextBusinessDateStr = (dateStr: string) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return '';
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) - 1;
+    const d = parseInt(parts[2], 10);
+    const nextDate = new Date(y, m, d + 1);
+    const year = nextDate.getFullYear();
+    const month = String(nextDate.getMonth() + 1).padStart(2, '0');
+    const day = String(nextDate.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const nextBusinessDate = getNextBusinessDateStr(businessDate);
+
   const activeStayovers = bookings.filter(b => 
-    b.status === 'Checked In' && b.check_out !== businessDate
+    b.status === 'Checked In' && 
+    b.check_out !== businessDate &&
+    (b.check_out ? b.check_out.substring(0, 10) : '') !== nextBusinessDate
   );
 
   // All guests currently checked in
@@ -223,7 +242,7 @@ export default function NightAuditPage() {
     setActionLoading('post-charges');
     
     // Prepare list of bookings to charge with calculated daily rate
-    const chargesList = checkedInBookings.map(b => {
+    const chargesList = activeStayovers.map(b => {
       const start = new Date(b.check_in);
       const end = new Date(b.check_out);
       const nights = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
@@ -256,7 +275,7 @@ export default function NightAuditPage() {
         closedDate: businessDate,
         openedDate: res.nextBusinessDate,
         roomsMarkedDirty: res.roomsMarkedDirty,
-        bookingsChargedCount: checkedInBookings.length,
+        bookingsChargedCount: activeStayovers.length,
         propertyName: property.name
       });
       setIsRolloverComplete(true);
@@ -656,7 +675,7 @@ export default function NightAuditPage() {
                       Auto-Posting Daily Folio Room Charges
                     </h3>
                     <p className="text-xs text-zinc-500 mt-1 leading-relaxed">
-                      Below are the guests currently in <strong className="text-zinc-400 font-semibold">Checked In</strong> status who will have their room rate posted to their folios for the date <strong className="text-indigo-400 font-semibold">{businessDate}</strong>.
+                      Below are the active stayover guests currently in <strong className="text-zinc-400 font-semibold">Checked In</strong> status who will have their room rate posted to their folios for the date <strong className="text-indigo-400 font-semibold">{businessDate}</strong>. Guests checking out today are excluded from these charges.
                     </p>
                   </div>
 
@@ -670,19 +689,19 @@ export default function NightAuditPage() {
                       <div className="col-span-2 text-right">Daily Post Charge</div>
                     </div>
 
-                    {checkedInBookings.length === 0 ? (
+                    {activeStayovers.length === 0 ? (
                       <div className="py-14 text-center text-zinc-600 text-xs italic">
-                        No checked in guests currently at the property.
+                        No active stayovers remaining today. You can proceed directly to rollover.
                       </div>
                     ) : (
                       <div className="divide-y divide-white/[0.03]">
-                        {checkedInBookings.map((bk) => {
+                        {activeStayovers.map((bk) => {
                           const start = new Date(bk.check_in);
                           const end = new Date(bk.check_out);
                           const nights = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
                           const dailyRate = Number(bk.amount) / nights;
                           return (
-                            <div key={bk.id} className="grid grid-cols-12 gap-4 items-center p-4 text-xs">
+                             <div key={bk.id} className="grid grid-cols-12 gap-4 items-center p-4 text-xs">
                               <div className="col-span-4 font-semibold text-zinc-200">{bk.guest_name}</div>
                               <div className="col-span-2 text-zinc-400">Room {rooms.find(r => r.id === bk.room_id)?.room_number || 'N/A'}</div>
                               <div className="col-span-2 text-zinc-500">{nights} Nights ({bk.check_in} - {bk.check_out})</div>
@@ -706,7 +725,7 @@ export default function NightAuditPage() {
                     </button>
 
                     <button
-                      disabled={checkedInBookings.length === 0 || actionLoading === 'post-charges'}
+                      disabled={actionLoading === 'post-charges'}
                       onClick={handlePostCharges}
                       className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-600/40 text-white px-6 py-3 rounded-xl font-bold text-xs flex items-center gap-2 transition-all active:scale-[0.98] shadow-lg shadow-emerald-950/20"
                     >

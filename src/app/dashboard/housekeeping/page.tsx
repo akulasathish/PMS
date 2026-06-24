@@ -32,6 +32,7 @@ export default function HousekeepingTerminal() {
   const [rooms, setRooms] = useState<RoomWithProfile[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [businessDate, setBusinessDate] = useState<string>('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [property, setProperty] = useState<Property | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -75,8 +76,9 @@ export default function HousekeepingTerminal() {
              finalRoomsQuery = supabase.from('rooms').select('*, profiles:assigned_staff_id(full_name)').or('is_deleted.eq.false,is_deleted.is.null').order('room_number');
           }
 
-          const [propRes, roomsRes, bookingsRes, blocksRes] = await Promise.all([
+          const [propRes, settingsRes, roomsRes, bookingsRes, blocksRes] = await Promise.all([
             supabase.from('properties').select('*').eq('id', activeId).single(),
+            supabase.from('app_settings').select('value').eq('key', 'business_date').single(),
             finalRoomsQuery,
             supabase.from('bookings').select('*').eq('property_id', activeId).in('status', ['Confirmed', 'Checked In']),
             supabase.from('room_blocks').select('*').eq('property_id', activeId).eq('status', 'Active')
@@ -85,6 +87,9 @@ export default function HousekeepingTerminal() {
           if (propRes.data) {
             setProperty(propRes.data);
           }
+
+          const activeDate = settingsRes.data?.value || '2026-06-21';
+          setBusinessDate(activeDate);
 
           if (!roomsRes.data || roomsRes.data.length === 0) {
               console.error("🚨 EMERGENCY TRUTH LOG: ZERO ROOMS FETCHED FOR PROPERTY!", activeId);
@@ -181,7 +186,7 @@ export default function HousekeepingTerminal() {
       };
     }
 
-    const today = new Date().toISOString().substring(0, 10);
+    const today = businessDate || new Date().toISOString().substring(0, 10);
     const booking = bookings.find(b => b.room_id === room.id);
     
     // Determine Guest Situation

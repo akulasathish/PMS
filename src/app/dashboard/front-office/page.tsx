@@ -1,5 +1,6 @@
 "use client";
 import { QRCodeSVG } from 'qrcode.react';
+// Dynamically imported inline to avoid SSR pre-rendering failures
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -9,7 +10,7 @@ import {
   Plus, Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, LogOut,
   ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck, RefreshCw, RotateCcw, Printer, XCircle, Link2, Camera, X, ShieldCheck, AlertCircle, Phone, Mail,
-  Trash2, DollarSign, Moon, Banknote, Smartphone, CreditCard, Clock
+  Trash2, DollarSign, Moon, Banknote, Smartphone, CreditCard, Clock, TrendingDown, Download, Wallet, FileText
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -30,18 +31,27 @@ const NAV_ITEMS = [
   { icon: Settings, label: "Settings", href: "#", active: false, module: 'settings' },
 ];
 
-const generateDays = () => {
+const generateDaysFromDate = (baseDateStr: string) => {
+  if (!baseDateStr) return [];
+  const parts = baseDateStr.split('-');
+  if (parts.length !== 3) return [];
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const day = parseInt(parts[2], 10);
   const days = [];
-  const today = new Date();
   for (let i = 0; i < 7; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
+    const d = new Date(year, month, day + i);
     days.push(d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }));
   }
   return days;
 };
 
-const DAYS = generateDays();
+const getLocalYYYYMMDDStatic = (d: Date) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 const toLocalDatetimeString = (isoString?: string) => {
   if (!isoString) return '';
@@ -56,16 +66,31 @@ export default function FrontOfficeTerminal() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [businessDate, setBusinessDate] = useState<string>('');
+
+  const activeBaseDate = businessDate || getLocalYYYYMMDDStatic(new Date());
+  const DAYS = generateDaysFromDate(activeBaseDate);
   const [property, setProperty] = useState<Property | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [showBookingModal, setShowBookingModal] = useState(false);
   
   // Tabs State
-  const [activeTab, setActiveTab] = useState<'tape' | 'arrivals' | 'departures' | 'house' | 'all' | 'balances'>('tape');
+  const [activeTab, setActiveTab] = useState<'tape' | 'arrivals' | 'departures' | 'house' | 'all' | 'balances' | 'expenses'>('tape');
   const [searchQuery, setSearchQuery] = useState('');
   const [balancesFilter, setBalancesFilter] = useState<'inHouse' | 'allActive'>('inHouse');
+  const [hidePaidGuests, setHidePaidGuests] = useState(true);
   const [incidentals, setIncidentals] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
+  const [expenses, setExpenses] = useState<any[]>([]);
+  const [dailyCashBalances, setDailyCashBalances] = useState<any[]>([]);
+  const [newExpenseDescription, setNewExpenseDescription] = useState('');
+  const [newExpenseCategory, setNewExpenseCategory] = useState('Utility');
+  const [newExpenseAmount, setNewExpenseAmount] = useState('');
+  const [newExpensePaymentMethod, setNewExpensePaymentMethod] = useState<'Cash' | 'UPI'>('Cash');
+  const [newExpenseDate, setNewExpenseDate] = useState(new Date().toISOString().substring(0, 10));
+  const [openingCashInput, setOpeningCashInput] = useState('');
+  const [isSavingExpense, setIsSavingExpense] = useState(false);
+  const [selectedLedgerDate, setSelectedLedgerDate] = useState(new Date().toISOString().substring(0, 10));
   const [reservationFilter, setReservationFilter] = useState('Confirmed');
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
@@ -140,17 +165,25 @@ export default function FrontOfficeTerminal() {
         }
         bookingsQuery = bookingsQuery.order('created_at', { ascending: false });
 
-        const [propRes, roomsRes, bookingsRes, incidentalsRes, paymentsRes] = await Promise.all([
+        const [propRes, settingsRes, roomsRes, bookingsRes, incidentalsRes, paymentsRes, expensesRes, cashBalancesRes] = await Promise.all([
           supabase.from('properties').select('*').eq('id', activeId).single(),
+          supabase.from('app_settings').select('value').eq('key', 'business_date').single(),
           finalRoomsQuery,
           bookingsQuery,
           supabase.from('incidental_charges').select('*').eq('property_id', activeId),
-          supabase.from('payments').select('*').eq('property_id', activeId)
+          supabase.from('payments').select('*').eq('property_id', activeId),
+          supabase.from('expenses').select('*').eq('property_id', activeId),
+          supabase.from('daily_cash_balances').select('*').eq('property_id', activeId)
         ]);
 
         if (propRes.data) {
           setProperty(propRes.data);
         }
+
+        const bDate = settingsRes.data?.value || '2026-06-21';
+        setBusinessDate(bDate);
+        setSelectedLedgerDate(bDate);
+        setNewExpenseDate(bDate);
 
         if (!roomsRes.data || roomsRes.data.length === 0) {
             console.error("🚨 EMERGENCY TRUTH LOG: ZERO ROOMS FETCHED FOR PROPERTY!", activeId);
@@ -180,6 +213,8 @@ export default function FrontOfficeTerminal() {
         setBookings(bookingsRes.data || []);
         setIncidentals(incidentalsRes.data || []);
         setPayments(paymentsRes.data || []);
+        setExpenses(expensesRes.data || []);
+        setDailyCashBalances(cashBalancesRes.data || []);
       }
     } catch (err) {
       console.error("Dashboard Load Error:", err);
@@ -250,7 +285,7 @@ export default function FrontOfficeTerminal() {
   };
 
   const getArrivalsToday = () => {
-    const todayStr = getLocalYYYYMMDD(new Date());
+    const todayStr = businessDate || getLocalYYYYMMDD(new Date());
     let filtered = bookings.filter(b => {
       // Extract only the first 10 characters (YYYY-MM-DD) from whatever Postgres returned
       const dbDate = b.check_in ? String(b.check_in).substring(0, 10) : '';
@@ -271,7 +306,7 @@ export default function FrontOfficeTerminal() {
   };
 
   const getDeparturesToday = () => {
-    const todayStr = getLocalYYYYMMDD(new Date());
+    const todayStr = businessDate || getLocalYYYYMMDD(new Date());
     let filtered = bookings.filter(b => {
       // Extract only the first 10 characters
       const dbDate = b.check_out ? String(b.check_out).substring(0, 10) : '';
@@ -588,67 +623,1299 @@ export default function FrontOfficeTerminal() {
   };
 
   // --- SUB-COMPONENT: LIST ITEM ---
-  const BookingRow = ({ booking }: { booking: Booking }) => (
-    <motion.div 
-      initial={{ opacity: 0, x: -10 }}
-      animate={{ opacity: 1, x: 0 }}
-      onClick={() => openActionDrawer(booking)}
-      className="group flex flex-col sm:flex-row sm:items-center justify-between p-4 md:p-5 bg-zinc-900/40 border border-white/[0.04] rounded-2xl hover:border-indigo-500/40 transition-all cursor-pointer shadow-xl gap-4"
-    >
-      <div className="flex items-center gap-4 md:gap-5">
-        <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-gradient-to-br from-indigo-500/20 to-violet-500/20 border border-white/5 flex items-center justify-center text-indigo-400 font-black text-xs uppercase group-hover:scale-105 transition-transform shrink-0">
-          {booking.guest_name.substring(0, 2)}
-        </div>
-        <div>
-          <h4 className="text-sm font-bold text-white group-hover:text-indigo-400 transition-colors">{booking.guest_name}</h4>
-          <div className="flex flex-col gap-1 mt-1">
-            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">
-              Room {rooms.find(r => r.id === booking.room_id)?.room_number || 'N/A'} &bull; {booking.id.slice(0, 8)}
-            </p>
-            <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest bg-indigo-500/10 px-2 py-0.5 rounded-md w-fit">
-              {calculateNights(booking.check_in, booking.check_out)} Nights &bull; {formatFriendlyDate(booking.check_in)} to {formatFriendlyDate(booking.check_out)}
-            </p>
+  const BookingRow = ({ booking }: { booking: Booking }) => {
+    const bookingIncidentals = incidentals.filter(i => i.booking_id === booking.id);
+    const bookingPayments = payments.filter(p => p.booking_id === booking.id);
+
+    const dailyRoomChargesSum = bookingIncidentals
+      .filter(item => item.description?.startsWith('Daily Room Charge'))
+      .reduce((sum, item) => sum + Number(item.amount), 0);
+
+    const roomAmount = Math.max(0, Number(booking.amount) - dailyRoomChargesSum);
+    const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0);
+    const totalCharges = roomAmount + incidentalsAmount;
+    const totalPaid = bookingPayments.reduce((sum, item) => sum + Number(item.amount), 0);
+    const balanceDue = totalCharges - totalPaid;
+    const hasDues = balanceDue > 0.01;
+
+    return (
+      <motion.div 
+        initial={{ opacity: 0, x: -10 }}
+        animate={{ opacity: 1, x: 0 }}
+        onClick={() => openActionDrawer(booking)}
+        className="group flex flex-col sm:flex-row sm:items-center justify-between p-4 md:p-5 bg-zinc-900/40 border border-white/[0.04] rounded-2xl hover:border-indigo-500/40 transition-all cursor-pointer shadow-xl gap-4"
+      >
+        <div className="flex items-center gap-4 md:gap-5">
+          <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-gradient-to-br from-indigo-500/20 to-violet-500/20 border border-white/5 flex items-center justify-center text-indigo-400 font-black text-xs uppercase group-hover:scale-105 transition-transform shrink-0">
+            {booking.guest_name.substring(0, 2)}
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-white group-hover:text-indigo-400 transition-colors">{booking.guest_name}</h4>
+            <div className="flex flex-col gap-1 mt-1">
+              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">
+                Room {rooms.find(r => r.id === booking.room_id)?.room_number || 'N/A'} &bull; {booking.id.slice(0, 8)}
+              </p>
+              <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest bg-indigo-500/10 px-2 py-0.5 rounded-md w-fit">
+                  {calculateNights(booking.check_in, booking.check_out)} Nights &bull; {formatFriendlyDate(booking.check_in)} to {formatFriendlyDate(booking.check_out)}
+                </p>
+                {booking.check_in_time && (
+                  <p className="text-[10px] font-bold text-amber-400 uppercase tracking-widest bg-amber-500/10 px-2 py-0.5 rounded-md w-fit flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                    C.In: {new Date(booking.check_in_time).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true })}
+                  </p>
+                )}
+                {booking.check_out_time && (
+                  <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded-md w-fit flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                    C.Out: {new Date(booking.check_out_time).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true })}
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-t-0 border-white/[0.04] pt-3 sm:pt-0">
-        <div className="text-left sm:text-right">
-          <p className="text-[10px] text-zinc-600 font-black uppercase tracking-tighter">Amount Due</p>
-          <p className="text-sm font-black text-white">${booking.amount}</p>
+        <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-t-0 border-white/[0.04] pt-3 sm:pt-0">
+          <div className="text-left sm:text-right">
+            <p className="text-[10px] text-zinc-600 font-black uppercase tracking-tighter">Amount Due</p>
+            <p className={`text-sm font-black ${hasDues ? 'text-rose-400' : 'text-emerald-400'}`}>
+              ₹{balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+          </div>
+          
+          <div className="flex gap-2">
+            {booking.status === 'Confirmed' && (
+              canCheckIn() ? (
+                <button 
+                  onClick={(e) => { e.stopPropagation(); openActionDrawer(booking); }}
+                  className="bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-black px-4 py-2 rounded-xl transition-all shadow-lg shadow-amber-500/10 shrink-0"
+                >
+                  START CHECK-IN
+                </button>
+              ) : <Lock size={14} className="text-zinc-700 mx-4" />
+            )}
+            {booking.status === 'Checked In' && (
+              canCheckOut() ? (
+                <button 
+                  onClick={(e) => handleSafeCheckOut(e, booking.id, booking.room_id)}
+                  className="bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-black px-4 py-2 rounded-xl transition-all shadow-lg shadow-rose-500/10 shrink-0"
+                >
+                  CHECK OUT
+                </button>
+              ) : <Lock size={14} className="text-zinc-700 mx-4" />
+            )}
+          </div>
         </div>
-        
-        <div className="flex gap-2">
-          {booking.status === 'Confirmed' && (
-            canCheckIn() ? (
-              <button 
-                onClick={(e) => { e.stopPropagation(); openActionDrawer(booking); }}
-                className="bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-black px-4 py-2 rounded-xl transition-all shadow-lg shadow-amber-500/10 shrink-0"
-              >
-                START CHECK-IN
-              </button>
-            ) : <Lock size={14} className="text-zinc-700 mx-4" />
-          )}
-          {booking.status === 'Checked In' && (
-            canCheckOut() ? (
-              <button 
-                onClick={(e) => handleSafeCheckOut(e, booking.id, booking.room_id)}
-                className="bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-black px-4 py-2 rounded-xl transition-all shadow-lg shadow-rose-500/10 shrink-0"
-              >
-                CHECK OUT
-              </button>
-            ) : <Lock size={14} className="text-zinc-700 mx-4" />
-          )}
-        </div>
-      </div>
-    </motion.div>
-  );
+      </motion.div>
+    );
+  };
 
   const calculateNights = (inDate: string, outDate: string) => {
     const d1 = new Date(inDate);
     const d2 = new Date(outDate);
     const diff = d2.getTime() - d1.getTime();
     return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  };
+
+  const getPaymentDateStr = (p: any) => {
+    if (!p.created_at) return '';
+    try {
+      return new Date(p.created_at).toISOString().substring(0, 10);
+    } catch {
+      return String(p.created_at).substring(0, 10);
+    }
+  };
+
+  const getOpeningCashForDate = (dateStr: string): number => {
+    const record = dailyCashBalances.find(b => b.date === dateStr);
+    if (record) {
+      return Number(record.opening_cash);
+    }
+    const previousBalances = dailyCashBalances
+      .filter(b => b.date < dateStr)
+      .sort((a, b) => b.date.localeCompare(a.date));
+      
+    if (previousBalances.length > 0) {
+      const lastRecord = previousBalances[0];
+      if (lastRecord.closing_cash !== null && lastRecord.closing_cash !== undefined) {
+        return Number(lastRecord.closing_cash);
+      }
+      return getExpectedCashForDate(lastRecord.date);
+    }
+    return 0;
+  };
+
+  const getExpectedCashForDate = (dateStr: string): number => {
+    const opening = getOpeningCashForDate(dateStr);
+    const cashPayments = payments
+      .filter(p => p.method === 'Cash' && getPaymentDateStr(p) === dateStr)
+      .reduce((sum, p) => sum + Number(p.amount), 0);
+    const cashExpenses = expenses
+      .filter(e => e.payment_method === 'Cash' && e.date === dateStr)
+      .reduce((sum, e) => sum + Number(e.amount), 0);
+    return opening + cashPayments - cashExpenses;
+  };
+
+  const getLedgerTotalsForDate = (dateStr: string) => {
+    const openingCash = getOpeningCashForDate(dateStr);
+    const cashPayments = payments
+      .filter(p => p.method === 'Cash' && getPaymentDateStr(p) === dateStr)
+      .reduce((sum, p) => sum + Number(p.amount), 0);
+    const upiPayments = payments
+      .filter(p => p.method === 'UPI' && getPaymentDateStr(p) === dateStr)
+      .reduce((sum, p) => sum + Number(p.amount), 0);
+    const otherPayments = payments
+      .filter(p => !['Cash', 'UPI'].includes(p.method) && getPaymentDateStr(p) === dateStr)
+      .reduce((sum, p) => sum + Number(p.amount), 0);
+    const cashExpenses = expenses
+      .filter(e => e.payment_method === 'Cash' && e.date === dateStr)
+      .reduce((sum, e) => sum + Number(e.amount), 0);
+    const upiExpenses = expenses
+      .filter(e => e.payment_method === 'UPI' && e.date === dateStr)
+      .reduce((sum, e) => sum + Number(e.amount), 0);
+    const expectedClosingCash = openingCash + cashPayments - cashExpenses;
+    const savedRecord = dailyCashBalances.find(b => b.date === dateStr);
+    const actualClosingCash = savedRecord?.closing_cash !== null && savedRecord?.closing_cash !== undefined 
+      ? Number(savedRecord.closing_cash) 
+      : null;
+    return {
+      openingCash,
+      cashPayments,
+      upiPayments,
+      otherPayments,
+      cashExpenses,
+      upiExpenses,
+      expectedClosingCash,
+      actualClosingCash,
+      isClosed: actualClosingCash !== null
+    };
+  };
+
+  const handleSaveOpeningCash = async () => {
+    if (!property?.id) return;
+    const amountVal = parseFloat(openingCashInput);
+    if (isNaN(amountVal) || amountVal < 0) {
+      alert("Please enter a valid cash amount.");
+      return;
+    }
+    setIsSavingExpense(true);
+    try {
+      const record = dailyCashBalances.find(b => b.date === selectedLedgerDate);
+      let error;
+      if (record) {
+        const res = await supabase
+          .from('daily_cash_balances')
+          .update({ opening_cash: amountVal })
+          .eq('id', record.id);
+        error = res.error;
+      } else {
+        const res = await supabase
+          .from('daily_cash_balances')
+          .insert({
+            property_id: property.id,
+            date: selectedLedgerDate,
+            opening_cash: amountVal
+          });
+        error = res.error;
+      }
+      if (error) {
+        alert("Error saving opening cash: " + error.message);
+      } else {
+        setOpeningCashInput('');
+        await loadDashboardData();
+      }
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setIsSavingExpense(false);
+    }
+  };
+
+  const handleCloseCash = async (closingAmount: number) => {
+    if (!property?.id) return;
+    if (!confirm(`Are you sure you want to CLOSE the cash counter for ${formatFriendlyDate(selectedLedgerDate)} at ₹${closingAmount.toFixed(2)}? This sets the opening balance for the next day.`)) {
+      return;
+    }
+    setIsSavingExpense(true);
+    try {
+      const record = dailyCashBalances.find(b => b.date === selectedLedgerDate);
+      let error;
+      if (record) {
+        const res = await supabase
+          .from('daily_cash_balances')
+          .update({ closing_cash: closingAmount })
+          .eq('id', record.id);
+        error = res.error;
+      } else {
+        const res = await supabase
+          .from('daily_cash_balances')
+          .insert({
+            property_id: property.id,
+            date: selectedLedgerDate,
+            opening_cash: getOpeningCashForDate(selectedLedgerDate),
+            closing_cash: closingAmount
+          });
+        error = res.error;
+      }
+      if (error) {
+        alert("Error closing cash: " + error.message);
+      } else {
+        await loadDashboardData();
+      }
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setIsSavingExpense(false);
+    }
+  };
+
+  const handleResetCloseCash = async () => {
+    if (!property?.id) return;
+    const record = dailyCashBalances.find(b => b.date === selectedLedgerDate);
+    if (!record) return;
+    if (!confirm("Are you sure you want to RE-OPEN the cash counter for this day?")) {
+      return;
+    }
+    setIsSavingExpense(true);
+    try {
+      const { error } = await supabase
+        .from('daily_cash_balances')
+        .update({ closing_cash: null })
+        .eq('id', record.id);
+      if (error) {
+        alert("Error re-opening cash: " + error.message);
+      } else {
+        await loadDashboardData();
+      }
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setIsSavingExpense(false);
+    }
+  };
+
+  const handleSaveExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!property?.id) return;
+    const amountVal = parseFloat(newExpenseAmount);
+    if (isNaN(amountVal) || amountVal <= 0) {
+      alert("Please enter a valid expense amount.");
+      return;
+    }
+    if (!newExpenseDescription.trim()) {
+      alert("Please enter an expense description.");
+      return;
+    }
+    setIsSavingExpense(true);
+    try {
+      const { error } = await supabase
+        .from('expenses')
+        .insert({
+          property_id: property.id,
+          description: newExpenseDescription.trim(),
+          category: newExpenseCategory,
+          amount: amountVal,
+          payment_method: newExpensePaymentMethod,
+          date: newExpenseDate
+        });
+      if (error) {
+        alert("Error saving expense: " + error.message);
+      } else {
+        setNewExpenseDescription('');
+        setNewExpenseAmount('');
+        await loadDashboardData();
+      }
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setIsSavingExpense(false);
+    }
+  };
+
+  const handleDeleteExpense = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this expense?")) return;
+    setIsSavingExpense(true);
+    try {
+      const { error } = await supabase
+        .from('expenses')
+        .delete()
+        .eq('id', id);
+      if (error) {
+        alert("Error deleting expense: " + error.message);
+      } else {
+        await loadDashboardData();
+      }
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setIsSavingExpense(false);
+    }
+  };
+
+  const generateHorizontalPDFReport = async (type: 'checkins' | 'checkouts' | 'pending' | 'inhouse') => {
+    if (!property) return;
+    const { jsPDF } = await import('jspdf');
+    
+    // Polyfill window.jsPDF to ensure jspdf-autotable loads/binds properly in Next.js
+    if (typeof window !== 'undefined') {
+      (window as any).jsPDF = jsPDF;
+    }
+    
+    const { default: autoTable } = await import('jspdf-autotable');
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: 'a4'
+    });
+    let title = '';
+    let dataList: any[] = [];
+    if (type === 'checkins') {
+      title = `Daily Check-Ins Report - ${formatFriendlyDate(selectedLedgerDate)}`;
+      dataList = bookings.filter(b => {
+        const cInTimeStr = b.check_in_time ? getLocalYYYYMMDD(new Date(b.check_in_time)) : '';
+        const cInDateStr = b.check_in ? b.check_in.substring(0, 10) : '';
+        const actDate = cInTimeStr || cInDateStr;
+        return actDate === selectedLedgerDate && ['Checked In', 'Checked Out'].includes(b.status);
+      });
+    } else if (type === 'checkouts') {
+      title = `Daily Check-Outs Report - ${formatFriendlyDate(selectedLedgerDate)}`;
+      dataList = bookings.filter(b => {
+        const cOutTimeStr = b.check_out_time ? getLocalYYYYMMDD(new Date(b.check_out_time)) : '';
+        const cOutDateStr = b.check_out ? b.check_out.substring(0, 10) : '';
+        const actDate = cOutTimeStr || cOutDateStr;
+        return actDate === selectedLedgerDate && b.status === 'Checked Out';
+      });
+    } else if (type === 'inhouse') {
+      title = `Daily In-House Guests Report - ${formatFriendlyDate(selectedLedgerDate)}`;
+      dataList = bookings.filter(b => {
+        const checkInDate = b.check_in_time ? getLocalYYYYMMDD(new Date(b.check_in_time)) : (b.check_in ? b.check_in.substring(0, 10) : '');
+        const checkOutDate = b.check_out_time ? getLocalYYYYMMDD(new Date(b.check_out_time)) : (b.check_out ? b.check_out.substring(0, 10) : '');
+        
+        if (b.status === 'Checked In') {
+          return checkInDate <= selectedLedgerDate;
+        }
+        if (b.status === 'Checked Out') {
+          // Historically in-house on selectedLedgerDate
+          return checkInDate <= selectedLedgerDate && checkOutDate >= selectedLedgerDate;
+        }
+        return false;
+      });
+    } else if (type === 'pending') {
+      title = `Daily Pending Bills Report - ${formatFriendlyDate(selectedLedgerDate)}`;
+      dataList = bookings.filter(b => {
+        if (b.status !== 'Checked In') return false;
+        const bookingIncidentals = incidentals.filter(i => i.booking_id === b.id);
+        const bookingPayments = payments.filter(p => p.booking_id === b.id);
+        const dailyRoomChargesSum = bookingIncidentals
+          .filter(item => item.description?.startsWith('Daily Room Charge'))
+          .reduce((sum, item) => sum + Number(item.amount), 0);
+        const roomAmount = Math.max(0, Number(b.amount) - dailyRoomChargesSum);
+        const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0);
+        const totalCharges = roomAmount + incidentalsAmount;
+        const totalPaid = bookingPayments.reduce((sum, item) => sum + Number(item.amount), 0);
+        const balanceDue = totalCharges - totalPaid;
+        return balanceDue > 0.01;
+      });
+    }
+    let totalCash = 0;
+    let totalUPI = 0;
+    let totalDue = 0;
+    const rows = dataList.map((b, idx) => {
+      const roomNum = rooms.find(r => r.id === b.room_id)?.room_number || 'N/A';
+      const bookingPaymentsOnDate = payments.filter(p => p.booking_id === b.id && getPaymentDateStr(p) === selectedLedgerDate);
+      const cashAmt = bookingPaymentsOnDate.filter(p => p.method === 'Cash').reduce((sum, p) => sum + Number(p.amount), 0);
+      const upiAmt = bookingPaymentsOnDate.filter(p => p.method === 'UPI').reduce((sum, p) => sum + Number(p.amount), 0);
+      
+      const bookingIncidentals = incidentals.filter(i => i.booking_id === b.id);
+      const bookingPaymentsAll = payments.filter(p => p.booking_id === b.id);
+      const dailyRoomChargesSum = bookingIncidentals
+        .filter(item => item.description?.startsWith('Daily Room Charge'))
+        .reduce((sum, item) => sum + Number(item.amount), 0);
+      const roomAmount = Math.max(0, Number(b.amount) - dailyRoomChargesSum);
+      const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0);
+      const totalCharges = roomAmount + incidentalsAmount;
+      const totalPaid = bookingPaymentsAll.reduce((sum, item) => sum + Number(item.amount), 0);
+      const balanceDue = Math.max(0, totalCharges - totalPaid);
+      
+      totalCash += cashAmt;
+      totalUPI += upiAmt;
+      totalDue += balanceDue;
+      const formatDateTime = (isoStr?: string) => {
+        if (!isoStr) return 'N/A';
+        const date = new Date(isoStr);
+        
+        // Format the date part (e.g., "22 Jun")
+        const formattedDate = date.toLocaleDateString('en-IN', { 
+          day: '2-digit', 
+          month: 'short' 
+        });
+        
+        // Check if a specific hour/minute time was recorded (not just a pure date string)
+        const hasTime = isoStr.includes('T') && 
+                        !isoStr.endsWith('T00:00:00') && 
+                        !isoStr.endsWith('T00:00:00.000Z');
+                        
+        if (hasTime) {
+          const formattedTime = date.toLocaleTimeString('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+          });
+          return `${formattedDate} (${formattedTime})`; // e.g. "22 Jun (08:00 PM)"
+        }
+        
+        return formattedDate;
+      };
+      return [
+        idx + 1,
+        b.guest_name,
+        b.guest_phone || 'N/A',
+        formatDateTime(b.check_in_time || b.check_in),
+        formatDateTime(b.check_out_time || b.check_out),
+        roomNum,
+        cashAmt > 0 ? `Rs. ${cashAmt.toFixed(2)}` : 'Rs. 0.00',
+        upiAmt > 0 ? `Rs. ${upiAmt.toFixed(2)}` : 'Rs. 0.00',
+        `Rs. ${balanceDue.toFixed(2)}`
+      ];
+    });
+    doc.setFillColor(10, 10, 12);
+    doc.rect(0, 0, 297, 40, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.text(property.name.toUpperCase(), 15, 15);
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(150, 150, 150);
+    doc.text(title, 15, 25);
+    doc.text(`Generated on: ${new Date().toLocaleString('en-IN')}`, 15, 32);
+    autoTable(doc, {
+      startY: 45,
+      head: [['SL', 'GUEST NAME', 'PHONE', 'C.IN/TIME', 'C.OUT/TIME', 'ROOM', 'CASH', 'UPI', 'DUE']],
+      body: rows,
+      foot: [['', 'TOTALS', '', '', '', '', `Rs. ${totalCash.toFixed(2)}`, `Rs. ${totalUPI.toFixed(2)}`, `Rs. ${totalDue.toFixed(2)}` ]],
+      theme: 'grid',
+      rowPageBreak: 'avoid',
+      styles: {
+        fontSize: 10,
+        cellPadding: 4,
+        font: 'helvetica',
+        valign: 'middle'
+      },
+      headStyles: {
+        fillColor: [79, 70, 229],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        halign: 'left'
+      },
+      footStyles: {
+        fillColor: [244, 244, 245],
+        textColor: [24, 24, 27],
+        fontStyle: 'bold',
+        halign: 'left'
+      },
+      columnStyles: {
+        0: { cellWidth: 12, halign: 'center' },
+        5: { fontStyle: 'bold' },
+        6: { fontStyle: 'bold', halign: 'right' },
+        7: { fontStyle: 'bold', halign: 'right' },
+        8: { fontStyle: 'bold', halign: 'right', textColor: [220, 38, 38] }
+      }
+    });
+    
+    // Output a Blob and open it in a new tab for inline previewing/printing/downloading
+    const pdfBlob = doc.output('blob');
+    const pdfUrl = URL.createObjectURL(pdfBlob);
+    window.open(pdfUrl, '_blank');
+  };
+
+  const generateReconciliationPDFReport = async () => {
+    if (!property) return;
+    const { jsPDF } = await import('jspdf');
+    if (typeof window !== 'undefined') {
+      (window as any).jsPDF = jsPDF;
+    }
+    const { default: autoTable } = await import('jspdf-autotable');
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+    const stats = getLedgerTotalsForDate(selectedLedgerDate);
+    doc.setFillColor(10, 10, 12);
+    doc.rect(0, 0, 210, 45, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(20);
+    doc.setFont("helvetica", "bold");
+    doc.text(property.name.toUpperCase(), 15, 18);
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(150, 150, 150);
+    doc.text(`Daily Cash & UPI Reconciliation Report`, 15, 28);
+    doc.text(`Date: ${formatFriendlyDate(selectedLedgerDate)}`, 15, 35);
+    doc.setFillColor(244, 244, 245);
+    doc.rect(15, 55, 85, 35, 'F');
+    doc.setTextColor(24, 24, 27);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text("Opening Counter Cash", 20, 65);
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.text(`Rs. ${stats.openingCash.toFixed(2)}`, 20, 80);
+    doc.setFillColor(79, 70, 229);
+    doc.rect(110, 55, 85, 35, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text("Expected Cash in Hand", 115, 65);
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.text(`Rs. ${stats.expectedClosingCash.toFixed(2)}`, 115, 80);
+    doc.setTextColor(24, 24, 27);
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("1. Daily Income Collections", 15, 105);
+    const collectionsRows = [
+      ["Cash Collections (Rooms & Dues)", `Rs. ${stats.cashPayments.toFixed(2)}`],
+      ["UPI Collections (Rooms & Dues)", `Rs. ${stats.upiPayments.toFixed(2)}`],
+      ["Other Methods (Card, Bank, etc)", `Rs. ${stats.otherPayments.toFixed(2)}`],
+      ["Total Daily Collection", `Rs. ${(stats.cashPayments + stats.upiPayments + stats.otherPayments).toFixed(2)}`]
+    ];
+    autoTable(doc, {
+      startY: 110,
+      head: [['Payment Type', 'Total Collected']],
+      body: collectionsRows,
+      theme: 'striped',
+      rowPageBreak: 'avoid',
+      styles: { fontSize: 10, cellPadding: 4 },
+      headStyles: { fillColor: [31, 41, 55], textColor: [255, 255, 255] },
+      columnStyles: { 1: { halign: 'right', fontStyle: 'bold' } }
+    });
+    const expensesStartY = (doc as any).lastAutoTable.finalY + 15;
+    doc.text("2. Daily Expenses Outflow", 15, expensesStartY);
+    const dayExpenses = expenses.filter(e => e.date === selectedLedgerDate);
+    const expensesRows = dayExpenses.map((e, idx) => [
+      idx + 1,
+      e.description,
+      e.category,
+      e.payment_method,
+      `Rs. ${Number(e.amount).toFixed(2)}`
+    ]);
+    if (expensesRows.length === 0) {
+      expensesRows.push(["-", "No expenses logged today", "-", "-", "Rs. 0.00"]);
+    }
+    expensesRows.push([
+      "",
+      "TOTAL EXPENSES",
+      "",
+      `Cash: Rs. ${stats.cashExpenses.toFixed(2)} | UPI: Rs. ${stats.upiExpenses.toFixed(2)}`,
+      `Rs. ${(stats.cashExpenses + stats.upiExpenses).toFixed(2)}`
+    ]);
+    autoTable(doc, {
+      startY: expensesStartY + 5,
+      head: [['SL', 'Description', 'Category', 'Method', 'Amount']],
+      body: expensesRows,
+      theme: 'grid',
+      rowPageBreak: 'avoid',
+      styles: { fontSize: 9, cellPadding: 4 },
+      headStyles: { fillColor: [220, 38, 38], textColor: [255, 255, 255] },
+      footStyles: { fillColor: [244, 244, 245], fontStyle: 'bold' },
+      columnStyles: { 4: { halign: 'right', fontStyle: 'bold' } }
+    });
+    const reconStartY = (doc as any).lastAutoTable.finalY + 15;
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("3. Cash Ledger Reconciliation", 15, reconStartY);
+    const reconRows = [
+      ["[+] Opening Counter Cash", `Rs. ${stats.openingCash.toFixed(2)}`],
+      ["[+] Cash Collected Today", `Rs. ${stats.cashPayments.toFixed(2)}`],
+      ["[-] Cash Expenses Today", `- Rs. ${stats.cashExpenses.toFixed(2)}`],
+      ["[=] Expected Counter Cash", `Rs. ${stats.expectedClosingCash.toFixed(2)}`],
+      ["[ ] Actual Closed Counter Cash", stats.actualClosingCash !== null ? `Rs. ${stats.actualClosingCash.toFixed(2)}` : "Not Closed Yet"],
+      ["[ ] Reconciliation Status", stats.actualClosingCash !== null 
+        ? (stats.actualClosingCash === stats.expectedClosingCash ? "MATCHED (Balanced)" : `DISCREPANCY (Rs. ${(stats.actualClosingCash - stats.expectedClosingCash).toFixed(2)})`) 
+        : "OPEN (Counter active)"
+      ]
+    ];
+    autoTable(doc, {
+      startY: reconStartY + 5,
+      body: reconRows,
+      theme: 'plain',
+      rowPageBreak: 'avoid',
+      styles: { fontSize: 10, cellPadding: 4 },
+      columnStyles: { 
+        0: { fontStyle: 'bold' },
+        1: { halign: 'right', fontStyle: 'bold' }
+      }
+    });
+    
+    // Output a Blob and open it in a new tab for inline previewing/printing/downloading
+    const pdfBlob = doc.output('blob');
+    const pdfUrl = URL.createObjectURL(pdfBlob);
+    window.open(pdfUrl, '_blank');
+  };
+
+  const generateNightAuditPDFReport = async () => {
+    if (!property) return;
+    const { jsPDF } = await import('jspdf');
+    if (typeof window !== 'undefined') {
+      (window as any).jsPDF = jsPDF;
+    }
+    const { default: autoTable } = await import('jspdf-autotable');
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    const stats = getLedgerTotalsForDate(selectedLedgerDate);
+    
+    // Header banner (Dark luxury theme)
+    doc.setFillColor(15, 23, 42); // slate-900
+    doc.rect(0, 0, 210, 45, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(22);
+    doc.setFont("helvetica", "bold");
+    doc.text(property.name.toUpperCase(), 15, 18);
+    
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(148, 163, 184); // slate-400
+    doc.text(`Official End-of-Day Night Audit & Ledger Register`, 15, 28);
+    doc.text(`Business Date: ${formatFriendlyDate(selectedLedgerDate)}`, 15, 35);
+    
+    // Page count footer helper
+    const addFooter = (pageNumber: number) => {
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(148, 163, 184);
+      doc.text(`StaySync PMS - Night Audit Register | Page ${pageNumber}`, 15, 287);
+      doc.text(`Generated on: ${new Date().toLocaleString('en-IN')}`, 145, 287);
+    };
+
+    // Helper to format date-time
+    const formatDateTime = (isoStr?: string) => {
+      if (!isoStr) return 'N/A';
+      const date = new Date(isoStr);
+      const formattedDate = date.toLocaleDateString('en-IN', { 
+        day: '2-digit', 
+        month: 'short' 
+      });
+      const hasTime = isoStr.includes('T') && 
+                      !isoStr.endsWith('T00:00:00') && 
+                      !isoStr.endsWith('T00:00:00.000Z');
+      if (hasTime) {
+        const formattedTime = date.toLocaleTimeString('en-IN', {
+          timeZone: 'Asia/Kolkata',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true
+        });
+        return `${formattedDate} (${formattedTime})`;
+      }
+      return formattedDate;
+    };
+
+    // Helper to extract date from incidental created_at
+    const getIncidentalDateStr = (inc: any) => {
+      if (!inc.created_at) return '';
+      try {
+        return new Date(inc.created_at).toISOString().substring(0, 10);
+      } catch {
+        return String(inc.created_at).substring(0, 10);
+      }
+    };
+
+    // Filter active bookings on selectedLedgerDate
+    const activeBookings = bookings.filter(b => {
+      const checkInDate = b.check_in_time ? getLocalYYYYMMDD(new Date(b.check_in_time)) : (b.check_in ? b.check_in.substring(0, 10) : '');
+      const checkOutDate = b.check_out_time ? getLocalYYYYMMDD(new Date(b.check_out_time)) : (b.check_out ? b.check_out.substring(0, 10) : '');
+      
+      if (['Checked In', 'Checked Out'].includes(b.status)) {
+        return checkInDate <= selectedLedgerDate && (b.status === 'Checked In' || checkOutDate >= selectedLedgerDate);
+      }
+      return false;
+    });
+
+    let totalCash = 0;
+    let totalUPI = 0;
+    let totalOther = 0;
+    let totalDue = 0;
+
+    const guestRows = activeBookings.map((b, idx) => {
+      const roomNum = rooms.find(r => r.id === b.room_id)?.room_number || 'N/A';
+      const paymentsOnDate = payments.filter(p => p.booking_id === b.id && getPaymentDateStr(p) === selectedLedgerDate);
+      const cashAmt = paymentsOnDate.filter(p => p.method === 'Cash').reduce((sum, p) => sum + Number(p.amount), 0);
+      const upiAmt = paymentsOnDate.filter(p => p.method === 'UPI').reduce((sum, p) => sum + Number(p.amount), 0);
+      const otherAmt = paymentsOnDate.filter(p => !['Cash', 'UPI'].includes(p.method)).reduce((sum, p) => sum + Number(p.amount), 0);
+      
+      const bookingIncidentals = incidentals.filter(i => i.booking_id === b.id);
+      const bookingPaymentsAll = payments.filter(p => p.booking_id === b.id);
+      const dailyRoomChargesSum = bookingIncidentals
+        .filter(item => item.description?.startsWith('Daily Room Charge'))
+        .reduce((sum, item) => sum + Number(item.amount), 0);
+      const roomAmount = Math.max(0, Number(b.amount) - dailyRoomChargesSum);
+      const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0);
+      const totalCharges = roomAmount + incidentalsAmount;
+      const totalPaid = bookingPaymentsAll.reduce((sum, item) => sum + Number(item.amount), 0);
+      const balanceDue = Math.max(0, totalCharges - totalPaid);
+
+      totalCash += cashAmt;
+      totalUPI += upiAmt;
+      totalOther += otherAmt;
+      totalDue += balanceDue;
+
+      return [
+        idx + 1,
+        b.guest_name,
+        b.guest_phone || 'N/A',
+        formatDateTime(b.check_in_time || b.check_in),
+        formatDateTime(b.check_out_time || b.check_out),
+        roomNum,
+        cashAmt > 0 ? `Rs. ${cashAmt.toFixed(2)}` : 'Rs. 0.00',
+        upiAmt > 0 ? `Rs. ${upiAmt.toFixed(2)}` : 'Rs. 0.00',
+        otherAmt > 0 ? `Rs. ${otherAmt.toFixed(2)}` : 'Rs. 0.00',
+        `Rs. ${balanceDue.toFixed(2)}`
+      ];
+    });
+
+    // 1. Guest Rent & Collections Table
+    doc.setTextColor(15, 23, 42);
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.text("1. DAILY GUEST TRANSACTIONS & COLLECTIONS (Right Page Register)", 15, 53);
+
+    autoTable(doc, {
+      startY: 56,
+      head: [['SL', 'GUEST NAME', 'PHONE', 'C.IN/TIME', 'C.OUT/TIME', 'ROOM', 'CASH', 'UPI', 'OTHER', 'DUE']],
+      body: guestRows,
+      foot: [['', 'TOTAL COLLECTIONS TODAY', '', '', '', '', `Rs. ${totalCash.toFixed(2)}`, `Rs. ${totalUPI.toFixed(2)}`, `Rs. ${totalOther.toFixed(2)}`, `Rs. ${totalDue.toFixed(2)}` ]],
+      theme: 'grid',
+      rowPageBreak: 'avoid',
+      margin: { left: 11.5, right: 11.5 },
+      styles: { fontSize: 7.5, cellPadding: 2, valign: 'middle', font: 'helvetica' },
+      headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold' },
+      footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold' },
+      columnStyles: {
+        0: { cellWidth: 7, halign: 'center' },
+        1: { cellWidth: 28, halign: 'left' },
+        2: { cellWidth: 22, halign: 'center' },
+        3: { cellWidth: 25, halign: 'center' },
+        4: { cellWidth: 25, halign: 'center' },
+        5: { cellWidth: 12, halign: 'center' },
+        6: { cellWidth: 17, halign: 'right', fontStyle: 'bold' },
+        7: { cellWidth: 17, halign: 'right', fontStyle: 'bold' },
+        8: { cellWidth: 17, halign: 'right', fontStyle: 'bold' },
+        9: { cellWidth: 17, halign: 'right', fontStyle: 'bold', textColor: [220, 38, 38] }
+      }
+    });
+
+    // 2. Supplementary Sales / Food & Water Table - Started on a new page for perfect stability
+    doc.addPage();
+    const fWStartY = 20;
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.text("2. FOOD, WATER & INCIDENTAL CHARGES REGISTER", 15, fWStartY);
+
+    const dayIncidentals = incidentals.filter(inc => 
+      getIncidentalDateStr(inc) === selectedLedgerDate &&
+      !inc.description?.startsWith('Daily Room Charge')
+    );
+    const incidentalRows = dayIncidentals.map((inc, idx) => {
+      const bObj = bookings.find(b => b.id === inc.booking_id);
+      const roomNum = bObj ? (rooms.find(r => r.id === bObj.room_id)?.room_number || 'N/A') : 'N/A';
+      
+      // Determine payment context if mentioned
+      let paidVia = "Unpaid / Posted to Folio";
+      if (inc.description?.toLowerCase().includes("sir") || inc.description?.toLowerCase().includes("owner")) {
+        paidVia = "Direct to Owner (SIR Account)";
+      } else {
+        const hasPayment = payments.some(p => p.booking_id === inc.booking_id && getPaymentDateStr(p) === selectedLedgerDate);
+        if (hasPayment) {
+          const pMethod = payments.find(p => p.booking_id === inc.booking_id && getPaymentDateStr(p) === selectedLedgerDate)?.method;
+          paidVia = pMethod === 'Cash' ? 'Cash' : (pMethod === 'UPI' ? 'PhonePe UPI' : 'Other Method');
+        }
+      }
+
+      return [
+        idx + 1,
+        roomNum,
+        bObj ? bObj.guest_name : 'N/A',
+        inc.description || 'Supplementary sale',
+        `Rs. ${Number(inc.amount).toFixed(2)}`,
+        paidVia
+      ];
+    });
+
+    if (incidentalRows.length === 0) {
+      incidentalRows.push(["-", "-", "No supplementary / Food & Water charges logged today.", "-", "-", "-"]);
+    }
+
+    const totalIncidentalSales = dayIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
+    incidentalRows.push(["", "", "TOTAL INCIDENTAL SALES", "", `Rs. ${totalIncidentalSales.toFixed(2)}`, ""]);
+
+    autoTable(doc, {
+      startY: fWStartY + 3,
+      head: [['SL', 'ROOM', 'GUEST NAME', 'CHARGE DESCRIPTION', 'AMOUNT', 'PAYMENT MODE']],
+      body: incidentalRows,
+      theme: 'grid',
+      rowPageBreak: 'avoid',
+      margin: { left: 11.5, right: 11.5 },
+      styles: { fontSize: 7.5, cellPadding: 2, valign: 'middle', font: 'helvetica' },
+      headStyles: { fillColor: [79, 70, 229], textColor: [255, 255, 255], fontStyle: 'bold' },
+      footStyles: { fillColor: [241, 245, 249], fontStyle: 'bold' },
+      columnStyles: {
+        0: { cellWidth: 8, halign: 'center' },
+        1: { cellWidth: 20, halign: 'center' },
+        4: { halign: 'right', fontStyle: 'bold' }
+      }
+    });
+
+    // Page overflow safety - check if we need to add a page break before expenses & reconciliation
+    let nextSectionY = (doc as any).lastAutoTable.finalY + 12;
+    if (nextSectionY > 185) {
+      addFooter(1);
+      doc.addPage();
+      nextSectionY = 20; // reset Y to top of new page
+    }
+
+    // 3. Daily Expenses Outflow Table
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.text("3. DAILY EXPENSES OUTFLOW (Left Page Expenses)", 15, nextSectionY);
+
+    const dayExpenses = expenses.filter(e => e.date === selectedLedgerDate);
+    const expensesRows = dayExpenses.map((e, idx) => [
+      idx + 1,
+      e.description,
+      e.category,
+      e.payment_method,
+      `Rs. ${Number(e.amount).toFixed(2)}`
+    ]);
+
+    if (expensesRows.length === 0) {
+      expensesRows.push(["-", "No expenses logged today", "-", "-", "Rs. 0.00"]);
+    }
+    const totalExpenses = dayExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+    expensesRows.push([
+      "",
+      "TOTAL DAILY EXPENSES",
+      "",
+      `Cash: Rs. ${stats.cashExpenses.toFixed(2)} | UPI: Rs. ${stats.upiExpenses.toFixed(2)}`,
+      `Rs. ${totalExpenses.toFixed(2)}`
+    ]);
+
+    autoTable(doc, {
+      startY: nextSectionY + 3,
+      head: [['SL', 'EXPENSE DESCRIPTION', 'CATEGORY', 'METHOD', 'AMOUNT']],
+      body: expensesRows,
+      theme: 'grid',
+      rowPageBreak: 'avoid',
+      margin: { left: 11.5, right: 11.5 },
+      styles: { fontSize: 7.5, cellPadding: 2, valign: 'middle', font: 'helvetica' },
+      headStyles: { fillColor: [220, 38, 38], textColor: [255, 255, 255], fontStyle: 'bold' },
+      footStyles: { fillColor: [241, 245, 249], fontStyle: 'bold' },
+      columnStyles: {
+        0: { cellWidth: 8, halign: 'center' },
+        4: { halign: 'right', fontStyle: 'bold' }
+      }
+    });
+
+    // 4. Counter Cash & Sales Reconciliations (Dual Columns layout)
+    const reconStartY = (doc as any).lastAutoTable.finalY + 12;
+    
+    // Let's draw side-by-side grids or custom neat text layouts
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.text("4. CASH COUNTER RECONCILIATION", 15, reconStartY);
+    doc.text("5. TRUE DAILY SALES RECONCILIATION", 110, reconStartY);
+
+    const leftReconRows = [
+      ["[+] Opening Cash Balance", `Rs. ${stats.openingCash.toFixed(2)}`],
+      ["[+] Today's Cash Received", `Rs. ${stats.cashPayments.toFixed(2)}`],
+      ["[-] Today's Cash Expenses", `- Rs. ${stats.cashExpenses.toFixed(2)}`],
+      ["[=] Expected Counter Cash", `Rs. ${stats.expectedClosingCash.toFixed(2)}`],
+      ["[ ] Actual Closed Counter Cash", stats.actualClosingCash !== null ? `Rs. ${stats.actualClosingCash.toFixed(2)}` : "Open / Active"],
+      ["[ ] Reconciliation Status", stats.actualClosingCash !== null 
+        ? (stats.actualClosingCash === stats.expectedClosingCash ? "MATCHED (Balanced)" : `DISCREPANCY (Rs. ${(stats.actualClosingCash - stats.expectedClosingCash).toFixed(2)})`) 
+        : "OPEN DRAWER"
+      ]
+    ];
+
+    autoTable(doc, {
+      startY: reconStartY + 3,
+      body: leftReconRows,
+      theme: 'plain',
+      rowPageBreak: 'avoid',
+      styles: { fontSize: 8, cellPadding: 2.5, font: 'helvetica' },
+      columnStyles: { 
+        0: { fontStyle: 'bold', cellWidth: 50 },
+        1: { halign: 'right', fontStyle: 'bold', cellWidth: 35 }
+      },
+      margin: { left: 11.5 }
+    });
+
+    const rightSalesRows = [
+      ["Room Rent PhonePe (UPI) Collections", `Rs. ${stats.upiPayments.toFixed(2)}`],
+      ["Room Rent Cash Collections", `Rs. ${stats.cashPayments.toFixed(2)}`],
+      ["Food & Water (Incidental Sales)", `Rs. ${totalIncidentalSales.toFixed(2)}`],
+      ["Other Direct Payments (Sir Account)", `Rs. ${stats.otherPayments.toFixed(2)}`],
+      ["TOTAL GENERATED DAILY SALES", `Rs. ${(stats.upiPayments + stats.cashPayments + totalIncidentalSales + stats.otherPayments).toFixed(2)}`]
+    ];
+
+    autoTable(doc, {
+      startY: reconStartY + 3,
+      body: rightSalesRows,
+      theme: 'plain',
+      rowPageBreak: 'avoid',
+      styles: { fontSize: 8, cellPadding: 3, font: 'helvetica' },
+      columnStyles: { 
+        0: { fontStyle: 'bold', cellWidth: 55 },
+        1: { halign: 'right', fontStyle: 'bold', cellWidth: 30 }
+      },
+      margin: { left: 110 }
+    });
+
+    // Add borders / highlights to totals
+    const finalTableY = (doc as any).lastAutoTable.finalY;
+    doc.setDrawColor(203, 213, 225); // slate-300
+    doc.line(15, finalTableY + 2, 195, finalTableY + 2);
+
+    doc.setFontSize(8.5);
+    doc.setFont("helvetica", "italic");
+    doc.setTextColor(71, 85, 105);
+    doc.text("* Note: Reconciled automatically using your actual database records to prevent handwritten omissions.", 15, finalTableY + 7);
+
+    // Footer on the last page
+    const currentPageCount = (doc as any).internal.getNumberOfPages();
+    addFooter(currentPageCount);
+
+    // Output and open in a new tab
+    const pdfBlob = doc.output('blob');
+    const pdfUrl = URL.createObjectURL(pdfBlob);
+    window.open(pdfUrl, '_blank');
+  };
+
+  const renderExpensesView = () => {
+    const stats = getLedgerTotalsForDate(selectedLedgerDate);
+    const dayExpenses = expenses.filter(e => e.date === selectedLedgerDate);
+    return (
+      <div className="space-y-8">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-zinc-900/40 border border-white/[0.04] p-6 rounded-3xl backdrop-blur-xl">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest pl-1">Selected Ledger Date</span>
+              <input 
+                type="date"
+                value={selectedLedgerDate}
+                onChange={(e) => {
+                  setSelectedLedgerDate(e.target.value);
+                  setNewExpenseDate(e.target.value);
+                }}
+                className="bg-black/60 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white font-bold focus:outline-none focus:border-indigo-500/50 transition-all cursor-pointer [color-scheme:dark] shadow-xl"
+              />
+            </div>
+            <div className="mt-4 sm:mt-0 sm:pl-4 sm:border-l sm:border-white/10">
+              <h3 className="text-sm font-bold text-white">Daily Ledger Overview</h3>
+              <p className="text-xs text-zinc-500 mt-1">Review ledger logs and export registers matching your notebook log.</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-3 w-full lg:w-auto">
+            <button
+              onClick={() => generateHorizontalPDFReport('checkins')}
+              className="flex-1 sm:flex-initial bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+            >
+              <Download size={14} />
+              Check-Ins PDF
+            </button>
+            <button
+              onClick={() => generateHorizontalPDFReport('inhouse')}
+              className="flex-1 sm:flex-initial bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+            >
+              <Download size={14} />
+              In-House PDF
+            </button>
+            <button
+              onClick={() => generateHorizontalPDFReport('checkouts')}
+              className="flex-1 sm:flex-initial bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+            >
+              <Download size={14} />
+              Check-Outs PDF
+            </button>
+            <button
+              onClick={() => generateHorizontalPDFReport('pending')}
+              className="flex-1 sm:flex-initial bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+            >
+              <Download size={14} />
+              Dues PDF
+            </button>
+            <button
+              onClick={generateReconciliationPDFReport}
+              className="w-full sm:w-auto bg-emerald-500/10 hover:bg-emerald-500 hover:text-black text-emerald-400 border border-emerald-500/20 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+            >
+              <FileText size={14} />
+              Reconcile PDF
+            </button>
+            <button
+              onClick={generateNightAuditPDFReport}
+              className="w-full sm:w-auto bg-amber-500/10 hover:bg-amber-500 hover:text-black text-amber-400 border border-amber-500/20 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+            >
+              <Moon size={14} />
+              Night Audit PDF
+            </button>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="bg-zinc-900/20 border border-white/[0.04] p-6 rounded-3xl space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Opening Cash Balance</span>
+              <Wallet className="text-zinc-500" size={16} />
+            </div>
+            <div>
+              <p className="text-2xl font-black text-white">₹{stats.openingCash.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+              <p className="text-[10px] text-zinc-500 mt-1 uppercase font-bold">Counter starting float</p>
+            </div>
+            <div className="pt-2 flex gap-2">
+              <input
+                type="number"
+                placeholder="Set starting..."
+                value={openingCashInput}
+                onChange={(e) => setOpeningCashInput(e.target.value)}
+                className="w-full bg-black/40 border border-white/5 rounded-xl px-3 py-1.5 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/50 transition-colors"
+              />
+              <button
+                onClick={handleSaveOpeningCash}
+                disabled={isSavingExpense || !openingCashInput}
+                className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0"
+              >
+                Set
+              </button>
+            </div>
+          </div>
+          <div className="bg-zinc-900/20 border border-white/[0.04] p-6 rounded-3xl space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Expected Drawer Cash</span>
+              <Banknote className="text-emerald-400" size={16} />
+            </div>
+            <div>
+              <p className="text-2xl font-black text-emerald-400">₹{stats.expectedClosingCash.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+              <div className="text-[9px] text-zinc-500 mt-1 uppercase font-bold space-y-0.5">
+                <p>Opening: +₹{stats.openingCash.toFixed(2)}</p>
+                <p>Collected: +₹{stats.cashPayments.toFixed(2)}</p>
+                <p>Expenses: -₹{stats.cashExpenses.toFixed(2)}</p>
+              </div>
+            </div>
+            <div className="pt-2">
+              {!stats.isClosed ? (
+                <button
+                  onClick={() => handleCloseCash(stats.expectedClosingCash)}
+                  disabled={isSavingExpense}
+                  className="w-full bg-emerald-600/10 hover:bg-emerald-600 hover:text-black border border-emerald-500/20 text-emerald-400 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all"
+                >
+                  Close Cash Balance
+                </button>
+              ) : (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest bg-emerald-500/10 px-2.5 py-1.5 rounded-xl border border-emerald-500/20 flex-1 text-center">
+                    ✓ Closed: ₹{stats.actualClosingCash?.toFixed(2)}
+                  </span>
+                  <button
+                    onClick={handleResetCloseCash}
+                    disabled={isSavingExpense}
+                    className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white border border-rose-500/20 transition-all"
+                    title="Re-open cash drawer"
+                  >
+                    <RotateCcw size={12} />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="bg-zinc-900/20 border border-white/[0.04] p-6 rounded-3xl space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Income Collections</span>
+              <DollarSign className="text-indigo-400" size={16} />
+            </div>
+            <div>
+              <p className="text-2xl font-black text-white">₹{(stats.cashPayments + stats.upiPayments + stats.otherPayments).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+              <div className="text-[9px] text-zinc-500 mt-1 uppercase font-bold space-y-0.5">
+                <p className="flex justify-between"><span>Cash Collected:</span><span className="text-zinc-400">₹{stats.cashPayments.toFixed(2)}</span></p>
+                <p className="flex justify-between"><span>UPI Collected:</span><span className="text-zinc-400">₹{stats.upiPayments.toFixed(2)}</span></p>
+                <p className="flex justify-between"><span>Other Methods:</span><span className="text-zinc-400">₹{stats.otherPayments.toFixed(2)}</span></p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-zinc-900/20 border border-white/[0.04] p-6 rounded-3xl space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Logged Expenses</span>
+              <TrendingDown className="text-rose-400" size={16} />
+            </div>
+            <div>
+              <p className="text-2xl font-black text-rose-400">₹{(stats.cashExpenses + stats.upiExpenses).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+              <div className="text-[9px] text-zinc-500 mt-1 uppercase font-bold space-y-0.5">
+                <p className="flex justify-between"><span>Cash Spent:</span><span className="text-zinc-400">₹{stats.cashExpenses.toFixed(2)}</span></p>
+                <p className="flex justify-between"><span>UPI Spent:</span><span className="text-zinc-400">₹{stats.upiExpenses.toFixed(2)}</span></p>
+                <p className="flex justify-between"><span>Total Entries:</span><span className="text-zinc-400">{dayExpenses.length} bills</span></p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+          <div className="bg-zinc-900/20 border border-white/[0.04] p-6 rounded-3xl space-y-6">
+            <div className="border-b border-white/[0.04] pb-4">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Plus size={16} className="text-indigo-400" />
+                Log New Expense
+              </h3>
+              <p className="text-xs text-zinc-500 mt-1">Record an outgoing property payment here.</p>
+            </div>
+            <form onSubmit={handleSaveExpense} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest pl-1">Description</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Laundry powder, vegetables, plumber..."
+                  value={newExpenseDescription}
+                  onChange={(e) => setNewExpenseDescription(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-3 text-white text-xs focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-zinc-700"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest pl-1">Category</label>
+                  <select
+                    value={newExpenseCategory}
+                    onChange={(e) => setNewExpenseCategory(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-3 text-white text-xs focus:outline-none focus:border-indigo-500/50 transition-all cursor-pointer"
+                  >
+                    <option value="Food" className="bg-[#0c0c0e]">Food</option>
+                    <option value="Utilities" className="bg-[#0c0c0e]">Utilities</option>
+                    <option value="Laundry" className="bg-[#0c0c0e]">Laundry</option>
+                    <option value="Maintenance" className="bg-[#0c0c0e]">Maintenance</option>
+                    <option value="Staff" className="bg-[#0c0c0e]">Staff</option>
+                    <option value="Refund" className="bg-[#0c0c0e]">Refund</option>
+                    <option value="Others" className="bg-[#0c0c0e]">Others</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest pl-1">Payment Method</label>
+                  <select
+                    value={newExpensePaymentMethod}
+                    onChange={(e) => setNewExpensePaymentMethod(e.target.value as any)}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-3 text-white text-xs focus:outline-none focus:border-indigo-500/50 transition-all cursor-pointer"
+                  >
+                    <option value="Cash" className="bg-[#0c0c0e]">Cash</option>
+                    <option value="UPI" className="bg-[#0c0c0e]">UPI</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest pl-1">Amount (₹)</label>
+                  <input
+                    type="number"
+                    required
+                    min="0.01"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={newExpenseAmount}
+                    onChange={(e) => setNewExpenseAmount(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-3 text-white text-xs focus:outline-none focus:border-indigo-500/50 transition-all font-mono"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest pl-1">Expense Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={newExpenseDate}
+                    onChange={(e) => setNewExpenseDate(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-3 text-white text-xs focus:outline-none focus:border-indigo-500/50 transition-all [color-scheme:dark] cursor-pointer"
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={isSavingExpense}
+                className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-indigo-500/10 flex items-center justify-center gap-2 transition-all active:scale-[0.98] mt-2"
+              >
+                {isSavingExpense ? <Loader2 size={14} className="animate-spin" /> : <><Plus size={14} /> Log Expense</>}
+              </button>
+            </form>
+          </div>
+          <div className="lg:col-span-2 bg-[#0a0a0c]/60 border border-white/[0.04] rounded-3xl overflow-hidden shadow-2xl">
+            <div className="p-6 border-b border-white/[0.04] bg-black/20 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-white">Today&apos;s Expense Ledger</h3>
+                <p className="text-xs text-zinc-500 mt-0.5">Summary of payments logged for {formatFriendlyDate(selectedLedgerDate)}</p>
+              </div>
+              <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest bg-white/5 px-2.5 py-1 rounded-lg">
+                {dayExpenses.length} Records
+              </span>
+            </div>
+            {dayExpenses.length === 0 ? (
+              <div className="py-24 text-center">
+                <CheckCircle2 size={36} className="text-emerald-500/40 mx-auto mb-3" />
+                <p className="text-zinc-500 font-bold uppercase tracking-widest text-[10px]">No Expenses Logged For This Date</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-black/40 border-b border-white/[0.06] text-[9px] font-black text-zinc-500 uppercase tracking-widest">
+                      <th className="p-4 pl-6">SL</th>
+                      <th className="p-4">Description</th>
+                      <th className="p-4">Category</th>
+                      <th className="p-4">Method</th>
+                      <th className="p-4 text-right">Amount</th>
+                      <th className="p-4 pr-6 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/[0.02]">
+                    {dayExpenses.map((expense, idx) => (
+                      <tr key={expense.id} className="hover:bg-white/[0.01] transition-colors">
+                        <td className="p-4 pl-6 align-middle text-xs font-bold text-zinc-500">{idx + 1}</td>
+                        <td className="p-4 align-middle text-xs font-bold text-white">{expense.description}</td>
+                        <td className="p-4 align-middle">
+                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-white/5 text-zinc-400 border border-white/5">
+                            {expense.category}
+                          </span>
+                        </td>
+                        <td className="p-4 align-middle">
+                          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${
+                            expense.payment_method === 'Cash' 
+                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                              : 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
+                          }`}>
+                            {expense.payment_method}
+                          </span>
+                        </td>
+                        <td className="p-4 text-right align-middle font-mono font-bold text-white">
+                          ₹{Number(expense.amount).toFixed(2)}
+                        </td>
+                        <td className="p-4 pr-6 text-center align-middle">
+                          <button
+                            onClick={() => handleDeleteExpense(expense.id)}
+                            disabled={isSavingExpense}
+                            className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                            title="Delete Entry"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const renderBalancesView = () => {
@@ -674,7 +1941,7 @@ export default function FrontOfficeTerminal() {
     }
 
     // Map to calculated balances and sort room-wise
-    const balanceItems = filteredBookings.map(booking => {
+    const rawBalanceItems = filteredBookings.map(booking => {
       const room = rooms.find(r => r.id === booking.room_id);
       const roomNum = room?.room_number || 'N/A';
       
@@ -701,37 +1968,75 @@ export default function FrontOfficeTerminal() {
         totalPaid,
         balanceDue
       };
-    }).sort((a, b) => {
+    });
+
+    const outstandingCount = rawBalanceItems.filter(item => item.balanceDue > 0.01).length;
+
+    const balanceItems = (hidePaidGuests 
+      ? rawBalanceItems.filter(item => item.balanceDue > 0.01)
+      : rawBalanceItems
+    ).sort((a, b) => {
       return a.roomNum.localeCompare(b.roomNum, undefined, { numeric: true, sensitivity: 'base' });
     });
 
     return (
       <div className="space-y-6">
         {/* Balances Sub-Header Controls */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-zinc-900/20 border border-white/[0.04] p-4 rounded-2xl">
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Show Dues:</span>
-            <div className="flex bg-black/40 border border-white/10 p-0.5 rounded-xl">
-              <button
-                onClick={() => setBalancesFilter('inHouse')}
-                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
-                  balancesFilter === 'inHouse'
-                    ? 'bg-[#4f46e5] text-white shadow-lg shadow-[#4f46e5]/10'
-                    : 'text-zinc-500 hover:text-zinc-300'
-                }`}
-              >
-                In-House Only
-              </button>
-              <button
-                onClick={() => setBalancesFilter('allActive')}
-                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
-                  balancesFilter === 'allActive'
-                    ? 'bg-[#4f46e5] text-white shadow-lg shadow-[#4f46e5]/10'
-                    : 'text-zinc-500 hover:text-zinc-300'
-                }`}
-              >
-                All Active (In-House & Confirmed)
-              </button>
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-zinc-900/20 border border-white/[0.04] p-4 rounded-2xl">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Show Dues:</span>
+              <div className="flex bg-black/40 border border-white/10 p-0.5 rounded-xl">
+                <button
+                  onClick={() => setBalancesFilter('inHouse')}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                    balancesFilter === 'inHouse'
+                      ? 'bg-[#4f46e5] text-white shadow-lg shadow-[#4f46e5]/10'
+                      : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  In-House Only
+                </button>
+                <button
+                  onClick={() => setBalancesFilter('allActive')}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                    balancesFilter === 'allActive'
+                      ? 'bg-[#4f46e5] text-white shadow-lg shadow-[#4f46e5]/10'
+                      : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  All Active (In-House & Confirmed)
+                </button>
+              </div>
+            </div>
+
+            {/* Premium Hide Paid Toggle */}
+            <div className="flex items-center gap-3 sm:border-l sm:border-white/10 sm:pl-4">
+              <span className="text-xs text-zinc-500 font-bold uppercase tracking-wider hidden sm:inline">Filter:</span>
+              <div className="flex bg-black/40 border border-white/10 p-0.5 rounded-xl">
+                <button
+                  onClick={() => setHidePaidGuests(true)}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                    hidePaidGuests
+                      ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20 shadow-lg'
+                      : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${hidePaidGuests ? 'bg-rose-400 animate-pulse' : 'bg-zinc-500'}`} />
+                  Outstanding Dues ({outstandingCount})
+                </button>
+                <button
+                  onClick={() => setHidePaidGuests(false)}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                    !hidePaidGuests
+                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-lg'
+                      : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${!hidePaidGuests ? 'bg-emerald-400' : 'bg-zinc-500'}`} />
+                  Show All ({rawBalanceItems.length})
+                </button>
+              </div>
             </div>
           </div>
 
@@ -947,7 +2252,7 @@ export default function FrontOfficeTerminal() {
               <select
                 value={activeTab}
                 onChange={(e) => {
-                  setActiveTab(e.target.value as 'tape' | 'arrivals' | 'departures' | 'house' | 'all' | 'balances');
+                  setActiveTab(e.target.value as 'tape' | 'arrivals' | 'departures' | 'house' | 'all' | 'balances' | 'expenses');
                   setSearchQuery('');
                 }}
                 className="w-full appearance-none bg-zinc-900 border border-white/10 rounded-2xl py-3.5 pl-4 pr-12 text-xs text-white font-bold uppercase tracking-wider focus:outline-none focus:border-indigo-500/50 cursor-pointer hover:bg-zinc-800 transition-all shadow-xl active:scale-[0.99]"
@@ -957,6 +2262,7 @@ export default function FrontOfficeTerminal() {
                 <option value="departures" className="bg-[#0c0c0e] text-white">🚪 Departures Today</option>
                 <option value="house" className="bg-[#0c0c0e] text-white">🛏️ In-House</option>
                 <option value="balances" className="bg-[#0c0c0e] text-white">💵 Pending Payments</option>
+                <option value="expenses" className="bg-[#0c0c0e] text-white">💸 Expenses & Cash Ledger</option>
                 <option value="all" className="bg-[#0c0c0e] text-white">🔍 Reservations</option>
               </select>
               <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-400">
@@ -972,12 +2278,13 @@ export default function FrontOfficeTerminal() {
                 { id: 'departures', label: 'Departures Today', icon: LogOut },
                 { id: 'house', label: 'In-House', icon: Bed },
                 { id: 'balances', label: 'Pending Payments', icon: DollarSign },
+                { id: 'expenses', label: 'Expenses & Cash', icon: TrendingDown },
                 { id: 'all', label: 'Reservations', icon: Search },
               ].map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => {
-                    setActiveTab(tab.id as 'tape' | 'arrivals' | 'departures' | 'house' | 'all' | 'balances');
+                    setActiveTab(tab.id as any);
                     setSearchQuery(''); // Clear search when switching tabs
                   }}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all shrink-0 ${
@@ -1237,6 +2544,7 @@ export default function FrontOfficeTerminal() {
                 ) : getAllReservations().map(b => <BookingRow key={b.id} booking={b} />)
               )}
               {activeTab === 'balances' && renderBalancesView()}
+              {activeTab === 'expenses' && renderExpensesView()}
             </div>
           )}
         </div>

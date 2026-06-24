@@ -192,7 +192,24 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
                     name="checkIn"
                     required
                     value={selectedCheckIn}
-                    onChange={(e) => setSelectedCheckIn(e.target.value)}
+                    onChange={(e) => {
+                      const newIn = e.target.value;
+                      setSelectedCheckIn(newIn);
+                      
+                      if (newIn) {
+                        const parts = newIn.split('-');
+                        const inDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+                        
+                        const outParts = selectedCheckOut.split('-');
+                        const outDate = new Date(Number(outParts[0]), Number(outParts[1]) - 1, Number(outParts[2]));
+                        
+                        if (outDate <= inDate) {
+                          const nextDay = new Date(inDate);
+                          nextDay.setDate(nextDay.getDate() + 1);
+                          setSelectedCheckOut(getLocalYYYYMMDD(nextDay));
+                        }
+                      }
+                    }}
                     className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-azure-500/50"
                   />
                 </div>
@@ -204,6 +221,13 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
                     name="checkOut"
                     required
                     value={selectedCheckOut}
+                    min={selectedCheckIn ? (() => {
+                      const parts = selectedCheckIn.split('-');
+                      const inDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+                      const nextDay = new Date(inDate);
+                      nextDay.setDate(nextDay.getDate() + 1);
+                      return getLocalYYYYMMDD(nextDay);
+                    })() : undefined}
                     onChange={(e) => setSelectedCheckOut(e.target.value)}
                     className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-azure-500/50"
                   />
