@@ -417,15 +417,23 @@ export default function Inventory() {
 
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Room Category</label>
-                  <select 
+                  <input 
                     name="type"
-                    className="w-full bg-black/60 border border-white/[0.05] rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500/50 transition-all appearance-none"
-                  >
-                    <option value="Standard">Standard</option>
-                    <option value="Deluxe">Deluxe</option>
-                    <option value="Suite">Suite</option>
-                    <option value="Penthouse">Penthouse</option>
-                  </select>
+                    type="text"
+                    required
+                    placeholder="e.g. Non AC, Deluxe AC, Standard"
+                    list="room-categories"
+                    defaultValue="Standard"
+                    className="w-full bg-black/60 border border-white/[0.05] rounded-xl py-2.5 px-4 text-white text-sm placeholder:text-zinc-700 focus:outline-none focus:border-indigo-500/50 transition-all"
+                  />
+                  <datalist id="room-categories">
+                    <option value="Standard" />
+                    <option value="Deluxe" />
+                    <option value="Suite" />
+                    <option value="Penthouse" />
+                    <option value="Non AC" />
+                    <option value="Deluxe AC" />
+                  </datalist>
                 </div>
 
                 {actionError && (

@@ -2401,7 +2401,7 @@ export default function FrontOfficeTerminal() {
                 <option value="tape" className="bg-[#0c0c0e] text-white">📅 Tape Chart</option>
                 <option value="arrivals" className="bg-[#0c0c0e] text-white">👤 Arrivals Today ({getArrivalsToday().length})</option>
                 <option value="departures" className="bg-[#0c0c0e] text-white">🚪 Departures Today</option>
-                <option value="house" className="bg-[#0c0c0e] text-white">🛏️ In-House</option>
+                <option value="house" className="bg-[#0c0c0e] text-white">🛏️ In-House ({bookings.filter(b => b.status === 'Checked In').length} Occupied)</option>
                 <option value="balances" className="bg-[#0c0c0e] text-white">💵 Pending Payments</option>
                 <option value="expenses" className="bg-[#0c0c0e] text-white">💸 Expenses & Cash Ledger</option>
                 <option value="all" className="bg-[#0c0c0e] text-white">🔍 Reservations</option>
@@ -2437,6 +2437,7 @@ export default function FrontOfficeTerminal() {
                   <tab.icon size={13} />
                   {tab.label}
                   {tab.id === 'arrivals' && getArrivalsToday().length > 0 && <span className="ml-1 bg-white text-indigo-600 px-1.5 py-0.5 rounded-md text-[9px]">{getArrivalsToday().length}</span>}
+                  {tab.id === 'house' && bookings.filter(b => b.status === 'Checked In').length > 0 && <span className="ml-1 bg-emerald-500 text-white px-1.5 py-0.5 rounded-md text-[9px]">{bookings.filter(b => b.status === 'Checked In').length}</span>}
                 </button>
               ))}
             </div>
@@ -2575,10 +2576,8 @@ export default function FrontOfficeTerminal() {
                               <div className="flex flex-col gap-1 items-start">
                                 {(() => {
                                   const s = getTrueRoomStatus(room)?.toLowerCase();
-                                  if (s === 'available') return <span className="bg-emerald-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(16,185,129,0.4)]">Ready</span>;
-                                  if (s === 'dirty') return <span className="bg-rose-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(244,63,94,0.4)]">Dirty</span>;
-                                  if (s === 'cleaning') return <span className="bg-amber-500 text-black px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(245,158,11,0.4)]">Cleaning</span>;
-                                  if (s === 'clean') return <span className="bg-cyan-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(6,182,212,0.4)]">Inspect</span>;
+                                  if (['available', 'clean', 'ready'].includes(s || '')) return <span className="bg-emerald-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(16,185,129,0.4)]">Clean</span>;
+                                  if (['dirty', 'cleaning'].includes(s || '')) return <span className="bg-rose-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(244,63,94,0.4)]">Dirty</span>;
                                   if (s === 'blocked') return <span className="bg-red-600 text-white px-2 py-0.5 rounded flex items-center gap-1 text-[9px] font-black uppercase tracking-widest animate-pulse shadow-[0_0_10px_rgba(220,38,38,0.6)]"><Lock size={10}/> Maint</span>;
                                   if (s === 'occupied') return <span className="bg-indigo-500 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest shadow-[0_0_10px_rgba(99,102,241,0.4)]">Occupied</span>;
                                   return null;
@@ -2669,12 +2668,32 @@ export default function FrontOfficeTerminal() {
                 ) : getDeparturesToday().map(b => <BookingRow key={b.id} booking={b} />)
               )}
               {activeTab === 'house' && (
-                getInHouse().length === 0 ? (
-                  <div className="py-40 text-center border border-dashed border-white/5 rounded-3xl bg-white/[0.01]">
-                    <Bed size={40} className="text-amber-500/40 mx-auto mb-4" />
-                    <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs">No Guests Currently In-House</p>
+                <>
+                  <div className="mb-6 bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-indigo-500/10 border border-emerald-500/20 rounded-2xl p-4 flex items-center justify-between shadow-lg shadow-emerald-500/5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center font-black">
+                        <Bed size={18} />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-black text-white uppercase tracking-widest">In-House Overview</h4>
+                        <p className="text-[10px] text-zinc-400 mt-0.5 font-medium">Real-time room occupancy report</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-lg sm:text-xl font-black text-emerald-400 tracking-tighter">
+                        {bookings.filter(b => b.status === 'Checked In').length} Rooms Occupied
+                      </span>
+                      <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest mt-0.5">out of {rooms.length} total rooms</p>
+                    </div>
                   </div>
-                ) : getInHouse().map(b => <BookingRow key={b.id} booking={b} />)
+
+                  {getInHouse().length === 0 ? (
+                    <div className="py-40 text-center border border-dashed border-white/5 rounded-3xl bg-white/[0.01]">
+                      <Bed size={40} className="text-amber-500/40 mx-auto mb-4" />
+                      <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs">No Guests Currently In-House</p>
+                    </div>
+                  ) : getInHouse().map(b => <BookingRow key={b.id} booking={b} />)}
+                </>
               )}
               {activeTab === 'all' && (
                 getAllReservations().length === 0 ? (
@@ -3200,7 +3219,7 @@ export default function FrontOfficeTerminal() {
                   <div className="pt-4">
                     <button
                       onClick={(e) => handleSafeCheckIn(e as unknown as React.MouseEvent, selectedBooking.id)}
-                      disabled={!checkIdVerified || !checkRegCardSigned || !checkPaymentSecured || !checkFormFDone || guestAddress.trim().length < 5 || actionLoading || !canCheckIn()}
+                      disabled={!checkIdVerified || !checkRegCardSigned || !checkPaymentSecured || actionLoading || !canCheckIn()}
                       className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-900/30 disabled:text-emerald-500/30 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs transition-all shadow-xl shadow-emerald-500/10 flex items-center justify-center gap-3"
                     >                      {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <><CheckCircle2 size={16} /> Complete Final Check-In</>}
                     </button>
