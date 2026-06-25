@@ -166,7 +166,7 @@ export async function getFolioSummary(bookingId: string) {
   // 4. Fetch payments
   const { data: payments, error: payErr } = await supabaseAdmin
     .from('payments')
-    .select('id, amount, method, created_at, transaction_id')
+    .select('id, amount, method, created_at, transaction_id, is_void, void_reason, voided_at, voided_by')
     .eq('booking_id', bookingId)
     .order('created_at', { ascending: true });
 
@@ -179,7 +179,9 @@ export async function getFolioSummary(bookingId: string) {
   const roomAmount = Math.max(0, Number(booking.amount) - dailyRoomChargesSum);
 
   const totalCharges = roomAmount + (incidentals?.reduce((sum, item) => sum + Number(item.amount), 0) || 0);
-  const totalPayments = payments?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
+  const totalPayments = payments
+    ?.filter(item => !item.is_void)
+    ?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
   const balanceDue = totalCharges - totalPayments;
 
   // 5. Evaluate proposed fees
@@ -361,3 +363,44 @@ export async function waiveProposedTimeCharge(bookingId: string, propertyId: str
   revalidatePath('/dashboard/front-office');
   return { success: true };
 }
+
+/**
+ * Server action to void an existing payment
+ */
+export async function voidPayment(paymentId: string, propertyId: string, reason: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) return { error: 'Unauthorized.' };
+  if (!reason.trim()) return { error: 'A void reason is required.' };
+
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // Mark the payment as voided
+  const { error } = await supabaseAdmin
+    .from('payments')
+    .update({
+      is_void: true,
+      void_reason: reason.trim(),
+      voided_at: new Date().toISOString(),
+      voided_by: user.id
+    })
+    .eq('id', paymentId);
+
+  if (error) {
+    console.error("Void Payment Error:", error.message);
+    return { error: `Failed to void payment: ${error.message}` };
+  }
+
+  // Log in Audit Trail
+  await logAction({
+    propertyId,
+    action: 'PAYMENT_VOIDED',
+    details: { paymentId, reason },
+    userId: user.id
+  });
+
+  revalidatePath('/dashboard/front-office');
+  return { success: true };
+}
+

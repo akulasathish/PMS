@@ -4,10 +4,10 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, Plus, CreditCard, Banknote, Smartphone, Building2, 
-  ArrowRight, ShieldCheck, Loader2, AlertCircle, Printer 
+  ArrowRight, ShieldCheck, Loader2, AlertCircle, Printer, Trash2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { getFolioSummary, postIncidentalCharge, postPayment, postProposedTimeCharge, waiveProposedTimeCharge } from '@/app/actions/folio';
+import { getFolioSummary, postIncidentalCharge, postPayment, postProposedTimeCharge, waiveProposedTimeCharge, voidPayment } from '@/app/actions/folio';
 import { checkOutGuest, undoCheckOutGuest } from '@/app/actions/booking';
 import { generateGuestBillPDF } from '@/utils/folio-pdf';
 
@@ -43,6 +43,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
   // Post charge dropdown states
   const [chargeCategory, setChargeCategory] = useState('Food & Water');
   const [customDescription, setCustomDescription] = useState('');
+  const [quantity, setQuantity] = useState(1);
 
   const loadFolio = async () => {
     setLoading(true);
@@ -102,12 +103,18 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
     formData.append('propertyId', propertyId);
 
     // Dynamically set description from category selection
-    const finalDescription = chargeCategory === 'Others' ? customDescription.trim() : chargeCategory;
+    let finalDescription = chargeCategory === 'Others' ? customDescription.trim() : chargeCategory;
     if (!finalDescription) {
       setError('Please provide a description or select a category.');
       setActionLoading(false);
       return;
     }
+    
+    // Append quantity manually if greater than 1
+    if (quantity > 1) {
+      finalDescription = `${finalDescription} (Qty: ${quantity})`;
+    }
+    
     formData.set('description', finalDescription);
     
     const res = await postIncidentalCharge(formData);
@@ -119,6 +126,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
       setActiveTab('summary');
       setChargeCategory('Food & Water');
       setCustomDescription('');
+      setQuantity(1); // Reset quantity
       setActionLoading(false);
     }
   };
@@ -151,6 +159,27 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
       await loadFolio();
       setActiveTab('summary');
       setPaymentMethod('UPI'); // Reset to default
+      setActionLoading(false);
+    }
+  };
+
+  const handleVoidPayment = async (paymentId: string) => {
+    const reason = prompt("Enter reason for voiding this payment:");
+    if (reason === null) return; // user cancelled
+    if (!reason.trim()) {
+      alert("A void reason is required.");
+      return;
+    }
+
+    setActionLoading(true);
+    setError('');
+
+    const res = await voidPayment(paymentId, propertyId, reason);
+    if (res.error) {
+      setError(res.error);
+      setActionLoading(false);
+    } else {
+      await loadFolio();
       setActionLoading(false);
     }
   };
@@ -405,12 +434,37 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                             </div>
                           ) : (
                             folio?.payments?.map((item: any) => (
-                              <div key={item.id} className="flex justify-between items-center p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
+                              <div 
+                                key={item.id} 
+                                className={`flex justify-between items-center p-3 rounded-xl border transition-all ${
+                                  item.is_void 
+                                    ? "bg-red-500/5 border-red-500/10 opacity-60" 
+                                    : "bg-emerald-500/5 border-emerald-500/20"
+                                }`}
+                              >
                                 <div>
-                                  <div className="text-sm font-medium text-emerald-400">{item.method}</div>
-                                  <div className="text-[10px] text-emerald-500/70">{new Date(item.created_at).toLocaleDateString()}</div>
+                                  <div className={`text-sm font-medium ${item.is_void ? "text-zinc-500 line-through" : "text-emerald-400"}`}>
+                                    {item.method} {item.is_void && "(Voided)"}
+                                  </div>
+                                  <div className="text-[10px] text-zinc-500">
+                                    {new Date(item.created_at).toLocaleDateString()}
+                                    {item.is_void && ` • Reason: ${item.void_reason}`}
+                                  </div>
                                 </div>
-                                <div className="font-mono text-sm text-emerald-400">-₹{Number(item.amount).toFixed(2)}</div>
+                                <div className="flex items-center gap-3">
+                                  <div className={`font-mono text-sm ${item.is_void ? "text-zinc-500 line-through" : "text-emerald-400"}`}>
+                                    -₹{Number(item.amount).toFixed(2)}
+                                  </div>
+                                  {!item.is_void && (
+                                    <button 
+                                      onClick={() => handleVoidPayment(item.id)}
+                                      className="p-1 rounded text-red-400/70 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                                      title="Void Payment"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             ))
                           )}
@@ -461,12 +515,21 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                           </motion.div>
                         )}
 
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Amount (₹)</label>
-                          <input 
-                            name="amount" type="number" step="0.01" required min="1" placeholder="0.00"
-                            className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm font-mono focus:outline-none focus:border-indigo-500 transition-all"
-                          />
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Quantity</label>
+                            <input 
+                              type="number" min="1" required value={quantity} onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
+                              className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Amount (₹)</label>
+                            <input 
+                              name="amount" type="number" step="0.01" required min="1" placeholder="0.00"
+                              className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm font-mono focus:outline-none focus:border-indigo-500 transition-all"
+                            />
+                          </div>
                         </div>
                         <button disabled={actionLoading} type="submit" className="w-full bg-white text-black font-bold uppercase tracking-wider text-xs py-3 rounded-xl mt-4 hover:bg-zinc-200 transition-colors flex justify-center">
                           {actionLoading ? <Loader2 size={16} className="animate-spin" /> : 'Post Charge'}

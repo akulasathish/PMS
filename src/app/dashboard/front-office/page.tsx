@@ -123,6 +123,7 @@ export default function FrontOfficeTerminal() {
   const [newExpenseAmount, setNewExpenseAmount] = useState('');
   const [newExpensePaymentMethod, setNewExpensePaymentMethod] = useState<'Cash' | 'UPI'>('Cash');
   const [newExpenseDate, setNewExpenseDate] = useState(new Date().toISOString().substring(0, 10));
+  const [newExpenseQuantity, setNewExpenseQuantity] = useState(1);
   const [openingCashInput, setOpeningCashInput] = useState('');
   const [isSavingExpense, setIsSavingExpense] = useState(false);
   const [selectedLedgerDate, setSelectedLedgerDate] = useState(new Date().toISOString().substring(0, 10));
@@ -965,12 +966,19 @@ export default function FrontOfficeTerminal() {
       return;
     }
     setIsSavingExpense(true);
+    
+    // Append quantity manually if greater than 1
+    let finalDesc = newExpenseDescription.trim();
+    if (newExpenseQuantity > 1) {
+      finalDesc = `${finalDesc} (Qty: ${newExpenseQuantity})`;
+    }
+
     try {
       const { error } = await supabase
         .from('expenses')
         .insert({
           property_id: property.id,
-          description: newExpenseDescription.trim(),
+          description: finalDesc,
           category: newExpenseCategory,
           amount: amountVal,
           payment_method: newExpensePaymentMethod,
@@ -981,6 +989,7 @@ export default function FrontOfficeTerminal() {
       } else {
         setNewExpenseDescription('');
         setNewExpenseAmount('');
+        setNewExpenseQuantity(1); // Reset quantity
         await loadDashboardData();
       }
     } catch (err: any) {
@@ -1936,7 +1945,18 @@ export default function FrontOfficeTerminal() {
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest pl-1">Qty</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    value={newExpenseQuantity}
+                    onChange={(e) => setNewExpenseQuantity(parseInt(e.target.value) || 1)}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-2 text-white text-xs focus:outline-none focus:border-indigo-500/50 transition-all font-mono"
+                  />
+                </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest pl-1">Amount (₹)</label>
                   <input
@@ -1947,17 +1967,17 @@ export default function FrontOfficeTerminal() {
                     placeholder="0.00"
                     value={newExpenseAmount}
                     onChange={(e) => setNewExpenseAmount(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-3 text-white text-xs focus:outline-none focus:border-indigo-500/50 transition-all font-mono"
+                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-2 text-white text-xs focus:outline-none focus:border-indigo-500/50 transition-all font-mono"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest pl-1">Expense Date</label>
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest pl-1">Date</label>
                   <input
                     type="date"
                     required
                     value={newExpenseDate}
                     onChange={(e) => setNewExpenseDate(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-3 text-white text-xs focus:outline-none focus:border-indigo-500/50 transition-all [color-scheme:dark] cursor-pointer"
+                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-2 text-white text-xs focus:outline-none focus:border-indigo-500/50 transition-all [color-scheme:dark] cursor-pointer"
                   />
                 </div>
               </div>
