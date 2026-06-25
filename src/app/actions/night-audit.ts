@@ -151,7 +151,8 @@ export async function postDailyRoomCharges(
         amount: bk.amount,
         description,
         created_by: user.id,
-        is_automated: true
+        is_automated: true,
+        business_date: businessDate
       });
     }
 

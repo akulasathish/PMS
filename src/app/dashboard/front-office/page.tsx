@@ -769,6 +769,12 @@ export default function FrontOfficeTerminal() {
   };
 
   const getPaymentDateStr = (p: any) => {
+    if (p.business_date) {
+      const s = String(p.business_date);
+      if (s.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(s)) {
+        return s.substring(0, 10);
+      }
+    }
     if (!p.created_at) return '';
     try {
       return new Date(p.created_at).toISOString().substring(0, 10);

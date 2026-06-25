@@ -132,6 +132,13 @@ export async function checkInGuest(
 
   // Insert payment if details are provided
   if (paymentDetails && paymentDetails.amount > 0) {
+    const { data: settings } = await supabaseAdmin
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'business_date')
+      .single();
+    const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+
     const { error: paymentError } = await supabaseAdmin
       .from('payments')
       .insert([{
@@ -140,7 +147,8 @@ export async function checkInGuest(
         amount: paymentDetails.amount,
         method: paymentDetails.method,
         transaction_id: paymentDetails.transactionId || null,
-        created_by: user.id
+        created_by: user.id,
+        business_date: businessDate
       }]);
 
     if (paymentError) {

@@ -29,6 +29,14 @@ export async function postIncidentalCharge(formData: FormData) {
 
   const supabaseAdmin = getSupabaseAdmin();
   
+  // Fetch current business_date from app_settings
+  const { data: settings } = await supabaseAdmin
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'business_date')
+    .single();
+  const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+  
   // Insert the charge securely
   const { data, error } = await supabaseAdmin
     .from('incidental_charges')
@@ -37,7 +45,8 @@ export async function postIncidentalCharge(formData: FormData) {
       property_id: propertyId,
       amount,
       description,
-      created_by: user.id
+      created_by: user.id,
+      business_date: businessDate
     }])
     .select('id')
     .single();
@@ -86,6 +95,14 @@ export async function postPayment(formData: FormData) {
 
   const supabaseAdmin = getSupabaseAdmin();
   
+  // Fetch current business_date from app_settings
+  const { data: settings } = await supabaseAdmin
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'business_date')
+    .single();
+  const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+  
   // Insert the payment securely
   const { data, error } = await supabaseAdmin
     .from('payments')
@@ -95,7 +112,8 @@ export async function postPayment(formData: FormData) {
       amount,
       method,
       transaction_id: transactionId,
-      created_by: user.id
+      created_by: user.id,
+      business_date: businessDate
     }])
     .select('id')
     .single();
@@ -159,14 +177,14 @@ export async function getFolioSummary(bookingId: string) {
   // 3. Fetch incidental charges (including is_automated and waiver fields)
   const { data: incidentals, error: incErr } = await supabaseAdmin
     .from('incidental_charges')
-    .select('id, amount, description, created_at, is_automated, waiver_reason')
+    .select('id, amount, description, created_at, business_date, is_automated, waiver_reason')
     .eq('booking_id', bookingId)
     .order('created_at', { ascending: true });
 
   // 4. Fetch payments
   const { data: payments, error: payErr } = await supabaseAdmin
     .from('payments')
-    .select('id, amount, method, created_at, transaction_id, is_void, void_reason, voided_at, voided_by')
+    .select('id, amount, method, created_at, business_date, transaction_id, is_void, void_reason, voided_at, voided_by')
     .eq('booking_id', bookingId)
     .order('created_at', { ascending: true });
 
@@ -289,6 +307,14 @@ export async function postProposedTimeCharge(bookingId: string, propertyId: stri
 
   const supabaseAdmin = getSupabaseAdmin();
 
+  // Fetch current business_date from app_settings
+  const { data: settings } = await supabaseAdmin
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'business_date')
+    .single();
+  const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+
   const { data, error } = await supabaseAdmin
     .from('incidental_charges')
     .insert([{
@@ -297,7 +323,8 @@ export async function postProposedTimeCharge(bookingId: string, propertyId: stri
       amount,
       description,
       is_automated: true,
-      created_by: user.id
+      created_by: user.id,
+      business_date: businessDate
     }])
     .select('id')
     .single();
@@ -330,6 +357,14 @@ export async function waiveProposedTimeCharge(bookingId: string, propertyId: str
 
   const supabaseAdmin = getSupabaseAdmin();
 
+  // Fetch current business_date from app_settings
+  const { data: settings } = await supabaseAdmin
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'business_date')
+    .single();
+  const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+
   // Insert a minimal ₹0.01 charge to represent the waiver in the ledger history (satisfies CHECK amount > 0)
   const waiverDescription = `${description} - Waived (Reason: ${reason})`;
   const { data, error } = await supabaseAdmin
@@ -342,7 +377,8 @@ export async function waiveProposedTimeCharge(bookingId: string, propertyId: str
       is_automated: true,
       waiver_reason: reason,
       waived_by: user.id,
-      created_by: user.id
+      created_by: user.id,
+      business_date: businessDate
     }])
     .select('id')
     .single();
