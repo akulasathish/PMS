@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'staysync-app'
+    metrics_path: '/api/metrics'
+    static_configs:
+      - targets: ['127.0.0.1:3000'] # Inside ECS, localhost points directly to the main Next.js container
+
+remote_write:
+  - url: '${GRAFANA_PROM_URL}'
+    basic_auth:
+      username: '${GRAFANA_PROM_USER}'
+      password: '${GRAFANA_PROM_TOKEN}'
