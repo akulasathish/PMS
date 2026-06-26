@@ -103,8 +103,7 @@ export default function FrontOfficeTerminal() {
   const [isLoading, setIsLoading] = useState(true);
   const [businessDate, setBusinessDate] = useState<string>('');
 
-  const activeBaseDate = businessDate || getLocalYYYYMMDDStatic(new Date());
-  const DAYS = generateDaysFromDate(activeBaseDate);
+
   const [property, setProperty] = useState<Property | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [showBookingModal, setShowBookingModal] = useState(false);
@@ -130,6 +129,9 @@ export default function FrontOfficeTerminal() {
   const [reservationFilter, setReservationFilter] = useState('Confirmed');
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
+
+  const activeBaseDate = filterStartDate || businessDate || getLocalYYYYMMDDStatic(new Date());
+  const DAYS = generateDaysFromDate(activeBaseDate);
 
   // Action Drawer State
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
@@ -305,7 +307,16 @@ export default function FrontOfficeTerminal() {
   };
 
   const getBookingForRoom = (roomId: string) => {
-    return bookings.find(b => b.room_id === roomId && (b.status === 'Confirmed' || b.status === 'Checked In'));
+    return bookings.find(b => {
+      if (b.room_id !== roomId) return false;
+      if (!['Confirmed', 'Checked In', 'Checked Out'].includes(b.status)) return false;
+      
+      const bIn = b.check_in ? String(b.check_in).substring(0, 10) : '';
+      const bOut = b.check_out ? String(b.check_out).substring(0, 10) : '';
+      
+      // Look up booking overlapping with activeBaseDate
+      return bIn <= activeBaseDate && bOut > activeBaseDate;
+    });
   };
 
   // Helper to format local date to YYYY-MM-DD
@@ -367,7 +378,23 @@ export default function FrontOfficeTerminal() {
   };
 
   const getInHouse = () => {
-    let filtered = bookings.filter(b => b.status === 'Checked In');
+    let filtered = bookings;
+
+    if (filterStartDate || filterEndDate) {
+      filtered = bookings.filter(b => {
+        if (!['Confirmed', 'Checked In', 'Checked Out'].includes(b.status)) return false;
+
+        const bIn = b.check_in ? String(b.check_in).substring(0, 10) : '';
+        const bOut = b.check_out ? String(b.check_out).substring(0, 10) : '';
+
+        const startBoundary = filterStartDate || bIn;
+        const endBoundary = filterEndDate || bOut;
+
+        return bIn < endBoundary && bOut > startBoundary;
+      });
+    } else {
+      filtered = bookings.filter(b => b.status === 'Checked In');
+    }
 
     if (searchQuery) {
       const lowerQuery = searchQuery.toLowerCase().trim();
@@ -2469,9 +2496,37 @@ export default function FrontOfficeTerminal() {
             </div>
 
             
+            {/* TAPE CHART DATE FILTER */}
+            {activeTab === 'tape' && (
+              <div className="flex items-center justify-end gap-3 flex-wrap">
+                <div className="flex items-center gap-1.5 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 focus-within:border-indigo-500/50 transition-colors">
+                  <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Base Date</span>
+                  <input 
+                    type="date"
+                    value={filterStartDate}
+                    onChange={(e) => setFilterStartDate(e.target.value)}
+                    className="bg-transparent text-xs text-white font-bold focus:outline-none [color-scheme:dark] cursor-pointer"
+                  />
+                </div>
+
+                {(filterStartDate || filterEndDate) && (
+                  <button 
+                    onClick={() => {
+                      setFilterStartDate('');
+                      setFilterEndDate('');
+                    }}
+                    className="p-2 text-zinc-500 hover:text-rose-400 bg-zinc-800 hover:bg-rose-500/10 border border-white/5 rounded-xl transition-all"
+                    title="Clear Date Filters"
+                  >
+                    <XCircle size={14} />
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* UNIFIED SEARCH CONTROL FOR LIST TABS */}
             {(activeTab === 'arrivals' || activeTab === 'departures' || activeTab === 'house' || activeTab === 'balances') && (
-              <div className="flex items-center justify-end gap-3">
+              <div className="flex items-center justify-end gap-3 flex-wrap">
                 <div className="relative w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" size={14} />
                   <input 
@@ -2490,6 +2545,44 @@ export default function FrontOfficeTerminal() {
                   >
                     <XCircle size={14} />
                   </button>
+                )}
+
+                {/* IN-HOUSE DATE RANGE CONTROLS */}
+                {activeTab === 'house' && (
+                  <>
+                    <div className="flex items-center gap-1.5 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 focus-within:border-indigo-500/50 transition-colors">
+                      <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">From</span>
+                      <input 
+                        type="date"
+                        value={filterStartDate}
+                        onChange={(e) => setFilterStartDate(e.target.value)}
+                        className="bg-transparent text-xs text-white font-bold focus:outline-none [color-scheme:dark] cursor-pointer"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-1.5 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 focus-within:border-indigo-500/50 transition-colors">
+                      <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">To</span>
+                      <input 
+                        type="date"
+                        value={filterEndDate}
+                        onChange={(e) => setFilterEndDate(e.target.value)}
+                        className="bg-transparent text-xs text-white font-bold focus:outline-none [color-scheme:dark] cursor-pointer"
+                      />
+                    </div>
+
+                    {(filterStartDate || filterEndDate) && (
+                      <button 
+                        onClick={() => {
+                          setFilterStartDate('');
+                          setFilterEndDate('');
+                        }}
+                        className="p-2 text-zinc-500 hover:text-rose-400 bg-zinc-800 hover:bg-rose-500/10 border border-white/5 rounded-xl transition-all"
+                        title="Clear Date Filters"
+                      >
+                        <XCircle size={14} />
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             )}

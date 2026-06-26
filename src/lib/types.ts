@@ -35,6 +35,7 @@ export interface Booking {
   notes?: string;
   check_in_time?: string;
   check_out_time?: string;
+  group_id?: string;
 }
 
 export interface UserProfile {
