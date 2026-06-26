@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { Building2, Loader2, AlertCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import GuestRegistrationForm from '@/components/GuestRegistrationForm';
+import { recordCheckInTime } from '@/app/actions/booking';
 
 export default function GuestRegCard() {
   const { id: bookingId } = useParams();
@@ -27,6 +28,13 @@ export default function GuestRegCard() {
         if (error) throw error;
         setBooking(data);
         setProperty(data.properties);
+
+        // Automatically record check-in time when guest profile is opened
+        if (bookingId && typeof bookingId === 'string') {
+          recordCheckInTime(bookingId).catch((err) => {
+            console.error("Auto check-in error:", err);
+          });
+        }
       } catch {
         setError("Invalid link or booking not found.");
       } finally {

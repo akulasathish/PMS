@@ -18,62 +18,81 @@ export async function createBooking(formData: FormData) {
   }
 
   const propertyId = formData.get('propertyId') as string;
-  const roomId = formData.get('roomId') as string;
   const guestName = formData.get('guestName') as string;
   const guestEmail = formData.get('guestEmail') as string;
+  const guestPhone = formData.get('guestPhone') as string;
   const checkIn = formData.get('checkIn') as string;
   const checkOut = formData.get('checkOut') as string;
   const amount = parseFloat(formData.get('amount') as string);
   const status = 'Confirmed';
 
-  if (!propertyId || !roomId || !guestName || !guestEmail || !checkIn || !checkOut || isNaN(amount)) {
-    return { error: 'All fields (Property, Room, Guest Name, Email, Check In/Out, Amount) are required.' };
+  // Support both group booking (roomIds) and single room (roomId)
+  const roomIds = formData.getAll('roomIds').filter(Boolean) as string[];
+  if (roomIds.length === 0) {
+    const singleRoomId = formData.get('roomId') as string;
+    if (singleRoomId) {
+      roomIds.push(singleRoomId);
+    }
+  }
+
+  if (!propertyId || roomIds.length === 0 || !guestName || !guestPhone || !checkIn || !checkOut || isNaN(amount)) {
+    return { error: 'All fields (Property, Rooms, Guest Name, Guest Phone, Check In/Out, Amount) are required.' };
   }
 
   const supabaseAdmin = getSupabaseAdmin();
 
-  // OVERLAP CHECK: Prevent booking if the room is scheduled for maintenance/blocked
-  // Overlap Math: (BlockStart <= BookingEnd) AND (BlockEnd >= BookingStart)
-  const { data: blocks } = await supabaseAdmin
-    .from('room_blocks')
-    .select('reason')
-    .eq('room_id', roomId)
-    .eq('status', 'Active')
-    .lte('start_date', checkOut)
-    .gte('end_date', checkIn);
+  // Loop through and perform overlap check for each room
+  for (const rid of roomIds) {
+    // OVERLAP CHECK: Prevent booking if the room is scheduled for maintenance/blocked
+    const { data: blocks } = await supabaseAdmin
+      .from('room_blocks')
+      .select('reason')
+      .eq('room_id', rid)
+      .eq('status', 'Active')
+      .lte('start_date', checkOut)
+      .gte('end_date', checkIn);
 
-  if (blocks && blocks.length > 0) {
-    return { error: `Cannot book this room. It is scheduled for maintenance (${blocks[0].reason}) during these dates.` };
+    if (blocks && blocks.length > 0) {
+      const { data: rm } = await supabaseAdmin.from('rooms').select('room_number').eq('id', rid).single();
+      return { error: `Cannot book Room ${rm?.room_number || 'Unknown'}. It is scheduled for maintenance (${blocks[0].reason}) during these dates.` };
+    }
+
+    // OVERLAP CHECK: Prevent double-booking a room that already has a guest
+    const { data: existingBookings } = await supabaseAdmin
+      .from('bookings')
+      .select('guest_name')
+      .eq('room_id', rid)
+      .in('status', ['Confirmed', 'Checked In'])
+      .lte('check_in', checkOut)
+      .gte('check_out', checkIn);
+
+    if (existingBookings && existingBookings.length > 0) {
+      const { data: rm } = await supabaseAdmin.from('rooms').select('room_number').eq('id', rid).single();
+      return { error: `Cannot book Room ${rm?.room_number || 'Unknown'}. It is already booked by ${existingBookings[0].guest_name} during these dates.` };
+    }
   }
 
-  // OVERLAP CHECK: Prevent double-booking a room that already has a guest
-  const { data: existingBookings } = await supabaseAdmin
-    .from('bookings')
-    .select('guest_name')
-    .eq('room_id', roomId)
-    .in('status', ['Confirmed', 'Checked In'])
-    .lte('check_in', checkOut)
-    .gte('check_out', checkIn);
+  // Split amount equally across rooms
+  const amountPerRoom = amount / roomIds.length;
+  const groupId = roomIds.length > 1 ? crypto.randomUUID() : null;
 
-  if (existingBookings && existingBookings.length > 0) {
-    return { error: `Cannot book this room. It is already booked by ${existingBookings[0].guest_name} during these dates.` };
-  }
+  const bookingsToInsert = roomIds.map(rid => ({
+    property_id: propertyId,
+    room_id: rid,
+    guest_name: guestName,
+    guest_email: guestEmail || null,
+    guest_phone: guestPhone,
+    check_in: checkIn,
+    check_out: checkOut,
+    amount: amountPerRoom,
+    status: status,
+    group_id: groupId
+  }));
 
-  // Insert the booking
   const { data: bookingData, error: bookingError } = await supabaseAdmin
     .from('bookings')
-    .insert([{
-      property_id: propertyId,
-      room_id: roomId,
-      guest_name: guestName,
-      guest_email: guestEmail,
-      check_in: checkIn,
-      check_out: checkOut,
-      amount: amount,
-      status: status
-    }])
-    .select()
-    .single();
+    .insert(bookingsToInsert)
+    .select();
 
   if (bookingError) {
     console.error("Failed to create booking:", bookingError);
@@ -84,7 +103,15 @@ export async function createBooking(formData: FormData) {
   await logAction({
     propertyId,
     action: 'BOOKING_CREATED',
-    details: { guestName, amount, checkIn, checkOut, bookingId: bookingData.id },
+    details: { 
+      guestName, 
+      amount, 
+      checkIn, 
+      checkOut, 
+      roomCount: roomIds.length,
+      groupId: groupId,
+      bookingIds: bookingData.map(b => b.id) 
+    },
     userId: user.id
   });
 
@@ -92,13 +119,20 @@ export async function createBooking(formData: FormData) {
   revalidatePath('/dashboard/front-office');
   revalidatePath('/dashboard/front-office', 'layout');
   
-  return { success: true, bookingId: bookingData.id };
+  return { success: true, bookingId: bookingData[0].id };
 }
 
 /**
  * Check-In a Guest (Updates status and triggers n8n Smart Check-In)
  */
-export async function checkInGuest(bookingId: string) {
+export async function checkInGuest(
+  bookingId: string,
+  paymentDetails?: {
+    amount: number;
+    method: string;
+    transactionId?: string;
+  }
+) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -109,10 +143,10 @@ export async function checkInGuest(bookingId: string) {
 
   const supabaseAdmin = getSupabaseAdmin();
 
-  // Fetch the booking to get the roomId and propertyId
+  // Fetch the booking to get the roomId, propertyId, and group_id
   const { data: booking, error: fetchError } = await supabaseAdmin
     .from('bookings')
-    .select('room_id, property_id, guest_name')
+    .select('room_id, property_id, guest_name, group_id')
     .eq('id', bookingId)
     .single();
 
@@ -121,16 +155,66 @@ export async function checkInGuest(bookingId: string) {
     return { error: "Booking not found." };
   }
 
+  // Get all bookings to process in the group (or fallback to this single booking)
+  let bookingsToProcess = [{ id: bookingId, room_id: booking.room_id }];
+  if (booking.group_id) {
+    const { data: groupBookings } = await supabaseAdmin
+      .from('bookings')
+      .select('id, room_id')
+      .eq('group_id', booking.group_id)
+      .in('status', ['Confirmed', 'Pending']); // Only process those not already checked in/out/cancelled
+    
+    if (groupBookings && groupBookings.length > 0) {
+      bookingsToProcess = groupBookings;
+    }
+  }
+
+  // Insert split payments if details are provided
+  if (paymentDetails && paymentDetails.amount > 0) {
+    const { data: settings } = await supabaseAdmin
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'business_date')
+      .single();
+    const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+
+    const splitAmount = paymentDetails.amount / bookingsToProcess.length;
+    const paymentRecords = bookingsToProcess.map(b => ({
+      booking_id: b.id,
+      property_id: booking.property_id,
+      amount: splitAmount,
+      method: paymentDetails.method,
+      transaction_id: paymentDetails.transactionId || null,
+      created_by: user.id,
+      business_date: businessDate
+    }));
+
+    const { error: paymentError } = await supabaseAdmin
+      .from('payments')
+      .insert(paymentRecords);
+
+    if (paymentError) {
+      console.error("Check-in Payment Error:", paymentError);
+      return { error: `Failed to record check-in payment: ${paymentError.message}` };
+    }
+  }
+
+  const bookingIds = bookingsToProcess.map(b => b.id);
+  const roomIds = bookingsToProcess.map(b => b.room_id);
+
   // Update the booking status to 'Checked In' AND mark the room as 'Occupied'
   const [bookingRes, roomRes] = await Promise.all([
     supabaseAdmin
       .from('bookings')
-      .update({ status: 'Checked In' })
-      .eq('id', bookingId),
+      .update({ 
+        status: 'Checked In',
+        check_in_time: new Date().toISOString()
+      })
+      .in('id', bookingIds),
     supabaseAdmin
       .from('rooms')
       .update({ status: 'Occupied' })
-      .eq('id', booking.room_id)
+      .in('id', roomIds)
       .eq('property_id', booking.property_id)
   ]);
 
@@ -143,11 +227,19 @@ export async function checkInGuest(bookingId: string) {
   await logAction({
     propertyId: booking.property_id,
     action: 'GUEST_CHECK_IN',
-    details: { guestName: booking.guest_name, bookingId },
+    details: { 
+      guestName: booking.guest_name, 
+      bookingId,
+      groupId: booking.group_id,
+      processedCount: bookingsToProcess.length,
+      paymentRecorded: !!paymentDetails,
+      paymentAmount: paymentDetails?.amount,
+      paymentMethod: paymentDetails?.method
+    },
     userId: user.id
   });
 
-  // Revalidate the tape chart so the status changes instantly
+  // Revalidate paths
   revalidatePath('/dashboard/front-office');
   revalidatePath('/dashboard/front-office', 'page');
   revalidatePath('/dashboard/housekeeping');
@@ -367,9 +459,14 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
 
   const { data: incidentals } = await supabaseAdmin
     .from('incidental_charges')
-    .select('amount')
+    .select('amount, description')
     .eq('booking_id', bookingId);
     
+  const dailyRoomChargesSum = incidentals
+    ?.filter(item => item.description?.startsWith('Daily Room Charge'))
+    ?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
+
+  const roomAmount = Math.max(0, Number(booking.amount) - dailyRoomChargesSum);
   const totalIncidentals = incidentals?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
 
   const { data: payments } = await supabaseAdmin
@@ -380,7 +477,7 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
   const totalPayments = payments?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
 
   // Calculate the Balance Due
-  const totalCharges = Number(booking.amount) + totalIncidentals;
+  const totalCharges = roomAmount + totalIncidentals;
   const balanceDue = totalCharges - totalPayments;
 
   // 2. ENFORCE ZERO BALANCE
@@ -393,7 +490,10 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
   // 3. EXECUTE CHECKOUT
   const { error: bookingError } = await supabaseAdmin
     .from('bookings')
-    .update({ status: 'Checked Out' })
+    .update({ 
+      status: 'Checked Out',
+      check_out_time: new Date().toISOString()
+    })
     .eq('id', bookingId);
 
   if (bookingError) {
@@ -425,3 +525,171 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
 
   return { success: true };
   }
+
+/**
+ * Automatically record the check-in time when a guest opens their profile/registration card
+ */
+export async function recordCheckInTime(bookingId: string) {
+  const supabaseAdmin = getSupabaseAdmin();
+  
+  // First, fetch the booking to see if check_in_time is already set
+  const { data: booking, error: fetchError } = await supabaseAdmin
+    .from('bookings')
+    .select('check_in_time, property_id, guest_name')
+    .eq('id', bookingId)
+    .single();
+    
+  if (fetchError || !booking) {
+    console.error("Failed to fetch booking for auto check-in time:", fetchError);
+    return { error: "Booking not found." };
+  }
+  
+  // If check_in_time is already set, do nothing
+  if (booking.check_in_time) {
+    return { success: true, alreadySet: true, checkInTime: booking.check_in_time };
+  }
+  
+  const now = new Date().toISOString();
+  
+  // Update check_in_time
+  const { error: updateError } = await supabaseAdmin
+    .from('bookings')
+    .update({ check_in_time: now })
+    .eq('id', bookingId);
+    
+  if (updateError) {
+    console.error("Failed to record check-in time:", updateError);
+    return { error: `Failed to record check-in time: ${updateError.message}` };
+  }
+  
+  // Audit Log
+  await logAction({
+    propertyId: booking.property_id,
+    action: 'AUTO_CHECK_IN_TIME_RECORDED',
+    details: { guestName: booking.guest_name, bookingId, checkInTime: now }
+  });
+  
+  revalidatePath('/dashboard/front-office');
+  return { success: true, checkInTime: now };
+}
+
+/**
+ * Reverts a mistaken guest checkout, setting the booking back to 'Checked In' and room back to 'Occupied'
+ */
+export async function undoCheckOutGuest(bookingId: string, roomId: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { error: 'Unauthorized. Only authorized personnel can perform this action.' };
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // 1. Fetch booking to verify existence and check status
+  const { data: booking, error: bookingErr } = await supabaseAdmin
+    .from('bookings')
+    .select('status, property_id, guest_name')
+    .eq('id', bookingId)
+    .single();
+
+  if (bookingErr || !booking) return { error: 'Booking not found.' };
+
+  if (booking.status !== 'Checked Out') {
+    return { error: 'Only checked-out bookings can have their checkout undone.' };
+  }
+
+  // 2. Revert booking status back to 'Checked In' and clear check_out_time
+  const { error: bookingError } = await supabaseAdmin
+    .from('bookings')
+    .update({ 
+      status: 'Checked In',
+      check_out_time: null
+    })
+    .eq('id', bookingId);
+
+  if (bookingError) {
+    console.error("Failed to undo check-out:", bookingError);
+    return { error: `Booking Update Error: ${bookingError.message}` };
+  }
+
+  // 3. Mark the room back as 'Occupied'
+  const { error: roomError } = await supabaseAdmin
+    .from('rooms')
+    .update({ status: 'Occupied' })
+    .eq('id', roomId);
+
+  if (roomError) {
+    console.error("Failed to update room status during undo check-out:", roomError);
+    return { error: `Room Update Error: ${roomError.message}` };
+  }
+
+  // 4. Audit Log
+  await logAction({
+    propertyId: booking.property_id,
+    action: 'UNDO_CHECK_OUT',
+    details: { guestName: booking.guest_name, bookingId },
+    userId: user.id
+  });
+
+  revalidatePath('/dashboard/front-office');
+  revalidatePath('/dashboard/front-office', 'page');
+  revalidatePath('/dashboard/housekeeping');
+
+  return { success: true };
+}
+
+/**
+ * Update actual check-in time of a guest manually
+ */
+export async function updateCheckInTime(bookingId: string, checkInTime: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { error: 'Unauthorized. Only authorized personnel can modify check-in times.' };
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // Fetch the booking first for audit logging
+  const { data: booking, error: fetchError } = await supabaseAdmin
+    .from('bookings')
+    .select('property_id, guest_name, check_in_time')
+    .eq('id', bookingId)
+    .single();
+
+  if (fetchError || !booking) {
+    console.error("Failed to fetch booking for time change:", fetchError);
+    return { error: "Booking not found." };
+  }
+
+  const { error: updateError } = await supabaseAdmin
+    .from('bookings')
+    .update({ check_in_time: checkInTime })
+    .eq('id', bookingId);
+
+  if (updateError) {
+    console.error("Failed to update check-in time:", updateError);
+    return { error: `Update Failed: ${updateError.message}` };
+  }
+
+  // Record audit log
+  await logAction({
+    propertyId: booking.property_id,
+    action: 'CHECK_IN_TIME_MODIFIED',
+    details: {
+      guestName: booking.guest_name,
+      bookingId,
+      oldCheckInTime: booking.check_in_time,
+      newCheckInTime: checkInTime
+    },
+    userId: user.id
+  });
+
+  revalidatePath('/dashboard/front-office');
+  revalidatePath('/dashboard/front-office', 'page');
+
+  return { success: true };
+}
+

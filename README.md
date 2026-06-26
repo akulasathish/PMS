@@ -1,23 +1,141 @@
-# StaySync PMS Engine
+# 🏨 StaySync Property Management System (PMS)
 
-A modern, cloud-native Property Management System (PMS) built for scale, security, and absolute simplicity. StaySync empowers operators with frictionless self-service onboarding, intuitive inventory management, and automated guest operations.
+StaySync is a modern, high-performance, and cloud-native Property Management System (PMS) designed for boutique hotels, guest houses, and properties. It streamlines real-time room availability, front desk operations, housekeeping workflows, shift cash handovers, and guest automations in a unified interface.
 
-## Architecture & Tech Stack
-- **Frontend:** Next.js 15 (App Router), React, Tailwind CSS
-- **Backend & Auth:** Supabase (PostgreSQL, GoTrue)
-- **Automation:** n8n (Dockerized)
-- **Emails:** Resend API
+---
 
-## Platform Features
-1. **Self-Service Onboarding:** Sign up directly via `/signup`, instantly log in, and register your property to begin operations.
-2. **Property Management:** Comprehensive control over room inventory, pricing, and property configurations.
-3. **Operational Terminal:** Real-time Availability Matrix (Tape Chart), check-in/check-out flows, and walk-in bookings.
-4. **Housekeeping Terminal:** Real-time room status tracking, cleaning updates, and maintenance coordination.
-5. **Role-Free 1-Tier Model:** Simple, secure architecture. Your account is your workspace—no complex RBAC matrices, no multi-level permissions, and no admin approval gates.
+## 🏗️ Architectural Evolution: Moving from 3-Tier to 1-Tier
 
-## n8n Automation & Webhooks
-The system features a deeply integrated automation engine.
-When a new booking is created in the Front Desk terminal, a Postgres Database Trigger (`AFTER INSERT`) fires an HTTP POST request directly to a local `n8n` Docker container. n8n then processes the payload and uses the Resend API to dispatch a personalized HTML Welcome Email to the guest.
+Recently, the StaySync platform underwent a major architectural modernization. We migrated from a legacy 3-Tier microservices structure to a highly optimized, bulletproof **1-Tier Unified Monolithic Architecture**.
 
-## Getting Started
-Please register a fresh account locally by visiting `http://localhost:3000/signup`. This will guide you straight to the Property Setup and into the fully unlocked main dashboard!
+```mermaid
+graph TD
+    subgraph Legacy 3-Tier Setup
+        React[React Client] <--> Express[Node.js API Server]
+        Express <--> DB3[Database Layer]
+        Express <--> Auth3[Intermediate Auth Service]
+    end
+
+    subgraph Modern 1-Tier Monolith
+        Client[Unified Next.js App Router] <--> Server[Next.js Server Actions / Server Components]
+        Server <--> Supabase[(Supabase Postgres & Auth)]
+        Client <--> Supabase
+    end
+```
+
+### The Legacy 3-Tier Model (Deprecated)
+* **Structure:** Separated React SPA client, an Express/Node.js API gateway backend, separate session/auth middleware servers, and a PostgreSQL database.
+* **Drawbacks:** High latency (double network hops for simple requests), complex custom middleware synchronization, brittle state management across API layers, and heavy DevOps overhead maintaining multiple containers.
+
+### The Modern 1-Tier Monolithic Model (Current)
+* **Structure:** Consolidating client and server layers into **Next.js (App Router) with direct Supabase Database and GoTrue Auth bindings**.
+* **Key Improvements:**
+  * **Direct Secure Queries:** Next.js Server Components and Server Actions fetch data directly from Supabase, removing the need for a separate middleware API gateway.
+  * **Database-Level RLS & Security:** Leveraging Supabase **Row-Level Security (RLS)**. The client queries the database securely; Postgres itself guarantees that a user can only see or edit records belonging to their own property.
+  * **Single Workspace Model:** Designed around a role-free workspace model. Your account is your workspace—eliminating complex administrative gates and synchronization lag.
+  * **Atomicity & Real-Time Sync:** Room bookings, folio charges, and ledger payments operate under strict database transaction atomicity.
+
+---
+
+## ⚡ Real-Time Automation & n8n
+
+StaySync includes a deeply embedded automation engine to handle asynchronous guest communication:
+* **Workflow:** When a new booking is created on the Operational Terminal, a PostgreSQL Database Trigger (`AFTER INSERT`) fires an HTTP webhook payload.
+* **Processor:** A local **n8n container** intercepts the webhook, parses the guest and booking metadata, and invokes the **Resend API** to dispatch highly personalized HTML Welcome Letters and digital registration cards to the guest.
+
+---
+
+## ☁️ Cloud Infrastructure: Migrating from AWS EKS to AWS ECS Fargate
+
+Along with the codebase, our cloud deployment was simplified and hardened to remove unnecessary overhead:
+
+### 1. The Migration (EKS ➡️ ECS Fargate)
+* **Before:** The system ran on **AWS EKS (Elastic Kubernetes Service)**. This required massive overhead, including managing an ALB Ingress Controller, custom OIDC provider certificates, Route53 external-dns scripts, custom cluster IAM policies, and multiple YAML manifests for deployments/services.
+* **Now:** The system runs completely serverless on **AWS ECS Fargate**. AWS manages the physical server orchestration, auto-scaling, and health checks under a standard Elastic Load Balancer (ALB). 
+* **Benefits:** 
+  * Replaced dozens of complex Kubernetes and IAM policy files with a clean container definition.
+  * Reduced cloud computing costs significantly.
+  * Built-in, fully managed container health routing.
+
+### 2. CI/CD GitOps Pipeline (GitHub Actions)
+Our automated pipeline (`.github/workflows/deploy.yml`) handles everything on a single `git push` event:
+
+```mermaid
+sequenceDiagram
+    participant Dev as Developer (git push)
+    participant GH as GitHub Actions
+    participant ECR as AWS ECR (ap-south-1)
+    participant ECS as AWS ECS Fargate
+
+    Dev->>GH: push to 'cloud-beds-pms'
+    activate GH
+    GH->>GH: Run Automated Unit Tests
+    Note over GH: Bake Production Supabase<br/>Keys via Build-Args
+    GH->>GH: Compile Next.js & Build Docker Image
+    GH->>ECR: Push tagged image (:latest & :commit_sha)
+    GH->>ECS: Force Service Deployment
+    deactivate GH
+    activate ECS
+    Note over ECS: Spin up new Fargate Task
+    Note over ECS: Verify container health
+    Note over ECS: Route ALB Traffic to new container
+    Note over ECS: Gracefully terminate old container
+    ECS-->>Dev: Deployment Live (Zero-Downtime!)
+    deactivate ECS
+```
+
+* **Client-Side Secret Baking:** The pipeline extracts AWS credentials and production Supabase keys (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`) from **GitHub Secrets** and bakes them securely into the Next.js static build using Docker build arguments.
+* **Rolling Update Rollout:** Uses the `--force-new-deployment` directive to boot up new container tasks, waits for the ALB to confirm their stability, shifts guest traffic seamlessly, and then scales down old containers—achieving **absolute zero-downtime**.
+
+---
+
+## 🚀 Directory Structure Overview
+
+Following our workspace organization, the project is organized as follows:
+
+```bash
+├── .github/workflows/    # Automated CI/CD pipeline (deploy.yml)
+├── public/               # Static assets, branding logo, and vector graphics
+├── scripts/              # Consolidated database seeds, administrative tools, and test suites
+│   ├── create-superadmin.mjs     # Generates primary administrator login
+│   ├── delete_unused_users.js    # Database sanitization utility
+│   ├── fix-password.mjs          # Remote password reset tool
+│   ├── replicate_prod_to_local.js# Synchronizes production Supabase structure to local
+│   └── eslint.config.mjs         # Static analysis config
+├── src/
+│   ├── app/              # Next.js App Router (Dashboard pages, login, and setups)
+│   │   ├── dashboard/
+│   │   │   ├── front-office/  # Real-time front desk, guest billing, and ledger page
+│   │   │   ├── night-audit/   # Daily close audits and revenue verification
+│   │   │   └── property-setup/# Property details, rooms config, and setup wizard
+│   └── components/       # Premium UI components (modals, grids, tape charts)
+├── supabase/
+│   ├── migrations/       # SQL database migrations
+│   └── dumps/            # Structured SQL schema and localized data backups
+├── Dockerfile            # Multi-stage production container instructions
+├── GEMINI.md             # Foundational deployment rules and Supabase configurations
+└── package.json          # Dependency packages and execution scripts
+```
+
+---
+
+## 💻 Local Development Setup
+
+To boot up StaySync PMS on your local workstation:
+
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+2. **Set up local environment variables (`.env.local`):**
+   ```env
+   NEXT_PUBLIC_SUPABASE_URL=your_local_supabase_url
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_local_supabase_anon_key
+   ```
+
+3. **Spin up the development server:**
+   ```bash
+   npm run dev
+   ```
+   Open `http://localhost:3000` on your browser to access your local operational workspace.

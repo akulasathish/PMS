@@ -4,11 +4,12 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, Plus, CreditCard, Banknote, Smartphone, Building2, 
-  ArrowRight, ShieldCheck, Loader2, AlertCircle 
+  ArrowRight, ShieldCheck, Loader2, AlertCircle, Printer, Trash2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { getFolioSummary, postIncidentalCharge, postPayment, postProposedTimeCharge, waiveProposedTimeCharge } from '@/app/actions/folio';
-import { checkOutGuest } from '@/app/actions/booking';
+import { getFolioSummary, postIncidentalCharge, postPayment, postProposedTimeCharge, waiveProposedTimeCharge, voidPayment } from '@/app/actions/folio';
+import { checkOutGuest, undoCheckOutGuest } from '@/app/actions/booking';
+import { generateGuestBillPDF } from '@/utils/folio-pdf';
 
 interface FolioModalProps {
   bookingId: string;
@@ -35,6 +36,14 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
   
   // UI Tabs for forms
   const [activeTab, setActiveTab] = useState<'summary' | 'charge' | 'payment'>('summary');
+  
+  // Track selected payment method
+  const [paymentMethod, setPaymentMethod] = useState('UPI');
+
+  // Post charge dropdown states
+  const [chargeCategory, setChargeCategory] = useState('Food & Water');
+  const [customDescription, setCustomDescription] = useState('');
+  const [quantity, setQuantity] = useState(1);
 
   const loadFolio = async () => {
     setLoading(true);
@@ -92,6 +101,21 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
     const formData = new FormData(e.currentTarget);
     formData.append('bookingId', bookingId);
     formData.append('propertyId', propertyId);
+
+    // Dynamically set description from category selection
+    let finalDescription = chargeCategory === 'Others' ? customDescription.trim() : chargeCategory;
+    if (!finalDescription) {
+      setError('Please provide a description or select a category.');
+      setActionLoading(false);
+      return;
+    }
+    
+    // Append quantity manually if greater than 1
+    if (quantity > 1) {
+      finalDescription = `${finalDescription} (Qty: ${quantity})`;
+    }
+    
+    formData.set('description', finalDescription);
     
     const res = await postIncidentalCharge(formData);
     if (res.error) {
@@ -100,6 +124,9 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
     } else {
       await loadFolio();
       setActiveTab('summary');
+      setChargeCategory('Food & Water');
+      setCustomDescription('');
+      setQuantity(1); // Reset quantity
       setActionLoading(false);
     }
   };
@@ -112,6 +139,17 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
     const formData = new FormData(e.currentTarget);
     formData.append('bookingId', bookingId);
     formData.append('propertyId', propertyId);
+
+    const selectedMethod = formData.get('method') as string;
+    if (selectedMethod === 'Others') {
+      const customVal = formData.get('customMethod') as string;
+      if (!customVal || !customVal.trim()) {
+        setError('Please enter a custom payment method.');
+        setActionLoading(false);
+        return;
+      }
+      formData.set('method', customVal.trim());
+    }
     
     const res = await postPayment(formData);
     if (res.error) {
@@ -120,6 +158,28 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
     } else {
       await loadFolio();
       setActiveTab('summary');
+      setPaymentMethod('UPI'); // Reset to default
+      setActionLoading(false);
+    }
+  };
+
+  const handleVoidPayment = async (paymentId: string) => {
+    const reason = prompt("Enter reason for voiding this payment:");
+    if (reason === null) return; // user cancelled
+    if (!reason.trim()) {
+      alert("A void reason is required.");
+      return;
+    }
+
+    setActionLoading(true);
+    setError('');
+
+    const res = await voidPayment(paymentId, propertyId, reason);
+    if (res.error) {
+      setError(res.error);
+      setActionLoading(false);
+    } else {
+      await loadFolio();
       setActionLoading(false);
     }
   };
@@ -134,6 +194,19 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
     setError('');
     
     const res = await checkOutGuest(bookingId, roomId);
+    if (res.error) {
+      setError(res.error);
+      setActionLoading(false);
+    } else {
+      onSuccess();
+    }
+  };
+
+  const handleUndoCheckout = async () => {
+    setActionLoading(true);
+    setError('');
+    
+    const res = await undoCheckOutGuest(bookingId, roomId);
     if (res.error) {
       setError(res.error);
       setActionLoading(false);
@@ -175,42 +248,63 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
             <Loader2 className="animate-spin text-indigo-500" size={32} />
           </div>
         ) : (
-          <div className="flex flex-1 min-h-0">
+          <div className="flex flex-col lg:flex-row flex-1 min-h-0 overflow-y-auto">
             
             {/* Left Sidebar - Navigation & Summary */}
-            <div className="w-64 border-r border-white/5 p-6 flex flex-col gap-2">
+            <div className="w-full lg:w-64 border-b lg:border-b-0 lg:border-r border-white/5 p-4 lg:p-6 flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0 bg-[#0f0f11] lg:bg-transparent">
               <button 
                 onClick={() => setActiveTab('summary')}
-                className={`p-3 rounded-xl text-left transition-colors ${activeTab === 'summary' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}
+                className={`p-3 rounded-xl text-left transition-colors sm:flex-1 lg:flex-none ${activeTab === 'summary' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}
               >
                 <div className="text-xs font-bold uppercase tracking-wider mb-1">Folio Ledger</div>
                 <div className="text-2xl font-bold text-white">₹{folio?.balanceDue?.toFixed(2)}</div>
                 <div className="text-[10px] text-zinc-500 mt-1">Balance Due</div>
               </button>
 
-              <div className="h-px bg-white/5 my-4" />
+              <div className="hidden lg:block h-px bg-white/5 my-4" />
 
               <button 
                 onClick={() => setActiveTab('charge')}
-                className={`p-3 rounded-xl text-sm font-medium text-left flex items-center gap-3 transition-colors ${activeTab === 'charge' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}
+                className={`p-3 rounded-xl text-sm font-medium text-left flex items-center gap-3 transition-colors sm:flex-1 lg:flex-none ${activeTab === 'charge' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}
               >
                 <Plus size={16} /> Post Charge
               </button>
               <button 
                 onClick={() => setActiveTab('payment')}
-                className={`p-3 rounded-xl text-sm font-medium text-left flex items-center gap-3 transition-colors ${activeTab === 'payment' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}
+                className={`p-3 rounded-xl text-sm font-medium text-left flex items-center gap-3 transition-colors sm:flex-1 lg:flex-none ${activeTab === 'payment' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}
               >
                 <Banknote size={16} /> Log Payment
               </button>
 
-              <div className="mt-auto pt-6">
+              <div className="sm:mt-0 lg:mt-auto pt-4 sm:pt-0 lg:pt-6 sm:ml-auto lg:ml-0 shrink-0 flex flex-col gap-2">
                 <button
-                  onClick={handleFinalCheckout}
-                  disabled={Math.abs(folio?.balanceDue || 0) > 0.01 || actionLoading}
-                  className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-zinc-800 disabled:text-zinc-500 text-black font-bold uppercase tracking-wider text-xs transition-colors flex items-center justify-center gap-2"
+                  onClick={async () => {
+                    if (!folio) return;
+                    await generateGuestBillPDF(folio);
+                  }}
+                  disabled={actionLoading || !folio}
+                  className="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-bold uppercase tracking-wider text-xs transition-colors flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/10"
                 >
-                  {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <><ShieldCheck size={16} /> Checkout Guest</>}
+                  <Printer size={16} /> Print / Download Bill
                 </button>
+
+                {folio?.bookingStatus === 'Checked Out' ? (
+                  <button
+                    onClick={handleUndoCheckout}
+                    disabled={actionLoading}
+                    className="w-full py-3 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold uppercase tracking-wider text-xs transition-colors flex items-center justify-center gap-2"
+                  >
+                    {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <><X size={16} /> Revert Checkout</>}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleFinalCheckout}
+                    disabled={Math.abs(folio?.balanceDue || 0) > 0.01 || actionLoading}
+                    className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-zinc-800 disabled:text-zinc-500 text-black font-bold uppercase tracking-wider text-xs transition-colors flex items-center justify-center gap-2"
+                  >
+                    {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <><ShieldCheck size={16} /> Checkout Guest</>}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -300,7 +394,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                       </motion.div>
                     )}
 
-                    <div className="grid grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                       
                       {/* Charges Column */}
                       <div>
@@ -340,12 +434,37 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                             </div>
                           ) : (
                             folio?.payments?.map((item: any) => (
-                              <div key={item.id} className="flex justify-between items-center p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
+                              <div 
+                                key={item.id} 
+                                className={`flex justify-between items-center p-3 rounded-xl border transition-all ${
+                                  item.is_void 
+                                    ? "bg-red-500/5 border-red-500/10 opacity-60" 
+                                    : "bg-emerald-500/5 border-emerald-500/20"
+                                }`}
+                              >
                                 <div>
-                                  <div className="text-sm font-medium text-emerald-400">{item.method}</div>
-                                  <div className="text-[10px] text-emerald-500/70">{new Date(item.created_at).toLocaleDateString()}</div>
+                                  <div className={`text-sm font-medium ${item.is_void ? "text-zinc-500 line-through" : "text-emerald-400"}`}>
+                                    {item.method} {item.is_void && "(Voided)"}
+                                  </div>
+                                  <div className="text-[10px] text-zinc-500">
+                                    {new Date(item.created_at).toLocaleDateString()}
+                                    {item.is_void && ` • Reason: ${item.void_reason}`}
+                                  </div>
                                 </div>
-                                <div className="font-mono text-sm text-emerald-400">-₹{Number(item.amount).toFixed(2)}</div>
+                                <div className="flex items-center gap-3">
+                                  <div className={`font-mono text-sm ${item.is_void ? "text-zinc-500 line-through" : "text-emerald-400"}`}>
+                                    -₹{Number(item.amount).toFixed(2)}
+                                  </div>
+                                  {!item.is_void && (
+                                    <button 
+                                      onClick={() => handleVoidPayment(item.id)}
+                                      className="p-1 rounded text-red-400/70 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                                      title="Void Payment"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             ))
                           )}
@@ -370,18 +489,47 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                       
                       <form onSubmit={handlePostCharge} className="space-y-4">
                         <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Description</label>
-                          <input 
-                            name="description" type="text" required placeholder="e.g. Minibar - Water"
-                            className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all"
-                          />
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Charge Category</label>
+                          <select 
+                            value={chargeCategory}
+                            onChange={(e) => setChargeCategory(e.target.value)}
+                            className="w-full bg-black/40 border border-white/10 rounded-xl py-3.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all appearance-none"
+                          >
+                            <option value="Food & Water" className="bg-zinc-900 text-white">Food & Water</option>
+                            <option value="Late Checkout" className="bg-zinc-900 text-white">Late Checkout</option>
+                            <option value="Early Check-In" className="bg-zinc-900 text-white">Early Check-In</option>
+                            <option value="Previous Stay Past Due" className="bg-zinc-900 text-white">Previous Stay Pending Dues</option>
+                            <option value="Others" className="bg-zinc-900 text-white">Others</option>
+                          </select>
                         </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Amount (₹)</label>
-                          <input 
-                            name="amount" type="number" step="0.01" required min="1" placeholder="0.00"
-                            className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm font-mono focus:outline-none focus:border-indigo-500 transition-all"
-                          />
+
+                        {chargeCategory === 'Others' && (
+                          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Custom Description</label>
+                            <input 
+                              type="text" required placeholder="e.g. Minibar, Laundry, Damages"
+                              value={customDescription}
+                              onChange={(e) => setCustomDescription(e.target.value)}
+                              className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all"
+                            />
+                          </motion.div>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Quantity</label>
+                            <input 
+                              type="number" min="1" required value={quantity} onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
+                              className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Amount (₹)</label>
+                            <input 
+                              name="amount" type="number" step="0.01" required min="1" placeholder="0.00"
+                              className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm font-mono focus:outline-none focus:border-indigo-500 transition-all"
+                            />
+                          </div>
                         </div>
                         <button disabled={actionLoading} type="submit" className="w-full bg-white text-black font-bold uppercase tracking-wider text-xs py-3 rounded-xl mt-4 hover:bg-zinc-200 transition-colors flex justify-center">
                           {actionLoading ? <Loader2 size={16} className="animate-spin" /> : 'Post Charge'}
@@ -396,30 +544,56 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                      <div className="max-w-md mx-auto">
                       <div className="mb-6">
                         <h3 className="text-lg font-bold text-white">Log Payment</h3>
-                        <p className="text-xs text-zinc-400 mt-1">Record a payment received from the guest to settle the folio.</p>
+                        <p className="text-xs text-zinc-400 mt-1">Record a payment received from the guest to settle the folio. For split/combination payments (e.g. Cash + UPI), simply log each payment amount separately.</p>
                       </div>
                       
                       <form onSubmit={handlePostPayment} className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Payment Method</label>
-                            <select name="method" className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all appearance-none">
-                              <option value="UPI">UPI / QR Code</option>
+                            <select 
+                              name="method" 
+                              value={paymentMethod}
+                              onChange={(e) => setPaymentMethod(e.target.value)}
+                              className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all appearance-none"
+                            >
+                              <option value="UPI">UPI / PhonePe</option>
                               <option value="Credit Card">Credit Card</option>
+                              <option value="SWIPE">SWIPE</option>
                               <option value="Cash">Cash</option>
                               <option value="Bank Transfer">Bank Transfer</option>
                               <option value="OTA Pre-Paid">OTA Pre-Paid</option>
+                              <option value="Others">Others (Custom Mode)</option>
                             </select>
                           </div>
                           <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Amount (₹)</label>
                             <input 
+                              key={folio?.balanceDue}
                               name="amount" type="number" step="0.01" required min="1" 
                               defaultValue={folio?.balanceDue > 0 ? folio.balanceDue.toFixed(2) : ''}
                               className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm font-mono focus:outline-none focus:border-indigo-500 transition-all"
                             />
                           </div>
                         </div>
+
+                        {paymentMethod === 'Others' && (
+                          <motion.div 
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            className="space-y-1.5 mt-2"
+                          >
+                            <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Custom Payment Mode</label>
+                            <input 
+                              name="customMethod" 
+                              type="text" 
+                              required 
+                              placeholder="e.g. GooglePay personal, xyz"
+                              className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all"
+                            />
+                          </motion.div>
+                        )}
+
                         <div className="space-y-1.5">
                           <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Transaction ID (Optional)</label>
                           <input 

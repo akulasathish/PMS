@@ -49,3 +49,46 @@ export async function logAction({ propertyId, action, details = {}, severity = '
     return { error: 'Failed to record audit log' };
   }
 }
+
+/**
+ * Fetch the recent audit/activity logs for a given property
+ */
+export async function getAuditLogs(propertyId: string, limit = 50) {
+  try {
+    const supabase = createSSRClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { error: 'Unauthorized.' };
+    }
+
+    const supabaseAdmin = getSupabaseAdmin();
+    const { data, error } = await supabaseAdmin
+      .from('audit_logs')
+      .select(`
+        id,
+        created_at,
+        action,
+        details,
+        severity,
+        user_id,
+        profiles (
+          full_name,
+          email
+        )
+      `)
+      .eq('property_id', propertyId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      console.error('Failed to fetch audit logs:', error.message);
+      return { error: error.message };
+    }
+
+    return { success: true, data };
+  } catch (err) {
+    console.error('getAuditLogs Exception:', err);
+    return { error: 'Failed to fetch audit logs.' };
+  }
+}

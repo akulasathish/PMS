@@ -29,6 +29,14 @@ export async function postIncidentalCharge(formData: FormData) {
 
   const supabaseAdmin = getSupabaseAdmin();
   
+  // Fetch current business_date from app_settings
+  const { data: settings } = await supabaseAdmin
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'business_date')
+    .single();
+  const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+  
   // Insert the charge securely
   const { data, error } = await supabaseAdmin
     .from('incidental_charges')
@@ -37,7 +45,8 @@ export async function postIncidentalCharge(formData: FormData) {
       property_id: propertyId,
       amount,
       description,
-      created_by: user.id
+      created_by: user.id,
+      business_date: businessDate
     }])
     .select('id')
     .single();
@@ -86,6 +95,14 @@ export async function postPayment(formData: FormData) {
 
   const supabaseAdmin = getSupabaseAdmin();
   
+  // Fetch current business_date from app_settings
+  const { data: settings } = await supabaseAdmin
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'business_date')
+    .single();
+  const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+  
   // Insert the payment securely
   const { data, error } = await supabaseAdmin
     .from('payments')
@@ -95,7 +112,8 @@ export async function postPayment(formData: FormData) {
       amount,
       method,
       transaction_id: transactionId,
-      created_by: user.id
+      created_by: user.id,
+      business_date: businessDate
     }])
     .select('id')
     .single();
@@ -128,7 +146,7 @@ export async function getFolioSummary(bookingId: string) {
   // 1. Fetch base booking details
   const { data: booking, error: bookingErr } = await supabaseAdmin
     .from('bookings')
-    .select('amount, status, property_id, check_in, check_out')
+    .select('id, amount, status, property_id, check_in, check_out, check_in_time, check_out_time, guest_name, guest_email, guest_phone, room_id')
     .eq('id', bookingId)
     .single();
 
@@ -136,29 +154,52 @@ export async function getFolioSummary(bookingId: string) {
 
   const propertyId = booking.property_id;
 
-  // 2. Fetch property standard hours & custom rules
+  // 1b. Fetch room number safely
+  let roomNumber = '';
+  if (booking.room_id) {
+    const { data: roomData } = await supabaseAdmin
+      .from('rooms')
+      .select('room_number')
+      .eq('id', booking.room_id)
+      .single();
+    if (roomData) {
+      roomNumber = roomData.room_number;
+    }
+  }
+
+  // 2. Fetch property standard hours, custom rules, & branding details
   const { data: property, error: propErr } = await supabaseAdmin
     .from('properties')
-    .select('standard_checkin_time, standard_checkout_time, early_checkin_rules, late_checkout_rules')
+    .select('name, address, city, country, gst_number, state_code, standard_checkin_time, standard_checkout_time, early_checkin_rules, late_checkout_rules')
     .eq('id', propertyId)
     .single();
 
   // 3. Fetch incidental charges (including is_automated and waiver fields)
   const { data: incidentals, error: incErr } = await supabaseAdmin
     .from('incidental_charges')
-    .select('id, amount, description, created_at, is_automated, waiver_reason')
+    .select('id, amount, description, created_at, business_date, is_automated, waiver_reason')
     .eq('booking_id', bookingId)
     .order('created_at', { ascending: true });
 
   // 4. Fetch payments
   const { data: payments, error: payErr } = await supabaseAdmin
     .from('payments')
-    .select('id, amount, method, created_at')
+    .select('id, amount, method, created_at, business_date, transaction_id, is_void, void_reason, voided_at, voided_by')
     .eq('booking_id', bookingId)
     .order('created_at', { ascending: true });
 
-  const totalCharges = Number(booking.amount) + (incidentals?.reduce((sum, item) => sum + Number(item.amount), 0) || 0);
-  const totalPayments = payments?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
+  // Sum of any daily room charges posted by the night audit
+  const dailyRoomChargesSum = incidentals
+    ?.filter(item => item.description.startsWith('Daily Room Charge'))
+    ?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
+
+  // The base room amount shown on the folio is the booking total minus already-posted daily charges
+  const roomAmount = Math.max(0, Number(booking.amount) - dailyRoomChargesSum);
+
+  const totalCharges = roomAmount + (incidentals?.reduce((sum, item) => sum + Number(item.amount), 0) || 0);
+  const totalPayments = payments
+    ?.filter(item => !item.is_void)
+    ?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
   const balanceDue = totalCharges - totalPayments;
 
   // 5. Evaluate proposed fees
@@ -223,7 +264,23 @@ export async function getFolioSummary(bookingId: string) {
   return {
     success: true,
     data: {
-      roomAmount: Number(booking.amount),
+      bookingId: booking.id,
+      roomAmount,
+      bookingStatus: booking.status,
+      checkIn: booking.check_in,
+      checkOut: booking.check_out,
+      checkInTime: booking.check_in_time,
+      checkOutTime: booking.check_out_time,
+      guestName: booking.guest_name,
+      guestEmail: booking.guest_email,
+      guestPhone: booking.guest_phone,
+      roomNumber,
+      propertyName: property?.name || 'StaySync Property',
+      propertyAddress: property?.address || '',
+      propertyCity: property?.city || '',
+      propertyCountry: property?.country || '',
+      propertyGst: property?.gst_number || '',
+      propertyStateCode: property?.state_code || '',
       incidentals: incidentals || [],
       payments: payments || [],
       totalCharges,
@@ -250,6 +307,14 @@ export async function postProposedTimeCharge(bookingId: string, propertyId: stri
 
   const supabaseAdmin = getSupabaseAdmin();
 
+  // Fetch current business_date from app_settings
+  const { data: settings } = await supabaseAdmin
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'business_date')
+    .single();
+  const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+
   const { data, error } = await supabaseAdmin
     .from('incidental_charges')
     .insert([{
@@ -258,7 +323,8 @@ export async function postProposedTimeCharge(bookingId: string, propertyId: stri
       amount,
       description,
       is_automated: true,
-      created_by: user.id
+      created_by: user.id,
+      business_date: businessDate
     }])
     .select('id')
     .single();
@@ -291,6 +357,14 @@ export async function waiveProposedTimeCharge(bookingId: string, propertyId: str
 
   const supabaseAdmin = getSupabaseAdmin();
 
+  // Fetch current business_date from app_settings
+  const { data: settings } = await supabaseAdmin
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'business_date')
+    .single();
+  const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+
   // Insert a minimal ₹0.01 charge to represent the waiver in the ledger history (satisfies CHECK amount > 0)
   const waiverDescription = `${description} - Waived (Reason: ${reason})`;
   const { data, error } = await supabaseAdmin
@@ -303,7 +377,8 @@ export async function waiveProposedTimeCharge(bookingId: string, propertyId: str
       is_automated: true,
       waiver_reason: reason,
       waived_by: user.id,
-      created_by: user.id
+      created_by: user.id,
+      business_date: businessDate
     }])
     .select('id')
     .single();
@@ -324,3 +399,44 @@ export async function waiveProposedTimeCharge(bookingId: string, propertyId: str
   revalidatePath('/dashboard/front-office');
   return { success: true };
 }
+
+/**
+ * Server action to void an existing payment
+ */
+export async function voidPayment(paymentId: string, propertyId: string, reason: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) return { error: 'Unauthorized.' };
+  if (!reason.trim()) return { error: 'A void reason is required.' };
+
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // Mark the payment as voided
+  const { error } = await supabaseAdmin
+    .from('payments')
+    .update({
+      is_void: true,
+      void_reason: reason.trim(),
+      voided_at: new Date().toISOString(),
+      voided_by: user.id
+    })
+    .eq('id', paymentId);
+
+  if (error) {
+    console.error("Void Payment Error:", error.message);
+    return { error: `Failed to void payment: ${error.message}` };
+  }
+
+  // Log in Audit Trail
+  await logAction({
+    propertyId,
+    action: 'PAYMENT_VOIDED',
+    details: { paymentId, reason },
+    userId: user.id
+  });
+
+  revalidatePath('/dashboard/front-office');
+  return { success: true };
+}
+

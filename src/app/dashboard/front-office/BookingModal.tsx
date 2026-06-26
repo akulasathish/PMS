@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { X, Loader2, Bed, Calendar, User, Mail, DollarSign, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import { X, Loader2, Bed, Calendar, User, Mail, Phone, DollarSign, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import { createBooking } from '@/app/actions/booking';
 import { Room, Booking } from '@/lib/types';
 
@@ -64,6 +64,13 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
     setIsLoading(true);
     setError('');
 
+    const roomIds = formData.getAll('roomIds').filter(Boolean);
+    if (roomIds.length === 0) {
+      setError('Please select at least one room for the booking.');
+      setIsLoading(false);
+      return;
+    }
+
     formData.append('propertyId', propertyId);
 
     const result = await createBooking(formData);
@@ -87,9 +94,9 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
       <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-md bg-zinc-900 border border-white/10 rounded-2xl overflow-hidden shadow-2xl"
+         initial={{ opacity: 0, scale: 0.95 }}
+         animate={{ opacity: 1, scale: 1 }}
+         className="w-full max-w-md bg-zinc-900 border border-white/10 rounded-2xl overflow-hidden shadow-2xl"
       >
         <div className="flex justify-between items-center p-5 border-b border-white/5 bg-black/20">
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
@@ -113,25 +120,23 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
           ) : (
             <form action={handleSubmit} className="space-y-4">
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Room Assignment</label>
-                <div className="relative">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
-                    <Bed size={16} />
-                  </div>
-                  <select 
-                    name="roomId" 
-                    required
-                    className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white text-sm focus:outline-none focus:border-azure-500/50 appearance-none"
-                  >
-                    <option value="">
-                      {availableRooms.length > 0 ? "Select an available room..." : "NO ROOMS AVAILABLE FOR THESE DATES"}
-                    </option>
-                    {availableRooms.map(room => (
-                      <option key={room.id} value={room.id}>
-                        Room {room.room_number} ({room.type})
-                      </option>
-                    ))}
-                  </select>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Room Assignment (Select 1 or more for Group Booking)</label>
+                <div className="max-h-40 overflow-y-auto border border-white/10 bg-black/50 rounded-xl p-3 space-y-2 no-scrollbar">
+                  {availableRooms.length === 0 ? (
+                    <div className="text-sm text-zinc-500 text-center py-2">NO ROOMS AVAILABLE FOR THESE DATES</div>
+                  ) : (
+                    availableRooms.map(room => (
+                      <label key={room.id} className="flex items-center gap-3 text-white text-sm cursor-pointer hover:bg-white/5 p-2 rounded-lg transition-colors">
+                        <input
+                          type="checkbox"
+                          name="roomIds"
+                          value={room.id}
+                          className="w-4 h-4 rounded border-zinc-700 bg-zinc-800 text-azure-600 focus:ring-azure-500 focus:ring-offset-zinc-900 cursor-pointer"
+                        />
+                        <span className="font-bold text-zinc-100">Room {room.room_number} <span className="text-zinc-500 font-normal">({room.type})</span></span>
+                      </label>
+                    ))
+                  )}
                 </div>
               </div>
 
@@ -153,19 +158,34 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Guest Email</label>
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Guest Phone</label>
                   <div className="relative">
                     <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
-                      <Mail size={16} />
+                      <Phone size={16} />
                     </div>
                     <input 
-                      type="email" 
-                      name="guestEmail"
+                      type="tel" 
+                      name="guestPhone"
                       required
-                      placeholder="john@example.com"
+                      placeholder="+91 98765 43210"
                       className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-azure-500/50"
                     />
                   </div>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Guest Email <span className="text-zinc-500 lowercase font-normal">(optional)</span></label>
+                <div className="relative">
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
+                    <Mail size={16} />
+                  </div>
+                  <input 
+                    type="email" 
+                    name="guestEmail"
+                    placeholder="john@example.com"
+                    className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-azure-500/50"
+                  />
                 </div>
               </div>
 
@@ -177,7 +197,24 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
                     name="checkIn"
                     required
                     value={selectedCheckIn}
-                    onChange={(e) => setSelectedCheckIn(e.target.value)}
+                    onChange={(e) => {
+                      const newIn = e.target.value;
+                      setSelectedCheckIn(newIn);
+                      
+                      if (newIn) {
+                        const parts = newIn.split('-');
+                        const inDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+                        
+                        const outParts = selectedCheckOut.split('-');
+                        const outDate = new Date(Number(outParts[0]), Number(outParts[1]) - 1, Number(outParts[2]));
+                        
+                        if (outDate <= inDate) {
+                          const nextDay = new Date(inDate);
+                          nextDay.setDate(nextDay.getDate() + 1);
+                          setSelectedCheckOut(getLocalYYYYMMDD(nextDay));
+                        }
+                      }
+                    }}
                     className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-azure-500/50"
                   />
                 </div>
@@ -189,6 +226,13 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
                     name="checkOut"
                     required
                     value={selectedCheckOut}
+                    min={selectedCheckIn ? (() => {
+                      const parts = selectedCheckIn.split('-');
+                      const inDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+                      const nextDay = new Date(inDate);
+                      nextDay.setDate(nextDay.getDate() + 1);
+                      return getLocalYYYYMMDD(nextDay);
+                    })() : undefined}
                     onChange={(e) => setSelectedCheckOut(e.target.value)}
                     className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-azure-500/50"
                   />
