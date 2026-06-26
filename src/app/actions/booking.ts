@@ -693,3 +693,70 @@ export async function updateCheckInTime(bookingId: string, checkInTime: string) 
   return { success: true };
 }
 
+/**
+ * Applies a discount to the room tariff on a booking prior to checkout
+ */
+export async function applyBookingDiscount(bookingId: string, discountAmount: number, reason: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { error: 'Unauthorized. Only logged-in agents can authorize discounts.' };
+  }
+
+  if (discountAmount < 0) {
+    return { error: 'Discount amount cannot be negative.' };
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // Fetch current booking amount
+  const { data: booking, error: fetchErr } = await supabaseAdmin
+    .from('bookings')
+    .select('amount, property_id, guest_name')
+    .eq('id', bookingId)
+    .single();
+
+  if (fetchErr || !booking) {
+    return { error: 'Booking not found.' };
+  }
+
+  if (discountAmount > Number(booking.amount)) {
+    return { error: `Discount cannot exceed the total room tariff of ₹${booking.amount}` };
+  }
+
+  // Update booking record
+  const { error: updateErr } = await supabaseAdmin
+    .from('bookings')
+    .update({
+      discount_amount: discountAmount,
+      discount_reason: reason.trim() || null
+    })
+    .eq('id', bookingId);
+
+  if (updateErr) {
+    console.error("Discount Application Error:", updateErr);
+    return { error: `Failed to apply discount: ${updateErr.message}` };
+  }
+
+  // Record an audit log
+  await logAction({
+    propertyId: booking.property_id,
+    action: 'BOOKING_DISCOUNT_APPLIED',
+    details: {
+      bookingId,
+      guestName: booking.guest_name,
+      originalTariff: booking.amount,
+      discountAmount,
+      netTariff: Number(booking.amount) - discountAmount,
+      reason
+    },
+    userId: user.id
+  });
+
+  revalidatePath('/dashboard/front-office');
+  revalidatePath('/dashboard/front-office', 'page');
+  return { success: true, netAmount: Number(booking.amount) - discountAmount };
+}
+
+

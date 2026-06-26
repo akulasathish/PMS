@@ -4,11 +4,11 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, Plus, CreditCard, Banknote, Smartphone, Building2, 
-  ArrowRight, ShieldCheck, Loader2, AlertCircle, Printer, Trash2
+  ArrowRight, ShieldCheck, Loader2, AlertCircle, Printer, Trash2, Percent
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { getFolioSummary, postIncidentalCharge, postPayment, postProposedTimeCharge, waiveProposedTimeCharge, voidPayment } from '@/app/actions/folio';
-import { checkOutGuest, undoCheckOutGuest } from '@/app/actions/booking';
+import { checkOutGuest, undoCheckOutGuest, applyBookingDiscount } from '@/app/actions/booking';
 import { generateGuestBillPDF } from '@/utils/folio-pdf';
 
 interface FolioModalProps {
@@ -35,7 +35,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
   const [waiverReasonText, setWaiverReasonText] = useState('');
   
   // UI Tabs for forms
-  const [activeTab, setActiveTab] = useState<'summary' | 'charge' | 'payment'>('summary');
+  const [activeTab, setActiveTab] = useState<'summary' | 'charge' | 'payment' | 'discount'>('summary');
   
   // Track selected payment method
   const [paymentMethod, setPaymentMethod] = useState('UPI');
@@ -44,6 +44,10 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
   const [chargeCategory, setChargeCategory] = useState('Food & Water');
   const [customDescription, setCustomDescription] = useState('');
   const [quantity, setQuantity] = useState(1);
+
+  // Discount states
+  const [discountVal, setDiscountVal] = useState('');
+  const [discountReasonText, setDiscountReasonText] = useState('');
 
   const loadFolio = async () => {
     setLoading(true);
@@ -184,6 +188,40 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
     }
   };
 
+  const handleApplyDiscount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!discountVal || isNaN(Number(discountVal))) {
+      setError("Please enter a valid numeric discount amount.");
+      return;
+    }
+
+    const discountAmount = Number(discountVal);
+    if (discountAmount < 0) {
+      setError("Discount amount cannot be negative.");
+      return;
+    }
+
+    if (!discountReasonText.trim()) {
+      setError("A discount authorization reason is required.");
+      return;
+    }
+
+    setActionLoading(true);
+    setError('');
+
+    const res = await applyBookingDiscount(bookingId, discountAmount, discountReasonText);
+    if (res.error) {
+      setError(res.error);
+      setActionLoading(false);
+    } else {
+      await loadFolio();
+      setDiscountVal('');
+      setDiscountReasonText('');
+      setActiveTab('summary');
+      setActionLoading(false);
+    }
+  };
+
   const handleFinalCheckout = async () => {
     if (Math.abs(folio?.balanceDue || 0) > 0.01) {
       setError('Cannot checkout with a non-zero balance. Please settle the folio first.');
@@ -274,6 +312,12 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                 className={`p-3 rounded-xl text-sm font-medium text-left flex items-center gap-3 transition-colors sm:flex-1 lg:flex-none ${activeTab === 'payment' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}
               >
                 <Banknote size={16} /> Log Payment
+              </button>
+              <button 
+                onClick={() => setActiveTab('discount')}
+                className={`p-3 rounded-xl text-sm font-medium text-left flex items-center gap-3 transition-colors sm:flex-1 lg:flex-none ${activeTab === 'discount' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}
+              >
+                <Percent size={16} /> Apply Discount
               </button>
 
               <div className="sm:mt-0 lg:mt-auto pt-4 sm:pt-0 lg:pt-6 sm:ml-auto lg:ml-0 shrink-0 flex flex-col gap-2">
@@ -402,11 +446,21 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                         <div className="space-y-3">
                           <div className="flex justify-between items-center p-3 rounded-xl bg-white/5 border border-white/5">
                             <div>
-                              <div className="text-sm font-medium text-white">Room Rate</div>
+                              <div className="text-sm font-medium text-white">{folio?.discountAmount > 0 ? 'Room Rate (Original)' : 'Room Rate'}</div>
                               <div className="text-[10px] text-zinc-500">Base Accommodation</div>
                             </div>
-                            <div className="font-mono text-sm text-white">₹{folio?.roomAmount?.toFixed(2)}</div>
+                            <div className="font-mono text-sm text-white">₹{(folio?.roomAmount + (folio?.discountAmount || 0))?.toFixed(2)}</div>
                           </div>
+
+                          {folio?.discountAmount > 0 && (
+                            <div className="flex justify-between items-center p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
+                              <div>
+                                <div className="text-sm font-bold">Applied Discount</div>
+                                <div className="text-[10px] text-zinc-400">{folio?.discountReason || 'Staff discretionary discount'}</div>
+                              </div>
+                              <div className="font-mono text-sm font-bold">-₹{folio?.discountAmount?.toFixed(2)}</div>
+                            </div>
+                          )}
                           
                           {folio?.incidentals?.map((item: any) => (
                             <div key={item.id} className="flex justify-between items-center p-3 rounded-xl bg-white/5 border border-white/5">
@@ -603,6 +657,54 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                         </div>
                         <button disabled={actionLoading} type="submit" className="w-full bg-emerald-500 text-black font-bold uppercase tracking-wider text-xs py-3 rounded-xl mt-4 hover:bg-emerald-400 transition-colors flex justify-center">
                           {actionLoading ? <Loader2 size={16} className="animate-spin" /> : 'Confirm Payment'}
+                        </button>
+                      </form>
+                    </div>
+                  </motion.div>
+                )}
+
+                {activeTab === 'discount' && (
+                  <motion.div key="discount" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+                     <div className="max-w-md mx-auto">
+                      <div className="mb-6">
+                        <h3 className="text-lg font-bold text-white">Apply Tariff Discount</h3>
+                        <p className="text-xs text-zinc-400 mt-1">
+                          Apply a discount to the room tariff. This will reduce the total taxable room charges and recalculate the balance due in real-time.
+                        </p>
+                      </div>
+
+                      {folio?.discountAmount > 0 && (
+                        <div className="mb-4 p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-xs text-indigo-400">
+                          Current Discount Applied: <span className="font-bold font-mono">₹{folio.discountAmount.toFixed(2)}</span>
+                          {folio.discountReason && (
+                            <p className="mt-1 text-[10px] text-zinc-400">Reason: {folio.discountReason}</p>
+                          )}
+                        </div>
+                      )}
+                      
+                      <form onSubmit={handleApplyDiscount} className="space-y-4">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Discount Amount (₹)</label>
+                          <input 
+                            type="number" step="0.01" min="0" required placeholder="0.00"
+                            value={discountVal}
+                            onChange={(e) => setDiscountVal(e.target.value)}
+                            className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm font-mono focus:outline-none focus:border-indigo-500 transition-all"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Reason / Authorization</label>
+                          <input 
+                            type="text" required placeholder="e.g. Service Recovery - AC issue, negotiated rate"
+                            value={discountReasonText}
+                            onChange={(e) => setDiscountReasonText(e.target.value)}
+                            className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all"
+                          />
+                        </div>
+
+                        <button disabled={actionLoading} type="submit" className="w-full bg-indigo-600 text-white font-bold uppercase tracking-wider text-xs py-3 rounded-xl mt-4 hover:bg-indigo-500 transition-colors flex justify-center">
+                          {actionLoading ? <Loader2 size={16} className="animate-spin" /> : 'Apply Discount'}
                         </button>
                       </form>
                     </div>

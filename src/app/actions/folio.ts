@@ -146,7 +146,7 @@ export async function getFolioSummary(bookingId: string) {
   // 1. Fetch base booking details
   const { data: booking, error: bookingErr } = await supabaseAdmin
     .from('bookings')
-    .select('id, amount, status, property_id, check_in, check_out, check_in_time, check_out_time, guest_name, guest_email, guest_phone, room_id')
+    .select('id, amount, discount_amount, discount_reason, status, property_id, check_in, check_out, check_in_time, check_out_time, guest_name, guest_email, guest_phone, room_id')
     .eq('id', bookingId)
     .single();
 
@@ -193,14 +193,18 @@ export async function getFolioSummary(bookingId: string) {
     ?.filter(item => item.description.startsWith('Daily Room Charge'))
     ?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
 
-  // The base room amount shown on the folio is the booking total minus already-posted daily charges
-  const roomAmount = Math.max(0, Number(booking.amount) - dailyRoomChargesSum);
+  const discountAmount = Number((booking as any).discount_amount || 0);
+  const discountReason = (booking as any).discount_reason || null;
+
+  // The base room amount shown on the folio is the booking total minus discount minus already-posted daily charges
+  const roomAmount = Math.max(0, Number(booking.amount) - discountAmount - dailyRoomChargesSum);
 
   const totalCharges = roomAmount + (incidentals?.reduce((sum, item) => sum + Number(item.amount), 0) || 0);
   const totalPayments = payments
     ?.filter(item => !item.is_void)
     ?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
   const balanceDue = totalCharges - totalPayments;
+
 
   // 5. Evaluate proposed fees
   let proposedLateCheckoutFee = 0;
@@ -288,6 +292,8 @@ export async function getFolioSummary(bookingId: string) {
       balanceDue,
       proposedLateCheckoutFee,
       proposedEarlyCheckinFee,
+      discountAmount,
+      discountReason,
       standardHours: property ? {
         checkIn: property.standard_checkin_time,
         checkOut: property.standard_checkout_time
