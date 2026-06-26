@@ -1440,12 +1440,15 @@ export default function FrontOfficeTerminal() {
         margin: { left: 15 }
       });
 
+      const netSaleVsExpenses = totalSaleAmount - totalExpenses;
       const paymentSalesSummary = [
         ["Cash Collections", `Rs. ${reconData.total.Cash.toFixed(2)}`],
         ["PhonePe UPI Collections", `Rs. ${reconData.total.UPI.toFixed(2)}`],
         ["Swipe Card Collections", `Rs. ${reconData.total.SWIPE.toFixed(2)}`],
         ["Others (Custom Payment Modes)", `Rs. ${reconData.total.Others.toFixed(2)}`],
-        ["TOTAL SALE FOR THE PERIOD", `Rs. ${totalSaleAmount.toFixed(2)}`]
+        ["TOTAL SALE FOR THE PERIOD", `Rs. ${totalSaleAmount.toFixed(2)}`],
+        ["Total Logged Expenses", `- Rs. ${totalExpenses.toFixed(2)}`],
+        ["TOTAL SALE VS EXPENSES (NET)", `Rs. ${netSaleVsExpenses.toFixed(2)}`]
       ];
 
       autoTable(doc, {
@@ -1714,12 +1717,15 @@ export default function FrontOfficeTerminal() {
         margin: { left: 15 }
       });
 
+      const netSaleVsExpenses = totalSaleAmount - totalExpenses;
       const paymentSalesSummary = [
         ["Cash Collections", `Rs. ${reconData.total.Cash.toFixed(2)}`],
         ["PhonePe UPI Collections", `Rs. ${reconData.total.UPI.toFixed(2)}`],
         ["Swipe Card Collections", `Rs. ${reconData.total.SWIPE.toFixed(2)}`],
         ["Others (Custom Payment Modes)", `Rs. ${reconData.total.Others.toFixed(2)}`],
-        ["TOTAL SALE FOR THE DAY", `Rs. ${totalSaleAmount.toFixed(2)}`]
+        ["TOTAL SALE FOR THE DAY", `Rs. ${totalSaleAmount.toFixed(2)}`],
+        ["Total Logged Expenses", `- Rs. ${totalExpenses.toFixed(2)}`],
+        ["TOTAL SALE VS EXPENSES (NET)", `Rs. ${netSaleVsExpenses.toFixed(2)}`]
       ];
 
       autoTable(doc, {
@@ -1756,6 +1762,9 @@ export default function FrontOfficeTerminal() {
   const renderExpensesView = () => {
     const stats = getLedgerTotalsForDate(selectedLedgerDate);
     const dayExpenses = expenses.filter(e => e.date === selectedLedgerDate);
+    const totalSales = stats.cashPayments + stats.upiPayments + stats.otherPayments;
+    const totalExpensesSum = stats.cashExpenses + stats.upiExpenses;
+    const netBalance = totalSales - totalExpensesSum;
     return (
       <div className="space-y-8">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-zinc-900/40 border border-white/[0.04] p-6 rounded-3xl backdrop-blur-xl">
@@ -1822,7 +1831,7 @@ export default function FrontOfficeTerminal() {
             </button>
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
           <div className="bg-zinc-900/20 border border-white/[0.04] p-6 rounded-3xl space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Opening Cash Balance</span>
@@ -1905,7 +1914,7 @@ export default function FrontOfficeTerminal() {
               <DollarSign className="text-indigo-400" size={16} />
             </div>
             <div>
-              <p className="text-2xl font-black text-white">₹{(stats.cashPayments + stats.upiPayments + stats.otherPayments).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+              <p className="text-2xl font-black text-white">₹{totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
               <div className="text-[9px] text-zinc-500 mt-1 uppercase font-bold space-y-0.5">
                 <p className="flex justify-between"><span>Cash Collected:</span><span className="text-zinc-400">₹{stats.cashPayments.toFixed(2)}</span></p>
                 <p className="flex justify-between"><span>UPI Collected:</span><span className="text-zinc-400">₹{stats.upiPayments.toFixed(2)}</span></p>
@@ -1919,11 +1928,34 @@ export default function FrontOfficeTerminal() {
               <TrendingDown className="text-rose-400" size={16} />
             </div>
             <div>
-              <p className="text-2xl font-black text-rose-400">₹{(stats.cashExpenses + stats.upiExpenses).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+              <p className="text-2xl font-black text-rose-400">₹{totalExpensesSum.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
               <div className="text-[9px] text-zinc-500 mt-1 uppercase font-bold space-y-0.5">
                 <p className="flex justify-between"><span>Cash Spent:</span><span className="text-zinc-400">₹{stats.cashExpenses.toFixed(2)}</span></p>
                 <p className="flex justify-between"><span>UPI Spent:</span><span className="text-zinc-400">₹{stats.upiExpenses.toFixed(2)}</span></p>
                 <p className="flex justify-between"><span>Total Entries:</span><span className="text-zinc-400">{dayExpenses.length} bills</span></p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-zinc-900/20 border border-white/[0.04] p-6 rounded-3xl space-y-3">
+            <div className="flex items-center justify-between">
+              <span className={`text-[10px] font-black uppercase tracking-widest ${netBalance >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                Sale vs Expenses Net
+              </span>
+              <Activity className={netBalance >= 0 ? "text-emerald-400" : "text-rose-400"} size={16} />
+            </div>
+            <div>
+              <p className={`text-2xl font-black ${netBalance >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                ₹{netBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </p>
+              <div className="text-[9px] text-zinc-500 mt-1 uppercase font-bold space-y-0.5">
+                <p className="flex justify-between"><span>Total Sales:</span><span className="text-zinc-400">₹{totalSales.toFixed(2)}</span></p>
+                <p className="flex justify-between"><span>Total Expenses:</span><span className="text-zinc-400">₹{totalExpensesSum.toFixed(2)}</span></p>
+                <p className="flex justify-between">
+                  <span>Net Status:</span>
+                  <span className={netBalance >= 0 ? "text-emerald-400" : "text-rose-400"}>
+                    {netBalance >= 0 ? "SURPLUS" : "DEFICIT"}
+                  </span>
+                </p>
               </div>
             </div>
           </div>

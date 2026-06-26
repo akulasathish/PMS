@@ -677,12 +677,15 @@ export default function NightAuditPage() {
         margin: { left: 15 }
       });
 
+      const netSaleVsExpenses = totalSaleAmount - totalExpenses;
       const paymentSalesSummary = [
         ["Cash Collections", `Rs. ${reconData.total.Cash.toFixed(2)}`],
         ["PhonePe UPI Collections", `Rs. ${reconData.total.UPI.toFixed(2)}`],
         ["Swipe Card Collections", `Rs. ${reconData.total.SWIPE.toFixed(2)}`],
         ["Others (Custom Payment Modes)", `Rs. ${reconData.total.Others.toFixed(2)}`],
-        ["TOTAL SALE FOR THE DAY", `Rs. ${totalSaleAmount.toFixed(2)}`]
+        ["TOTAL SALE FOR THE DAY", `Rs. ${totalSaleAmount.toFixed(2)}`],
+        ["Total Logged Expenses", `- Rs. ${totalExpenses.toFixed(2)}`],
+        ["TOTAL SALE VS EXPENSES (NET)", `Rs. ${netSaleVsExpenses.toFixed(2)}`]
       ];
 
       autoTable(doc, {
@@ -1463,6 +1466,16 @@ export default function NightAuditPage() {
                             <tr className="bg-indigo-500/5 text-indigo-400 font-bold">
                               <td className="border border-zinc-800 p-3.5 text-zinc-200">TOTAL SALE FOR THE DAY</td>
                               <td className="border border-zinc-800 p-3.5 text-right font-mono text-indigo-400 text-sm">Rs. {totalSaleAmount.toFixed(2)}</td>
+                            </tr>
+                            <tr className="hover:bg-white/[0.01]">
+                              <td className="border border-zinc-800 p-3 text-rose-400">Total Logged Expenses</td>
+                              <td className="border border-zinc-800 p-3 text-right font-mono text-rose-400">- Rs. {totalExpenses.toFixed(2)}</td>
+                            </tr>
+                            <tr className={`${(totalSaleAmount - totalExpenses) >= 0 ? "bg-emerald-500/5 text-emerald-400" : "bg-rose-500/5 text-rose-400"} font-bold`}>
+                              <td className="border border-zinc-800 p-3.5 text-zinc-200">TOTAL SALE VS EXPENSES (NET)</td>
+                              <td className={`border border-zinc-800 p-3.5 text-right font-mono text-sm ${(totalSaleAmount - totalExpenses) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                                Rs. {(totalSaleAmount - totalExpenses).toFixed(2)}
+                              </td>
                             </tr>
                           </tbody>
                         </table>
