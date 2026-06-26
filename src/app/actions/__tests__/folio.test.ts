@@ -29,8 +29,17 @@ const { mockInsert } = vi.hoisted(() => {
 
 vi.mock('@/lib/supabase/admin', () => ({
   getSupabaseAdmin: vi.fn().mockReturnValue({
-    from: vi.fn().mockReturnValue({
-      insert: mockInsert
+    from: vi.fn().mockImplementation((table: string) => {
+      if (table === 'app_settings') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: { value: '2026-06-26' }, error: null })
+        };
+      }
+      return {
+        insert: mockInsert
+      };
     })
   })
 }));

@@ -451,7 +451,7 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
   // 1. FOLIO AUDIT (The Financial Blockade)
   const { data: booking, error: bookingErr } = await supabaseAdmin
     .from('bookings')
-    .select('amount, property_id, guest_name')
+    .select('amount, discount_amount, property_id, guest_name')
     .eq('id', bookingId)
     .single();
 
@@ -466,15 +466,18 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
     ?.filter(item => item.description?.startsWith('Daily Room Charge'))
     ?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
 
-  const roomAmount = Math.max(0, Number(booking.amount) - dailyRoomChargesSum);
+  const discountAmount = Number((booking as any).discount_amount || 0);
+  const roomAmount = Math.max(0, Number(booking.amount) - discountAmount - dailyRoomChargesSum);
   const totalIncidentals = incidentals?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
 
   const { data: payments } = await supabaseAdmin
     .from('payments')
-    .select('amount')
+    .select('amount, is_void')
     .eq('booking_id', bookingId);
 
-  const totalPayments = payments?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
+  const totalPayments = payments
+    ?.filter(item => !item.is_void)
+    ?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
 
   // Calculate the Balance Due
   const totalCharges = roomAmount + totalIncidentals;
