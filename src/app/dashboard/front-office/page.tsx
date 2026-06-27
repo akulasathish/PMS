@@ -1456,6 +1456,7 @@ export default function FrontOfficeTerminal() {
       head: [['SL', 'GUEST NAME', 'PHONE', 'C.IN/TIME', 'C.OUT/TIME', 'ROOM', 'CASH', 'UPI', 'DUE']],
       body: rows,
       foot: [['', 'TOTALS', '', '', '', '', `Rs. ${totalCash.toFixed(2)}`, `Rs. ${totalUPI.toFixed(2)}`, `Rs. ${totalDue.toFixed(2)}` ]],
+      showFoot: 'lastPage',
       theme: 'grid',
       rowPageBreak: 'avoid',
       styles: {
