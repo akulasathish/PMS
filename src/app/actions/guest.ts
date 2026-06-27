@@ -19,14 +19,14 @@ export async function processGuestRegistration(formData: FormData) {
       return { error: 'Missing required fields for registration' };
     }
 
-    const idExt = idPhoto.name.split('.').pop() || 'jpg';
+    const idExt = idPhoto.type === 'image/jpeg' ? 'jpg' : (idPhoto.name.split('.').pop()?.toLowerCase() || 'jpg');
     const idFileName = `${bookingId}_id.${idExt}`;
     const sigFileName = `${bookingId}_sig.png`;
 
-    // 1. Upload ID Photo
+    // 1. Upload ID Photo (explicitly passing content type ensures browser displays it rather than downloading)
     const { error: idUploadError } = await supabaseAdmin.storage
       .from('guest-ids')
-      .upload(idFileName, idPhoto, { upsert: true });
+      .upload(idFileName, idPhoto, { upsert: true, contentType: 'image/jpeg' });
 
     if (idUploadError) {
       console.error("Server Action: ID Upload Error:", idUploadError);

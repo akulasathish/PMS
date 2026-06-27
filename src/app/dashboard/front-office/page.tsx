@@ -2,7 +2,7 @@
 import { QRCodeSVG } from 'qrcode.react';
 // Dynamically imported inline to avoid SSR pre-rendering failures
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Bed, Calendar, Search, UserCheck, 
@@ -94,6 +94,54 @@ const isCardRoomCharge = (desc: string): boolean => {
     return false;
   }
   return isRoomRelatedCharge(desc);
+};const compressImage = (file: File, maxWidth = 1600, maxHeight = 1600, quality = 0.75): Promise<Blob> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = document.createElement('img');
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth || height > maxHeight) {
+          if (width > height) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          } else {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(file);
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(blob);
+            } else {
+              resolve(file);
+            }
+          },
+          'image/jpeg',
+          quality
+        );
+      };
+      img.onerror = () => resolve(file);
+      img.src = event.target?.result as string;
+    };
+    reader.onerror = () => resolve(file);
+    reader.readAsDataURL(file);
+  });
 };
 
 
@@ -167,7 +215,219 @@ export default function FrontOfficeTerminal() {
   const [isEditingCheckInTime, setIsEditingCheckInTime] = useState(false);
   const [tempCheckInTime, setTempCheckInTime] = useState('');
 
+  // Live Webcam Modal states
+  const [showWebcamModal, setShowWebcamModal] = useState(false);
+  const [webcamStream, setWebcamStream] = useState<MediaStream | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const startWebcam = async () => {
+    setShowWebcamModal(true);
+    try {
+      let stream;
+      try {
+        // Try with ideal facingMode constraint (great for mobile rear camera)
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: { ideal: 'environment' }, 
+            width: { ideal: 1280 }, 
+            height: { ideal: 720 } 
+          } 
+        });
+      } catch (firstErr) {
+        console.warn("Could not start webcam with facingMode constraint, trying standard video:", firstErr);
+        // Fallback to simple video constraint (works on any desktop/laptop webcam)
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: true 
+        });
+      }
+      
+      setWebcamStream(stream);
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      }, 100);
+    } catch (err: any) {
+      console.error("Failed to start webcam completely:", err);
+      setShowWebcamModal(false);
+      // Fallback: trigger standard native camera/file picker
+      alert("Browser camera access blocked or unsupported. Falling back to native device file/camera picker...");
+      document.getElementById('direct-id-capture-input')?.click();
+    }
+  };
+
+  const stopWebcam = useCallback(() => {
+    if (webcamStream) {
+      webcamStream.getTracks().forEach(track => track.stop());
+      setWebcamStream(null);
+    }
+    setShowWebcamModal(false);
+  }, [webcamStream]);
+
+  const captureSnapshot = async () => {
+    if (!videoRef.current || !selectedBooking) return;
+    
+    try {
+      const video = videoRef.current;
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      canvas.toBlob(async (blob) => {
+        if (!blob) return;
+        
+        // Stop stream first
+        if (webcamStream) {
+          webcamStream.getTracks().forEach(track => track.stop());
+          setWebcamStream(null);
+        }
+        setShowWebcamModal(false);
+        
+        setActionLoading(true);
+        try {
+          console.log("Webcam Capture: Starting image compression");
+          const file = new File([blob], "webcam_capture.jpg", { type: 'image/jpeg' });
+          const compressedBlob = await compressImage(file);
+          const idExt = 'jpg';
+          const idFileName = `${selectedBooking.id}_id.${idExt}`;
+
+          console.log("Webcam Capture: Uploading compressed file to Supabase Storage");
+          const { error: uploadError } = await supabase.storage
+            .from('guest-ids')
+            .upload(idFileName, compressedBlob, { upsert: true, contentType: 'image/jpeg' });
+
+          if (uploadError) throw uploadError;
+
+          console.log("Webcam Capture: Updating Booking");
+          const { error: updateError } = await supabase
+            .from('bookings')
+            .update({
+              id_verified: true,
+              id_photo_url: idFileName,
+              status: 'Confirmed'
+            })
+            .eq('id', selectedBooking.id);
+
+          if (updateError) throw updateError;
+
+          console.log("Webcam Capture: Inserting record into Guests table");
+          const { error: guestError } = await supabase
+            .from('guests')
+            .insert([{
+              booking_id: selectedBooking.id,
+              property_id: selectedBooking.property_id,
+              full_name: selectedBooking.guest_name,
+              email: selectedBooking.guest_email || '',
+              id_photo_url: idFileName
+            }]);
+
+          if (guestError) {
+            console.warn("Webcam Capture: Guests insertion warning:", guestError);
+          }
+
+          await loadDashboardData();
+          
+          const { data: updatedBooking } = await supabase
+            .from('bookings')
+            .select('*')
+            .eq('id', selectedBooking.id)
+            .single();
+          if (updatedBooking) {
+            setSelectedBooking(updatedBooking as Booking);
+            setCheckIdVerified(true);
+            setCheckRegCardSigned(true);
+          }
+
+          alert("ID Card captured and verified successfully!");
+        } catch (err: any) {
+          console.error("Webcam capture failed during upload/update:", err);
+          alert("Webcam capture failed: " + err.message);
+        } finally {
+          setActionLoading(false);
+        }
+      }, 'image/jpeg', 0.8);
+    } catch (err: any) {
+      console.error("Failed to capture snapshot:", err);
+      alert("Failed to capture snapshot: " + err.message);
+    }
+  };
+
   const supabase = createClient();
+
+  const handleDirectCameraCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedBooking) return;
+
+    setActionLoading(true);
+    try {
+      console.log("Direct Capture: Starting image compression for", file.name);
+      const compressedBlob = await compressImage(file);
+      const idExt = file.type === 'image/jpeg' ? 'jpg' : (file.name.split('.').pop()?.toLowerCase() || 'jpg');
+      const idFileName = `${selectedBooking.id}_id.${idExt}`;
+
+      console.log("Direct Capture: Uploading compressed file to Supabase Storage as", idFileName);
+      // Upload to storage with explicit contentType: 'image/jpeg'
+      const { error: uploadError } = await supabase.storage
+        .from('guest-ids')
+        .upload(idFileName, compressedBlob, { upsert: true, contentType: 'image/jpeg' });
+
+      if (uploadError) throw uploadError;
+
+      console.log("Direct Capture: Updating Booking id_verified and id_photo_url");
+      const { error: updateError } = await supabase
+        .from('bookings')
+        .update({
+          id_verified: true,
+          id_photo_url: idFileName,
+          status: 'Confirmed'
+        })
+        .eq('id', selectedBooking.id);
+
+      if (updateError) throw updateError;
+
+      console.log("Direct Capture: Inserting record into Guests table");
+      const { error: guestError } = await supabase
+        .from('guests')
+        .insert([{
+          booking_id: selectedBooking.id,
+          property_id: selectedBooking.property_id,
+          full_name: selectedBooking.guest_name,
+          email: selectedBooking.guest_email || '',
+          id_photo_url: idFileName
+        }]);
+
+      if (guestError) {
+        console.warn("Direct Capture: Non-fatal guests table insertion warning:", guestError);
+      }
+
+      await loadDashboardData();
+      
+      // Also force-refresh the selected booking state so drawer displays it immediately
+      const { data: updatedBooking } = await supabase
+        .from('bookings')
+        .select('*')
+        .eq('id', selectedBooking.id)
+        .single();
+      if (updatedBooking) {
+        setSelectedBooking(updatedBooking as Booking);
+        setCheckIdVerified(true);
+        setCheckRegCardSigned(true);
+      }
+
+      alert("ID Card captured and verified successfully!");
+    } catch (err: any) {
+      console.error("Direct capture failed:", err);
+      alert("Direct capture failed: " + err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // Extract fetch data to a callable function to avoid window.location.reload()
   const loadDashboardData = useCallback(async () => {
     setIsLoading(true);
@@ -2209,66 +2469,67 @@ export default function FrontOfficeTerminal() {
     return (
       <div className="space-y-6">
         {/* Balances Sub-Header Controls */}
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-zinc-900/20 border border-white/[0.04] p-4 rounded-2xl">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 flex-wrap">
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Show Dues:</span>
-              <div className="flex bg-black/40 border border-white/10 p-0.5 rounded-xl">
+        <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-4 bg-zinc-900/40 border border-white/[0.06] p-4 rounded-2xl">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 flex-wrap w-full lg:w-auto">
+            {/* Show Dues Group */}
+            <div className="flex flex-col gap-1.5 flex-1 sm:flex-none">
+              <span className="text-[10px] text-zinc-500 font-black uppercase tracking-wider">Show Dues:</span>
+              <div className="grid grid-cols-2 bg-black/40 border border-white/10 p-0.5 rounded-xl overflow-hidden">
                 <button
                   onClick={() => setBalancesFilter('inHouse')}
-                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                  className={`px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all text-center shrink-0 ${
                     balancesFilter === 'inHouse'
                       ? 'bg-[#4f46e5] text-white shadow-lg shadow-[#4f46e5]/10'
                       : 'text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
-                  In-House Only
+                  In-House
                 </button>
                 <button
                   onClick={() => setBalancesFilter('allActive')}
-                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                  className={`px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all text-center shrink-0 ${
                     balancesFilter === 'allActive'
                       ? 'bg-[#4f46e5] text-white shadow-lg shadow-[#4f46e5]/10'
                       : 'text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
-                  All Active (In-House & Confirmed)
+                  All Active
                 </button>
               </div>
             </div>
 
-            {/* Premium Hide Paid Toggle */}
-            <div className="flex items-center gap-3 sm:border-l sm:border-white/10 sm:pl-4">
-              <span className="text-xs text-zinc-500 font-bold uppercase tracking-wider hidden sm:inline">Filter:</span>
-              <div className="flex bg-black/40 border border-white/10 p-0.5 rounded-xl">
+            {/* Filter Group */}
+            <div className="flex flex-col gap-1.5 flex-1 sm:flex-none sm:border-l sm:border-white/10 sm:pl-4">
+              <span className="text-[10px] text-zinc-500 font-black uppercase tracking-wider">Filter:</span>
+              <div className="grid grid-cols-2 bg-black/40 border border-white/10 p-0.5 rounded-xl overflow-hidden">
                 <button
                   onClick={() => setHidePaidGuests(true)}
-                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                  className={`px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
                     hidePaidGuests
                       ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20 shadow-lg'
                       : 'text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
                   <span className={`w-1.5 h-1.5 rounded-full ${hidePaidGuests ? 'bg-rose-400 animate-pulse' : 'bg-zinc-500'}`} />
-                  Outstanding Dues ({outstandingCount})
+                  Dues ({outstandingCount})
                 </button>
                 <button
                   onClick={() => setHidePaidGuests(false)}
-                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                  className={`px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
                     !hidePaidGuests
-                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-lg'
+                      ? 'bg-emerald-500/10 text-[#10b981] border border-emerald-500/20 shadow-lg'
                       : 'text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
                   <span className={`w-1.5 h-1.5 rounded-full ${!hidePaidGuests ? 'bg-emerald-400' : 'bg-zinc-500'}`} />
-                  Show All ({rawBalanceItems.length})
+                  All ({rawBalanceItems.length})
                 </button>
               </div>
             </div>
           </div>
 
-          <div className="text-xs text-zinc-400 font-medium">
-            Showing <span className="text-white font-bold">{balanceItems.length}</span> rooms with active folios
+          <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider text-right lg:text-left self-end lg:self-auto">
+            Showing <span className="text-white font-black">{balanceItems.length}</span> rooms with active folios
           </div>
         </div>
 
@@ -2278,125 +2539,223 @@ export default function FrontOfficeTerminal() {
             <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs">No Outstanding Balances Found</p>
           </div>
         ) : (
-          <div className="bg-[#0a0a0c]/60 border border-white/[0.04] rounded-3xl overflow-hidden shadow-2xl">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-black/40 border-b border-white/[0.06] text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-                    <th className="p-4 pl-6">Room / Sl No</th>
-                    <th className="p-4">Guest Details</th>
-                    <th className="p-4 text-right">ROOM Charges (Pending)</th>
-                    <th className="p-4 text-right">Food & Water (Pending)</th>
-                    <th className="p-4 text-right">Total Charges</th>
-                    <th className="p-4 text-right text-emerald-400">Total Paid</th>
-                    <th className="p-4 text-right text-rose-400 font-bold bg-rose-500/5">Balance Due</th>
-                    <th className="p-4 pr-6 text-center">Settlement</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/[0.02]">
-                  {balanceItems.map(({ booking, roomNum, roomType, roomAmount, incidentalsAmount, roomChargesTotal, foodChargesTotal, foodPending, roomPending, totalCharges, totalPaid, balanceDue }) => {
-                    const hasDues = balanceDue > 0.01;
-                    return (
-                      <tr key={booking.id} className="hover:bg-white/[0.01] transition-colors">
-                        {/* Room Number / Serial */}
-                        <td className="p-4 pl-6 align-middle">
-                          <div className="flex flex-col gap-1">
-                            <span className="text-sm font-black text-white bg-white/5 px-2.5 py-1 rounded-lg w-fit">
-                              Room {roomNum}
-                            </span>
-                            <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider pl-0.5">
-                              {roomType}
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* Guest details */}
-                        <td className="p-4 align-middle">
-                          <div className="flex flex-col gap-0.5">
-                            <span className="text-sm font-bold text-white hover:text-indigo-400 transition-colors cursor-pointer" onClick={() => openActionDrawer(booking)}>
-                              {booking.guest_name}
-                            </span>
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${
-                                booking.status === 'Checked In' 
-                                  ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' 
-                                  : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
-                              }`}>
-                                {booking.status}
+          <>
+            {/* Desktop Table View */}
+            <div className="hidden md:block bg-[#0a0a0c]/60 border border-white/[0.04] rounded-3xl overflow-hidden shadow-2xl">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-black/40 border-b border-white/[0.06] text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                      <th className="p-4 pl-6">Room / Sl No</th>
+                      <th className="p-4">Guest Details</th>
+                      <th className="p-4 text-right">ROOM Charges (Pending)</th>
+                      <th className="p-4 text-right">Food & Water (Pending)</th>
+                      <th className="p-4 text-right">Total Charges</th>
+                      <th className="p-4 text-right text-emerald-400">Total Paid</th>
+                      <th className="p-4 text-right text-rose-400 font-bold bg-rose-500/5">Balance Due</th>
+                      <th className="p-4 pr-6 text-center">Settlement</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/[0.02]">
+                    {balanceItems.map(({ booking, roomNum, roomType, roomAmount, incidentalsAmount, roomChargesTotal, foodChargesTotal, foodPending, roomPending, totalCharges, totalPaid, balanceDue }) => {
+                      const hasDues = balanceDue > 0.01;
+                      return (
+                        <tr key={booking.id} className="hover:bg-white/[0.01] transition-colors">
+                          {/* Room Number / Serial */}
+                          <td className="p-4 pl-6 align-middle">
+                            <div className="flex flex-col gap-1">
+                              <span className="text-sm font-black text-white bg-white/5 px-2.5 py-1 rounded-lg w-fit">
+                                Room {roomNum}
                               </span>
-                              <span className="text-[10px] text-zinc-500">
-                                {booking.id.slice(0, 8)}
+                              <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider pl-0.5">
+                                {roomType}
                               </span>
                             </div>
-                          </div>
-                        </td>
+                          </td>
 
-                        {/* ROOM Charges (Pending) */}
-                        <td className="p-4 text-right align-middle font-semibold text-zinc-300">
-                          ₹{roomPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-
-                        {/* Food & Water (Pending) */}
-                        <td className="p-4 text-right align-middle font-semibold text-zinc-400">
-                          ₹{foodPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-
-                        {/* Total Charges */}
-                        <td className="p-4 text-right align-middle font-bold text-white">
-                          ₹{totalCharges.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-
-                        {/* Total Paid */}
-                        <td className="p-4 text-right align-middle font-bold text-emerald-400">
-                          ₹{totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-
-                        {/* Balance Due */}
-                        <td className="p-4 text-right align-middle bg-rose-500/[0.01]">
-                          <div className="flex flex-col items-end gap-1">
-                            <span className={`text-base font-black ${hasDues ? 'text-rose-400 font-mono shadow-sm' : 'text-zinc-600 font-mono'}`}>
-                              ₹{balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
-                            {hasDues ? (
-                              <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
-                                Outstanding
+                          {/* Guest details */}
+                          <td className="p-4 align-middle">
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-sm font-bold text-white hover:text-indigo-400 transition-colors cursor-pointer" onClick={() => openActionDrawer(booking)}>
+                                {booking.guest_name}
                               </span>
-                            ) : (
-                              <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                                Paid in Full
-                              </span>
-                            )}
-                          </div>
-                        </td>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${
+                                  booking.status === 'Checked In' 
+                                    ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' 
+                                    : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                                }`}>
+                                  {booking.status}
+                                </span>
+                                <span className="text-[10px] text-zinc-500">
+                                  {booking.id.slice(0, 8)}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
 
-                        {/* Action buttons */}
-                        <td className="p-4 pr-6 text-center align-middle">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveCheckoutBooking({
-                                bookingId: booking.id,
-                                roomId: booking.room_id,
-                                guestName: booking.guest_name,
-                                amount: Number(booking.amount)
-                              });
-                            }}
-                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                              hasDues
-                                ? 'bg-[#4f46e5] text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/10'
-                                : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-                            }`}
-                          >
-                            Open Folio
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          {/* ROOM Charges (Pending) */}
+                          <td className="p-4 text-right align-middle font-semibold text-zinc-300">
+                            ₹{roomPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+
+                          {/* Food & Water (Pending) */}
+                          <td className="p-4 text-right align-middle font-semibold text-zinc-400">
+                            ₹{foodPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+
+                          {/* Total Charges */}
+                          <td className="p-4 text-right align-middle font-bold text-white">
+                            ₹{totalCharges.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+
+                          {/* Total Paid */}
+                          <td className="p-4 text-right align-middle font-bold text-emerald-400">
+                            ₹{totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+
+                          {/* Balance Due */}
+                          <td className="p-4 text-right align-middle bg-rose-500/[0.01]">
+                            <div className="flex flex-col items-end gap-1">
+                              <span className={`text-base font-black ${hasDues ? 'text-rose-400 font-mono shadow-sm' : 'text-zinc-600 font-mono'}`}>
+                                ₹{balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                              {hasDues ? (
+                                <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
+                                  Outstanding
+                                </span>
+                              ) : (
+                                <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                                  Paid in Full
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Action buttons */}
+                          <td className="p-4 pr-6 text-center align-middle">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveCheckoutBooking({
+                                  bookingId: booking.id,
+                                  roomId: booking.room_id,
+                                  guestName: booking.guest_name,
+                                  amount: Number(booking.amount)
+                                });
+                              }}
+                              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                                hasDues
+                                  ? 'bg-[#4f46e5] text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/10'
+                                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                              }`}
+                            >
+                              Open Folio
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+
+            {/* Mobile Card Grid View */}
+            <div className="block md:hidden space-y-4">
+              {balanceItems.map(({ booking, roomNum, roomType, roomAmount, incidentalsAmount, roomChargesTotal, foodChargesTotal, foodPending, roomPending, totalCharges, totalPaid, balanceDue }) => {
+                const hasDues = balanceDue > 0.01;
+                return (
+                  <div key={booking.id} className="bg-zinc-900/40 border border-white/[0.06] rounded-2xl p-4 space-y-4">
+                    {/* Header: Room & Status */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-black text-white bg-white/5 px-2.5 py-1 rounded-lg w-fit">
+                          Room {roomNum}
+                        </span>
+                        <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider mt-1 pl-0.5">
+                          {roomType}
+                        </span>
+                      </div>
+                      <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-md ${
+                        booking.status === 'Checked In' 
+                          ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' 
+                          : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                      }`}>
+                        {booking.status}
+                      </span>
+                    </div>
+
+                    {/* Guest Details */}
+                    <div className="border-t border-white/[0.04] pt-3">
+                      <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">Guest Details</p>
+                      <p className="text-sm font-bold text-white hover:text-indigo-400 transition-colors cursor-pointer" onClick={() => openActionDrawer(booking)}>
+                        {booking.guest_name}
+                      </p>
+                      <p className="text-[9px] text-zinc-600 mt-0.5">Booking ID: {booking.id.slice(0, 8)}</p>
+                    </div>
+
+                    {/* Charges Breakdown */}
+                    <div className="grid grid-cols-2 gap-3 bg-black/20 p-3 rounded-xl border border-white/[0.02]">
+                      <div>
+                        <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Room Pending</p>
+                        <p className="text-xs font-semibold text-zinc-300 mt-0.5">
+                          ₹{roomPending.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Food Pending</p>
+                        <p className="text-xs font-semibold text-zinc-400 mt-0.5">
+                          ₹{foodPending.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                      <div className="border-t border-white/[0.04] pt-2 mt-1">
+                        <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Total Charges</p>
+                        <p className="text-xs font-bold text-white mt-0.5">
+                          ₹{totalCharges.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                      <div className="border-t border-white/[0.04] pt-2 mt-1">
+                        <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider text-emerald-400">Total Paid</p>
+                        <p className="text-xs font-bold text-emerald-400 mt-0.5">
+                          ₹{totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Balance Due & Action */}
+                    <div className="flex items-center justify-between border-t border-white/[0.04] pt-3">
+                      <div className="flex flex-col">
+                        <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Balance Due</span>
+                        <span className={`text-sm font-black font-mono mt-0.5 ${hasDues ? 'text-rose-400' : 'text-zinc-600'}`}>
+                          ₹{balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveCheckoutBooking({
+                            bookingId: booking.id,
+                            roomId: booking.room_id,
+                            guestName: booking.guest_name,
+                            amount: Number(booking.amount)
+                          });
+                        }}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                          hasDues
+                            ? 'bg-[#4f46e5] text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/10'
+                            : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                        }`}
+                      >
+                        Open Folio
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
     );
@@ -3247,6 +3606,14 @@ export default function FrontOfficeTerminal() {
 
                   {!selectedBooking.id_verified ? (
                     <div className="bg-indigo-500/5 border border-indigo-500/10 p-4 rounded-2xl space-y-3 relative">
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        id="direct-id-capture-input" 
+                        className="hidden" 
+                        onChange={handleDirectCameraCapture} 
+                      />
+
                       <p className="text-[11px] text-zinc-500">
                         Select an action below to capture guest identity and sign registration forms instantly.
                       </p>
@@ -3272,6 +3639,20 @@ export default function FrontOfficeTerminal() {
                               <button 
                                 onClick={() => {
                                   setIsIdentityMenuOpen(false);
+                                  document.getElementById('direct-id-capture-input')?.click();
+                                }}
+                                className="w-full hover:bg-zinc-900/60 px-4 py-2.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-300 hover:text-white flex items-center gap-2.5 transition-colors"
+                              >
+                                <Camera size={14} className="text-emerald-400" />
+                                <div>
+                                  <p>Open Camera / Gallery</p>
+                                  <p className="text-[8.5px] text-zinc-500 font-normal normal-case mt-0.5">Take photo or browse from gallery</p>
+                                </div>
+                              </button>
+
+                              <button 
+                                onClick={() => {
+                                  setIsIdentityMenuOpen(false);
                                   const url = window.location.origin + "/guest/regcard/" + selectedBooking.id;
                                   navigator.clipboard.writeText(url);
                                   alert("Magic Link copied to clipboard! Send this to the guest via WhatsApp/SMS.");
@@ -3293,10 +3674,10 @@ export default function FrontOfficeTerminal() {
                                 }}
                                 className="w-full hover:bg-zinc-900/60 px-4 py-2.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-300 hover:text-white flex items-center gap-2.5 transition-colors"
                               >
-                                <Camera size={14} className="text-emerald-400" />
+                                <Smartphone size={14} className="text-indigo-400" />
                                 <div>
-                                  <p>Open Camera Magical Link</p>
-                                  <p className="text-[8.5px] text-zinc-500 font-normal normal-case mt-0.5">Open capture terminal directly in new tab</p>
+                                  <p>Open Self Check-In Terminal</p>
+                                  <p className="text-[8.5px] text-zinc-500 font-normal normal-case mt-0.5">Open guest-facing form in a new tab</p>
                                 </div>
                               </button>
 
@@ -3331,8 +3712,17 @@ export default function FrontOfficeTerminal() {
                         </button>
                       </div>
                       <div className="grid grid-cols-2 gap-3">
-                        <div className="aspect-[3/2] bg-black/40 border border-white/5 rounded-xl overflow-hidden relative group">
-                           <Image src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/guest-ids/${selectedBooking.id_photo_url}`} alt="Guest ID Scan" fill className="object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
+                        <div className="aspect-[3/2] bg-black/40 border border-white/5 rounded-xl overflow-hidden relative group flex items-center justify-center">
+                           {selectedBooking.id_photo_url ? (
+                             <Image 
+                               src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/guest-ids/${selectedBooking.id_photo_url}`} 
+                               alt="Guest ID Scan" 
+                               fill 
+                               className="object-cover opacity-60 group-hover:opacity-100 transition-opacity" 
+                             />
+                           ) : (
+                             <span className="text-[9px] font-black text-zinc-600 uppercase tracking-wider text-center px-2">No Image File</span>
+                           )}
                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                               <p className="text-[8px] font-black text-white/40 uppercase tracking-tighter drop-shadow-md">Guest ID Scan</p>
                            </div>
@@ -3581,6 +3971,89 @@ export default function FrontOfficeTerminal() {
           </div>
         );
       })()}
+
+      {showWebcamModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            className="w-full max-w-lg bg-zinc-950 border border-white/10 rounded-[32px] overflow-hidden shadow-2xl relative"
+          >
+            {/* Header */}
+            <div className="p-6 pb-4 border-b border-white/[0.06] flex justify-between items-center bg-zinc-900/50">
+              <div>
+                <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                  <Camera className="text-indigo-400 animate-pulse" size={16} /> Live ID Card Capture
+                </h3>
+                <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">Align the guest ID within the frame and capture</p>
+              </div>
+              <button 
+                onClick={stopWebcam} 
+                className="p-2 text-zinc-500 hover:text-white bg-white/5 hover:bg-white/10 rounded-full transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Camera Frame Container */}
+            <div className="relative aspect-[4/3] bg-black overflow-hidden flex items-center justify-center">
+              <video 
+                ref={videoRef}
+                autoPlay 
+                playsInline 
+                muted
+                className="w-full h-full object-cover"
+              />
+              
+              {/* Overlay HUD guides */}
+              <div className="absolute inset-0 border-[24px] border-black/60 pointer-events-none flex items-center justify-center">
+                {/* ID scanning guide boundary */}
+                <div className="w-[85%] h-[75%] border-2 border-dashed border-indigo-400/50 rounded-2xl relative flex items-center justify-center">
+                  {/* Subtle corners */}
+                  <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-indigo-500 -mt-1.5 -ml-1.5 rounded-tl-lg" />
+                  <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-indigo-500 -mt-1.5 -mr-1.5 rounded-tr-lg" />
+                  <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-indigo-500 -mb-1.5 -ml-1.5 rounded-bl-lg" />
+                  <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-indigo-500 -mb-1.5 -mr-1.5 rounded-br-lg" />
+                  
+                  {/* Glowing center indicator */}
+                  <span className="text-[9px] font-black text-indigo-400/80 bg-black/60 border border-indigo-500/30 px-3 py-1 rounded-full uppercase tracking-widest animate-pulse">
+                    Place ID Card Here
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer and controls */}
+            <div className="p-6 bg-zinc-900/50 border-t border-white/[0.06] flex items-center justify-between">
+              <button
+                onClick={stopWebcam}
+                className="px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-[10px] font-black uppercase tracking-wider text-zinc-300 transition-colors"
+              >
+                Cancel
+              </button>
+              
+              <button
+                onClick={captureSnapshot}
+                disabled={actionLoading}
+                className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-lg shadow-indigo-500/20 hover:scale-[1.02] active:scale-[0.98]"
+              >
+                {actionLoading ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>Processing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Camera size={14} />
+                    <span>Capture Photo</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {showBookingModal && (
         <BookingModal 

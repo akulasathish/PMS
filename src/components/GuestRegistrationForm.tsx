@@ -157,8 +157,9 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
       
       console.log("Compressing ID Photo before upload to optimize transmission and stability...");
       const compressedIdPhotoBlob = await compressImage(idPhoto);
-      // Create a File from the compressed blob
-      const compressedIdPhotoFile = new File([compressedIdPhotoBlob], idPhoto.name || 'id_photo.jpg', {
+      // Create a File from the compressed blob (force .jpg extension since we compressed it to image/jpeg)
+      const cleanBaseName = idPhoto.name ? idPhoto.name.replace(/\.[^/.]+$/, "") : "id_photo";
+      const compressedIdPhotoFile = new File([compressedIdPhotoBlob], `${cleanBaseName}.jpg`, {
         type: 'image/jpeg'
       });
 
