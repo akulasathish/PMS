@@ -26,6 +26,10 @@ export async function createBooking(formData: FormData) {
   const amount = parseFloat(formData.get('amount') as string);
   const status = 'Confirmed';
 
+  const isMonthly = formData.get('isMonthly') === 'true';
+  const billingCycleDate = formData.get('billingCycleDate') ? parseInt(formData.get('billingCycleDate') as string, 10) : null;
+  const monthlyRate = formData.get('monthlyRate') ? parseFloat(formData.get('monthlyRate') as string) : null;
+
   // Support both group booking (roomIds) and single room (roomId)
   const roomIds = formData.getAll('roomIds').filter(Boolean) as string[];
   if (roomIds.length === 0) {
@@ -86,7 +90,10 @@ export async function createBooking(formData: FormData) {
     check_out: checkOut,
     amount: amountPerRoom,
     status: status,
-    group_id: groupId
+    group_id: groupId,
+    is_monthly: isMonthly,
+    billing_cycle_date: isMonthly ? billingCycleDate : null,
+    monthly_rate: isMonthly ? (monthlyRate ? (monthlyRate / roomIds.length) : null) : null
   }));
 
   const { data: bookingData, error: bookingError } = await supabaseAdmin

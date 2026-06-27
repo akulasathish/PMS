@@ -996,6 +996,11 @@ export default function FrontOfficeTerminal() {
                 <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest bg-indigo-500/10 px-2 py-0.5 rounded-md w-fit">
                   {calculateNights(booking.check_in, booking.check_out)} Nights &bull; {formatFriendlyDate(booking.check_in)} to {formatFriendlyDate(booking.check_out)}
                 </p>
+                {booking.is_monthly && (
+                  <p className="text-[10px] font-bold text-violet-400 uppercase tracking-widest bg-violet-500/10 px-2 py-0.5 rounded-md w-fit flex items-center gap-1">
+                    Co-Living Guest (Rent: ₹{Number(booking.monthly_rate || 0).toLocaleString('en-IN')} /mo, Cycle Day: {booking.billing_cycle_date})
+                  </p>
+                )}
                 {booking.check_in_time && (
                   <p className="text-[10px] font-bold text-amber-400 uppercase tracking-widest bg-amber-500/10 px-2 py-0.5 rounded-md w-fit flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
@@ -3105,7 +3110,11 @@ export default function FrontOfficeTerminal() {
                                 layoutId={booking.id}
                                 onClick={() => openActionDrawer(booking)}
                                 className={`absolute inset-y-2 left-2 right-[-240px] rounded-xl border p-3 flex items-center justify-between z-20 shadow-2xl cursor-pointer hover:border-indigo-400/50 transition-colors ${
-                                  booking.status === 'Confirmed' ? 'bg-amber-500/10 border-amber-500/30' : 'bg-emerald-500/10 border-emerald-500/30'
+                                  booking.is_monthly
+                                    ? 'bg-indigo-500/10 border-indigo-500/30'
+                                    : booking.status === 'Confirmed'
+                                    ? 'bg-amber-500/10 border-amber-500/30'
+                                    : 'bg-emerald-500/10 border-emerald-500/30'
                                 }`}
                               >
                                 <div className="flex flex-col gap-1 w-full">
@@ -3115,9 +3124,13 @@ export default function FrontOfficeTerminal() {
                                   </div>
                                   <div className="flex items-center justify-between mt-2">
                                     <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                                      booking.status === 'Confirmed' ? 'bg-amber-500/20 text-amber-500' : 'bg-emerald-500/20 text-emerald-500'
+                                      booking.is_monthly
+                                        ? 'bg-indigo-500/25 text-indigo-400 border border-indigo-500/20'
+                                        : booking.status === 'Confirmed'
+                                        ? 'bg-amber-500/20 text-amber-500'
+                                        : 'bg-emerald-500/20 text-emerald-500'
                                     }`}>
-                                      {booking.status}
+                                      {booking.is_monthly ? `Monthly • ${booking.status}` : booking.status}
                                     </span>
                                     
                                     <div className="flex gap-2">

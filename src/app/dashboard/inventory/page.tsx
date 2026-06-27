@@ -378,7 +378,16 @@ export default function Inventory() {
                       <div className="flex justify-between items-end">
                         <div>
                           <h4 className="text-xl font-bold text-white tracking-tight mb-1">{room.room_number}</h4>
-                          <p className="text-[11px] font-medium text-zinc-500 uppercase tracking-widest">{room.type}</p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="text-[11px] font-medium text-zinc-500 uppercase tracking-widest">{room.type}</p>
+                            {room.allowed_billing_type && room.allowed_billing_type !== 'both' && (
+                              <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                                room.allowed_billing_type === 'monthly' ? 'bg-violet-500/10 text-violet-400 border border-violet-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                              }`}>
+                                {room.allowed_billing_type === 'monthly' ? 'Monthly Only' : 'Daily Only'}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <button 
                           onClick={() => handleDeleteRoom(room.id, room.room_number)}
@@ -434,6 +443,19 @@ export default function Inventory() {
                     <option value="Non AC" />
                     <option value="Deluxe AC" />
                   </datalist>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Allowed Billing Type</label>
+                  <select 
+                    name="allowedBillingType"
+                    defaultValue="both"
+                    className="w-full bg-black/60 border border-white/[0.05] rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500/50 transition-all cursor-pointer"
+                  >
+                    <option value="both">Both (Daily & Monthly)</option>
+                    <option value="daily">Daily Only (Transient)</option>
+                    <option value="monthly">Monthly Only (Co-Living)</option>
+                  </select>
                 </div>
 
                 {actionError && (

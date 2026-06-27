@@ -14,6 +14,7 @@ export interface Room {
   type: 'Standard' | 'Deluxe' | 'Suite';
   status: 'Available' | 'Occupied' | 'Dirty' | 'Blocked' | 'Cleaning' | 'Clean';
   created_at?: string;
+  allowed_billing_type?: 'daily' | 'monthly' | 'both';
 }
 
 export interface Booking {
@@ -36,6 +37,9 @@ export interface Booking {
   check_in_time?: string;
   check_out_time?: string;
   group_id?: string;
+  is_monthly?: boolean;
+  billing_cycle_date?: number;
+  monthly_rate?: number;
 }
 
 export interface UserProfile {
