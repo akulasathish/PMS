@@ -24,6 +24,7 @@ export async function addRoom(formData: FormData) {
   const roomType = formData.get('type') as string;
   const status = 'Available';
   const allowedBillingType = (formData.get('allowedBillingType') as 'daily' | 'monthly' | 'both') || 'both';
+  const sharingCapacity = parseInt(formData.get('sharingCapacity') as string || '2', 10);
 
   if (!propertyId || propertyId === 'undefined') {
     return { error: 'Property ID is required.' };
@@ -42,7 +43,13 @@ export async function addRoom(formData: FormData) {
     if (existingRoom.is_deleted === true) {
       const { error: updateError } = await supabaseAdmin
         .from('rooms')
-        .update({ is_deleted: false, type: roomType, status: status, allowed_billing_type: allowedBillingType })
+        .update({ 
+          is_deleted: false, 
+          type: roomType, 
+          status: status, 
+          allowed_billing_type: allowedBillingType,
+          sharing_capacity: sharingCapacity
+        })
         .eq('id', existingRoom.id);
         
       if (updateError) return { error: `Restore Error: ${updateError.message}` };
@@ -59,7 +66,8 @@ export async function addRoom(formData: FormData) {
         room_number: roomNumber,
         type: roomType,
         status: status,
-        allowed_billing_type: allowedBillingType
+        allowed_billing_type: allowedBillingType,
+        sharing_capacity: sharingCapacity
       }]);
       
     if (insertError) return { error: `Database Error: ${insertError.message}` };

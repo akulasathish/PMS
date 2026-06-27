@@ -60,14 +60,7 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
     });
 
     const currentCount = activeGuests.length;
-    // Capacity helper: Suites and Deluxe are 3-sharing, Standard and others are 2-sharing
-    const getRoomCapacity = (r: Room): number => {
-      if (r.type === 'Suite') return 3;
-      if (r.type === 'Deluxe') return 3;
-      return 2; // Standard or other rooms are 2 sharing
-    };
-
-    const capacity = getRoomCapacity(room);
+    const capacity = (room as any).sharing_capacity || 2;
     const vacantCount = Math.max(0, capacity - currentCount);
 
     return {

@@ -2402,9 +2402,7 @@ export default function FrontOfficeTerminal() {
 
   const renderMonthlyCoLivingView = () => {
     const getRoomCapacity = (room: Room): number => {
-      if (room.type === 'Suite') return 3;
-      if (room.type === 'Deluxe') return 3;
-      return 2; // Standard or other rooms are 2 sharing
+      return (room as any).sharing_capacity || 2;
     };
 
     // Filter rooms that are allowed for monthly co-living

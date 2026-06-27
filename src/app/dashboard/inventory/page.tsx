@@ -387,6 +387,11 @@ export default function Inventory() {
                                 {room.allowed_billing_type === 'monthly' ? 'Monthly Only' : 'Daily Only'}
                               </span>
                             )}
+                            {room.allowed_billing_type && room.allowed_billing_type !== 'daily' && (
+                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-teal-500/10 text-teal-400 border border-teal-500/20">
+                                {(room as any).sharing_capacity || 2}-Sharing
+                              </span>
+                            )}
                           </div>
                         </div>
                         <button 
@@ -455,6 +460,20 @@ export default function Inventory() {
                     <option value="both">Both (Daily & Monthly)</option>
                     <option value="daily">Daily Only (Transient)</option>
                     <option value="monthly">Monthly Only (Co-Living)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Sharing Capacity (Co-Living Beds)</label>
+                  <select 
+                    name="sharingCapacity"
+                    defaultValue="2"
+                    className="w-full bg-black/60 border border-white/[0.05] rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500/50 transition-all cursor-pointer"
+                  >
+                    <option value="1">1 Bed (Single Occupancy)</option>
+                    <option value="2">2 Beds (Double Sharing)</option>
+                    <option value="3">3 Beds (Triple Sharing)</option>
+                    <option value="4">4 Beds (Four Sharing)</option>
                   </select>
                 </div>
 
