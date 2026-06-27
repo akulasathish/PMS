@@ -146,7 +146,7 @@ export async function getFolioSummary(bookingId: string) {
   // 1. Fetch base booking details
   const { data: booking, error: bookingErr } = await supabaseAdmin
     .from('bookings')
-    .select('id, amount, discount_amount, discount_reason, status, property_id, check_in, check_out, check_in_time, check_out_time, guest_name, guest_email, guest_phone, room_id')
+    .select('id, amount, discount_amount, discount_reason, status, property_id, check_in, check_out, check_in_time, check_out_time, guest_name, guest_email, guest_phone, room_id, is_monthly, monthly_rate, created_at')
     .eq('id', bookingId)
     .single();
 
@@ -175,11 +175,26 @@ export async function getFolioSummary(bookingId: string) {
     .single();
 
   // 3. Fetch incidental charges (including is_automated and waiver fields)
-  const { data: incidentals, error: incErr } = await supabaseAdmin
+  const { data: rawIncidentals, error: incErr } = await supabaseAdmin
     .from('incidental_charges')
     .select('id, amount, description, created_at, business_date, is_automated, waiver_reason')
     .eq('booking_id', bookingId)
     .order('created_at', { ascending: true });
+
+  const incidentals = rawIncidentals ? [...rawIncidentals] : [];
+
+  // Append security deposit as a virtual incidental charge for monthly bookings
+  if (booking.is_monthly && Number(booking.amount) > 0) {
+    incidentals.unshift({
+      id: 'security-deposit-charge',
+      amount: Number(booking.amount),
+      description: 'Security Deposit / Advance',
+      created_at: booking.check_in_time || booking.created_at || new Date().toISOString(),
+      business_date: booking.check_in,
+      is_automated: true,
+      waiver_reason: null
+    });
+  }
 
   // 4. Fetch payments
   const { data: payments, error: payErr } = await supabaseAdmin
@@ -197,7 +212,9 @@ export async function getFolioSummary(bookingId: string) {
   const discountReason = (booking as any).discount_reason || null;
 
   // The base room amount shown on the folio is the booking total minus discount minus already-posted daily charges
-  const roomAmount = Math.max(0, Number(booking.amount) - discountAmount - dailyRoomChargesSum);
+  const roomAmount = booking.is_monthly
+    ? Math.max(0, Number(booking.monthly_rate || 0) - discountAmount)
+    : Math.max(0, Number(booking.amount) - discountAmount - dailyRoomChargesSum);
 
   const totalCharges = roomAmount + (incidentals?.reduce((sum, item) => sum + Number(item.amount), 0) || 0);
   const totalPayments = payments

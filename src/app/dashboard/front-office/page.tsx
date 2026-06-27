@@ -798,7 +798,7 @@ export default function FrontOfficeTerminal() {
       setBookings(bookings.map(b => b.id === selectedBooking.id ? { ...b, amount: res.newAmount } : b));
       setRefundInput('');
       setSelectedBooking({ ...selectedBooking, amount: res.newAmount }); // Update drawer UI
-      alert(`Refund of $${amount} successful. New balance: $${res.newAmount}`);
+      alert(`Refund of ₹${amount} successful. New balance: ₹${res.newAmount}`);
     } else {
       alert(res.error);
     }
@@ -965,15 +965,19 @@ export default function FrontOfficeTerminal() {
       .filter(item => item.description?.startsWith('Daily Room Charge'))
       .reduce((sum, item) => sum + Number(item.amount), 0);
 
-    const roomAmount = Math.max(0, Number(booking.amount) - dailyRoomChargesSum);
-    const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0);
+    const roomAmount = booking.is_monthly
+      ? Number(booking.monthly_rate || 0)
+      : Math.max(0, Number(booking.amount) - dailyRoomChargesSum);
+    const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0) + (booking.is_monthly ? Number(booking.amount) : 0);
     const totalCharges = roomAmount + incidentalsAmount;
     const totalPaid = bookingPayments.reduce((sum, item) => sum + Number(item.amount), 0);
 
     // Compute room-only charges for the card (Standard Room Tariff + Past Stay Dues only, EXCLUDING food & water, early check-in, and late checkout)
-    const cardChargesTotal = roomAmount + bookingIncidentals
-      .filter(inc => isCardRoomCharge(inc.description || ''))
-      .reduce((sum, inc) => sum + Number(inc.amount), 0);
+    const cardChargesTotal = roomAmount + 
+      (booking.is_monthly ? Number(booking.amount) : 0) +
+      bookingIncidentals
+        .filter(inc => isCardRoomCharge(inc.description || ''))
+        .reduce((sum, inc) => sum + Number(inc.amount), 0);
 
     const excludedChargesTotal = totalCharges - cardChargesTotal;
     const cardPaid = Math.max(0, totalPaid - excludedChargesTotal);
@@ -1381,8 +1385,10 @@ export default function FrontOfficeTerminal() {
         const dailyRoomChargesSum = bookingIncidentals
           .filter(item => item.description?.startsWith('Daily Room Charge'))
           .reduce((sum, item) => sum + Number(item.amount), 0);
-        const roomAmount = Math.max(0, Number(b.amount) - dailyRoomChargesSum);
-        const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0);
+        const roomAmount = b.is_monthly
+          ? Number(b.monthly_rate || 0)
+          : Math.max(0, Number(b.amount) - dailyRoomChargesSum);
+        const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0) + (b.is_monthly ? Number(b.amount) : 0);
         const totalCharges = roomAmount + incidentalsAmount;
         const totalPaid = bookingPayments.reduce((sum, item) => sum + Number(item.amount), 0);
         const balanceDue = totalCharges - totalPaid;
@@ -1403,8 +1409,10 @@ export default function FrontOfficeTerminal() {
       const dailyRoomChargesSum = bookingIncidentals
         .filter(item => item.description?.startsWith('Daily Room Charge'))
         .reduce((sum, item) => sum + Number(item.amount), 0);
-      const roomAmount = Math.max(0, Number(b.amount) - dailyRoomChargesSum);
-      const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0);
+      const roomAmount = b.is_monthly
+        ? Number(b.monthly_rate || 0)
+        : Math.max(0, Number(b.amount) - dailyRoomChargesSum);
+      const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0) + (b.is_monthly ? Number(b.amount) : 0);
       const totalCharges = roomAmount + incidentalsAmount;
       const totalPaid = bookingPaymentsAll.reduce((sum, item) => sum + Number(item.amount), 0);
       const balanceDue = Math.max(0, totalCharges - totalPaid);
@@ -2446,7 +2454,7 @@ export default function FrontOfficeTerminal() {
       activeRoomBookings.forEach(booking => {
         const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
         const guestPayments = payments.filter(p => p.booking_id === booking.id);
-        const totalCharged = Number(booking.amount) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
+         const totalCharged = Number(booking.monthly_rate || 0) + Number(booking.amount) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
         const totalPaid = guestPayments.reduce((sum, p) => sum + Number(p.amount), 0);
         const due = totalCharged - totalPaid;
         if (due > 0) {
@@ -2492,12 +2500,12 @@ export default function FrontOfficeTerminal() {
           </div>
 
           <div className="bg-zinc-900/30 border border-white/[0.05] p-5 rounded-2xl flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-rose-600/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
-              <DollarSign size={22} />
+            <div className="w-12 h-12 rounded-xl bg-rose-600/10 border border-rose-500/20 flex items-center justify-center text-rose-400 font-black text-base select-none">
+              ₹
             </div>
             <div>
               <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Total Monthly Dues</p>
-              <h3 className="text-xl font-bold text-white mt-1">${totalMonthlyDues.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+              <h3 className="text-xl font-bold text-white mt-1">₹{totalMonthlyDues.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
             </div>
           </div>
         </div>
@@ -2573,7 +2581,7 @@ export default function FrontOfficeTerminal() {
                         const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
                         const guestPayments = payments.filter(p => p.booking_id === booking.id);
                         
-                        const totalCharged = Number(booking.amount) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
+                        const totalCharged = Number(booking.monthly_rate || 0) + Number(booking.amount) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
                         const totalPaid = guestPayments.reduce((sum, p) => sum + Number(p.amount), 0);
                         const balanceDue = totalCharged - totalPaid;
 
@@ -2591,10 +2599,10 @@ export default function FrontOfficeTerminal() {
                                   ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' 
                                   : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                               }`}>
-                                {balanceDue > 0.01 ? `$${balanceDue.toFixed(2)} Due` : 'No Dues'}
+                                {balanceDue > 0.01 ? `₹${balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2 })} Due` : 'No Dues'}
                               </span>
                             </div>
-
+ 
                             {/* Resident Info Details */}
                             <div className="space-y-1">
                               <h5 className="text-sm font-bold text-white flex items-center gap-2">
@@ -2607,12 +2615,12 @@ export default function FrontOfficeTerminal() {
                                 <p className="flex items-center gap-1.5"><Calendar size={11} /> Joined: {new Date(booking.check_in).toLocaleDateString()}</p>
                               </div>
                             </div>
-
+ 
                             {/* Rent/Cycle/Advance Info */}
                             <div className="grid grid-cols-2 gap-2 bg-black/30 border border-white/[0.03] p-2.5 rounded-xl text-[10px] text-zinc-400 font-bold">
                               <div>
                                 <span className="text-zinc-500 font-normal">Monthly Rent:</span>
-                                <p className="text-white font-mono mt-0.5">${(booking.monthly_rate || 0).toFixed(2)}</p>
+                                <p className="text-white font-mono mt-0.5">₹{(booking.monthly_rate || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
                               </div>
                               <div>
                                 <span className="text-zinc-500 font-normal">Cycle Day:</span>
@@ -2620,14 +2628,14 @@ export default function FrontOfficeTerminal() {
                               </div>
                               <div className="mt-1.5">
                                 <span className="text-zinc-500 font-normal">Security Deposit:</span>
-                                <p className="text-white font-mono mt-0.5">${Number(booking.amount).toFixed(2)}</p>
+                                <p className="text-white font-mono mt-0.5">₹{Number(booking.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
                               </div>
                               <div className="mt-1.5">
                                 <span className="text-zinc-500 font-normal">Total Paid:</span>
-                                <p className="text-white font-mono mt-0.5">${totalPaid.toFixed(2)}</p>
+                                <p className="text-white font-mono mt-0.5">₹{totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
                               </div>
                             </div>
-
+ 
                             {/* Guest Payments List */}
                             <div className="space-y-1">
                               <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider pl-1">Payment Ledger / History</span>
@@ -2638,13 +2646,13 @@ export default function FrontOfficeTerminal() {
                                   {guestPayments.map((p, idx) => (
                                     <div key={p.id || idx} className="flex justify-between items-center text-[9px] text-zinc-400 bg-white/[0.01] px-1.5 py-1 rounded">
                                       <span>{new Date(p.created_at || p.payment_date || Date.now()).toLocaleDateString()} ({p.payment_method || 'UPI'})</span>
-                                      <span className="font-mono text-emerald-400 font-bold">${Number(p.amount).toFixed(2)}</span>
+                                      <span className="font-mono text-emerald-400 font-bold">₹{Number(p.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                                     </div>
                                   ))}
                                 </div>
                               )}
                             </div>
-
+ 
                             {/* Collect Rent / Ledger action */}
                             <div className="flex items-center gap-2 pt-1">
                               <button
@@ -2658,7 +2666,7 @@ export default function FrontOfficeTerminal() {
                                 }}
                                 className="flex-1 py-1.5 bg-indigo-600/10 hover:bg-indigo-600 border border-indigo-500/20 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all text-center flex items-center justify-center gap-1"
                               >
-                                <DollarSign size={11} />
+                                <Banknote size={11} />
                                 Collect Payment
                               </button>
                               <button
@@ -2744,8 +2752,10 @@ export default function FrontOfficeTerminal() {
         .filter(item => item.description?.startsWith('Daily Room Charge'))
         .reduce((sum, item) => sum + Number(item.amount), 0);
 
-      const roomAmount = Math.max(0, Number(booking.amount) - dailyRoomChargesSum);
-      const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0);
+      const roomAmount = booking.is_monthly
+        ? Number(booking.monthly_rate || 0)
+        : Math.max(0, Number(booking.amount) - dailyRoomChargesSum);
+      const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0) + (booking.is_monthly ? Number(booking.amount) : 0);
       const totalCharges = roomAmount + incidentalsAmount;
       const totalPaid = bookingPayments.reduce((sum, item) => sum + Number(item.amount), 0);
       const balanceDue = totalCharges - totalPaid;
@@ -3726,12 +3736,29 @@ export default function FrontOfficeTerminal() {
                         Manage guest billing, record cash or UPI payments, and view detailed folio summaries.
                       </p>
                       
-                      <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.02] flex justify-between items-center">
-                        <div>
-                          <span className="text-[9px] font-black text-zinc-500 uppercase tracking-wider block">Base Room Rate</span>
-                          <span className="text-xs text-zinc-400 mt-0.5 font-medium block">Accommodation charges</span>
+                      <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.02] space-y-2">
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <span className="text-[9px] font-black text-zinc-500 uppercase tracking-wider block">
+                              {selectedBooking.is_monthly ? 'Monthly Room Rent' : 'Base Room Rate'}
+                            </span>
+                            <span className="text-xs text-zinc-400 mt-0.5 font-medium block">Accommodation charges</span>
+                          </div>
+                          <span className="text-sm font-black text-white font-mono">
+                            ₹{Number(selectedBooking.is_monthly ? selectedBooking.monthly_rate : selectedBooking.amount).toFixed(2)}
+                          </span>
                         </div>
-                        <span className="text-sm font-black text-white font-mono">₹{Number(selectedBooking.amount).toFixed(2)}</span>
+                        {selectedBooking.is_monthly && Number(selectedBooking.amount) > 0 && (
+                          <div className="pt-2 border-t border-white/[0.02] flex justify-between items-center">
+                            <div>
+                              <span className="text-[9px] font-black text-zinc-500 uppercase tracking-wider block">Security Deposit / Advance</span>
+                              <span className="text-xs text-zinc-400 mt-0.5 font-medium block">Refundable deposit</span>
+                            </div>
+                            <span className="text-sm font-black text-white font-mono">
+                              ₹{Number(selectedBooking.amount).toFixed(2)}
+                            </span>
+                          </div>
+                        )}
                       </div>
                       
                       <button
@@ -4112,11 +4139,11 @@ export default function FrontOfficeTerminal() {
                   </h3>
                   <div className="flex items-center justify-between p-3 bg-white/[0.02] rounded-xl border border-white/[0.04]">
                     <span className="text-xs font-bold text-zinc-400">Total Collected</span>
-                    <span className="text-sm font-black text-white">${selectedBooking.amount}</span>
+                    <span className="text-sm font-black text-white">₹{selectedBooking.amount}</span>
                   </div>
                   <div className="flex items-center gap-3 mt-2">
                     <div className="relative flex-1">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-bold">$</span>
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-bold">₹</span>
                       <input 
                         type="number"
                         value={refundInput}

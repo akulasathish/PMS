@@ -268,10 +268,10 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
               <div className="p-3 bg-white/5 border border-white/10 rounded-xl space-y-3">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider pl-1">Monthly Charges</label>
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider pl-1">Monthly Charges (₹)</label>
                     <div className="relative">
-                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
-                        <DollarSign size={14} />
+                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-mono text-xs select-none">
+                        ₹
                       </div>
                       <input
                         type="number"
@@ -302,10 +302,10 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Security Deposit / Advance ($)</label>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Security Deposit / Advance (₹)</label>
                 <div className="relative">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
-                    <DollarSign size={16} />
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-mono text-xs select-none">
+                    ₹
                   </div>
                   <input 
                     type="number" 
@@ -314,7 +314,7 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
                     step="0.01"
                     required
                     placeholder="10000.00"
-                    className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/50"
+                    className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-8 pr-4 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/50"
                   />
                 </div>
               </div>

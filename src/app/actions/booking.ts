@@ -47,6 +47,17 @@ export async function createBooking(formData: FormData) {
 
   // Loop through and perform overlap check for each room
   for (const rid of roomIds) {
+    // Fetch room details first
+    const { data: rm, error: rmError } = await supabaseAdmin
+      .from('rooms')
+      .select('room_number, sharing_capacity, allowed_billing_type')
+      .eq('id', rid)
+      .single();
+
+    if (rmError || !rm) {
+      return { error: `Failed to retrieve details for room ID: ${rid}` };
+    }
+
     // OVERLAP CHECK: Prevent booking if the room is scheduled for maintenance/blocked
     const { data: blocks } = await supabaseAdmin
       .from('room_blocks')
@@ -57,8 +68,7 @@ export async function createBooking(formData: FormData) {
       .gte('end_date', checkIn);
 
     if (blocks && blocks.length > 0) {
-      const { data: rm } = await supabaseAdmin.from('rooms').select('room_number').eq('id', rid).single();
-      return { error: `Cannot book Room ${rm?.room_number || 'Unknown'}. It is scheduled for maintenance (${blocks[0].reason}) during these dates.` };
+      return { error: `Cannot book Room ${rm.room_number}. It is scheduled for maintenance (${blocks[0].reason}) during these dates.` };
     }
 
     // OVERLAP CHECK: Prevent double-booking a room that already has a guest
@@ -71,8 +81,18 @@ export async function createBooking(formData: FormData) {
       .gte('check_out', checkIn);
 
     if (existingBookings && existingBookings.length > 0) {
-      const { data: rm } = await supabaseAdmin.from('rooms').select('room_number').eq('id', rid).single();
-      return { error: `Cannot book Room ${rm?.room_number || 'Unknown'}. It is already booked by ${existingBookings[0].guest_name} during these dates.` };
+      const isCoLiving = isMonthly || rm.allowed_billing_type === 'monthly';
+      const capacity = rm.sharing_capacity || 1;
+
+      if (isCoLiving) {
+        if (existingBookings.length >= capacity) {
+          const guestNames = existingBookings.map(b => b.guest_name).join(', ');
+          return { error: `Cannot book Room ${rm.room_number}. It is already fully booked by ${guestNames} during these dates.` };
+        }
+      } else {
+        // Standard transient bookings (daily) block the entire room regardless of sharing capacity
+        return { error: `Cannot book Room ${rm.room_number}. It is already booked by ${existingBookings[0].guest_name} during these dates.` };
+      }
     }
   }
 
@@ -458,7 +478,7 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
   // 1. FOLIO AUDIT (The Financial Blockade)
   const { data: booking, error: bookingErr } = await supabaseAdmin
     .from('bookings')
-    .select('amount, discount_amount, property_id, guest_name')
+    .select('amount, discount_amount, property_id, guest_name, is_monthly, monthly_rate')
     .eq('id', bookingId)
     .single();
 
@@ -474,8 +494,17 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
     ?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
 
   const discountAmount = Number((booking as any).discount_amount || 0);
-  const roomAmount = Math.max(0, Number(booking.amount) - discountAmount - dailyRoomChargesSum);
-  const totalIncidentals = incidentals?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
+  const isMonthly = (booking as any).is_monthly;
+  const monthlyRate = Number((booking as any).monthly_rate || 0);
+
+  const roomAmount = isMonthly
+    ? Math.max(0, monthlyRate - discountAmount)
+    : Math.max(0, Number(booking.amount) - discountAmount - dailyRoomChargesSum);
+
+  let totalIncidentals = incidentals?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
+  if (isMonthly && Number(booking.amount) > 0) {
+    totalIncidentals += Number(booking.amount);
+  }
 
   const { data: payments } = await supabaseAdmin
     .from('payments')
