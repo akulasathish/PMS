@@ -8,6 +8,57 @@ import {
 import Image from 'next/image';
 import { processGuestRegistration } from '@/app/actions/guest';
 
+const compressImage = (file: File, maxWidth = 1600, maxHeight = 1600, quality = 0.75): Promise<Blob> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = document.createElement('img');
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        // Maintain aspect ratio and scale down if dimensions exceed bounds
+        if (width > maxWidth || height > maxHeight) {
+          if (width > height) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          } else {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(file); // Fallback to original file
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(blob);
+            } else {
+              resolve(file); // Fallback
+            }
+          },
+          'image/jpeg',
+          quality
+        );
+      };
+      img.onerror = () => resolve(file); // Fallback on error
+      img.src = event.target?.result as string;
+    };
+    reader.onerror = () => resolve(file); // Fallback on error
+    reader.readAsDataURL(file);
+  });
+};
+
 interface GuestRegistrationFormProps {
   bookingId: string;
   activePropertyId: string;
@@ -104,12 +155,19 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
 
       console.log("Preparing to Save Guest & Upload files via Server Action...");
       
+      console.log("Compressing ID Photo before upload to optimize transmission and stability...");
+      const compressedIdPhotoBlob = await compressImage(idPhoto);
+      // Create a File from the compressed blob
+      const compressedIdPhotoFile = new File([compressedIdPhotoBlob], idPhoto.name || 'id_photo.jpg', {
+        type: 'image/jpeg'
+      });
+
       const formData = new FormData();
       formData.append('bookingId', bookingId);
       formData.append('propertyId', safePropertyId);
       formData.append('guestName', guestName);
       formData.append('guestEmail', guestEmail);
-      formData.append('idPhoto', idPhoto);
+      formData.append('idPhoto', compressedIdPhotoFile);
       formData.append('signature', signatureBlob, 'signature.png');
 
       const result = await processGuestRegistration(formData);

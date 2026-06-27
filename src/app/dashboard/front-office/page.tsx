@@ -155,6 +155,7 @@ export default function FrontOfficeTerminal() {
   // Form F Fields State
   const [guestAddress, setGuestAddress] = useState('');
   const [showQrCode, setShowQrCode] = useState(false);
+  const [isIdentityMenuOpen, setIsIdentityMenuOpen] = useState(false);
   const [activeCheckoutBooking, setActiveCheckoutBooking] = useState<{bookingId: string, roomId: string, guestName: string, amount: number} | null>(null);
   const [activeBlockRoom, setActiveBlockRoom] = useState<Room | null>(null);
 
@@ -3245,27 +3246,76 @@ export default function FrontOfficeTerminal() {
                   </div>
 
                   {!selectedBooking.id_verified ? (
-                    <div className="bg-indigo-500/5 border border-indigo-500/10 p-4 rounded-2xl space-y-3">
+                    <div className="bg-indigo-500/5 border border-indigo-500/10 p-4 rounded-2xl space-y-3 relative">
                       <p className="text-[11px] text-zinc-500">
-                        Send a secure magic link to the guest&apos;s phone. They can scan their ID and sign the RegCard instantly.
+                        Select an action below to capture guest identity and sign registration forms instantly.
                       </p>
-                                            <div className="flex gap-2">
+                      
+                      <div className="relative">
                         <button 
-                          onClick={() => {
-                            const url = window.location.origin + "/guest/regcard/" + selectedBooking.id;
-                            navigator.clipboard.writeText(url);
-                            alert("Magic Link copied to clipboard! Send this to the guest via WhatsApp/SMS.");
-                          }}
-                          className="flex-[2] bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 border border-indigo-500/20 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all"
+                          onClick={() => setIsIdentityMenuOpen(!isIdentityMenuOpen)}
+                          className="w-full bg-zinc-900/60 hover:bg-zinc-900 border border-white/10 px-4 py-3 rounded-xl text-[11px] font-black uppercase tracking-wider text-white flex items-center justify-between transition-all"
                         >
-                          <Link2 size={14} /> Send Link
+                          <span className="flex items-center gap-2">
+                            <ShieldCheck size={14} className="text-indigo-400" />
+                            Select Capture Option...
+                          </span>
+                          <ChevronsUpDown size={14} className="text-zinc-500" />
                         </button>
-                        <button 
-                          onClick={() => setShowQrCode(true)}
-                          className="flex-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-500 border border-amber-500/20 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all"
-                        >
-                          <Camera size={14} /> QR Scan
-                        </button>
+
+                        {isIdentityMenuOpen && (
+                          <>
+                            {/* Invisible background overlay to handle dismiss clicking outside */}
+                            <div className="fixed inset-0 z-10" onClick={() => setIsIdentityMenuOpen(false)} />
+                            
+                            <div className="absolute left-0 right-0 mt-2 bg-zinc-950 border border-white/10 rounded-xl shadow-2xl overflow-hidden z-20 divide-y divide-white/[0.04]">
+                              <button 
+                                onClick={() => {
+                                  setIsIdentityMenuOpen(false);
+                                  const url = window.location.origin + "/guest/regcard/" + selectedBooking.id;
+                                  navigator.clipboard.writeText(url);
+                                  alert("Magic Link copied to clipboard! Send this to the guest via WhatsApp/SMS.");
+                                }}
+                                className="w-full hover:bg-zinc-900/60 px-4 py-2.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-300 hover:text-white flex items-center gap-2.5 transition-colors"
+                              >
+                                <Link2 size={14} className="text-indigo-400" />
+                                <div>
+                                  <p>Copy Magic Link</p>
+                                  <p className="text-[8.5px] text-zinc-500 font-normal normal-case mt-0.5">Copy guest link to share on WhatsApp</p>
+                                </div>
+                              </button>
+
+                              <button 
+                                onClick={() => {
+                                  setIsIdentityMenuOpen(false);
+                                  const url = window.location.origin + "/guest/regcard/" + selectedBooking.id;
+                                  window.open(url, "_blank");
+                                }}
+                                className="w-full hover:bg-zinc-900/60 px-4 py-2.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-300 hover:text-white flex items-center gap-2.5 transition-colors"
+                              >
+                                <Camera size={14} className="text-emerald-400" />
+                                <div>
+                                  <p>Open Camera Magical Link</p>
+                                  <p className="text-[8.5px] text-zinc-500 font-normal normal-case mt-0.5">Open capture terminal directly in new tab</p>
+                                </div>
+                              </button>
+
+                              <button 
+                                onClick={() => {
+                                  setIsIdentityMenuOpen(false);
+                                  setShowQrCode(true);
+                                }}
+                                className="w-full hover:bg-zinc-900/60 px-4 py-2.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-300 hover:text-white flex items-center gap-2.5 transition-colors"
+                              >
+                                <Smartphone size={14} className="text-amber-400" />
+                                <div>
+                                  <p>QR Code Scan</p>
+                                  <p className="text-[8.5px] text-zinc-500 font-normal normal-case mt-0.5">Show QR on screen for guest to scan</p>
+                                </div>
+                              </button>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   ) : (

@@ -839,44 +839,49 @@ export default function NightAuditPage() {
       <main className="flex-1 overflow-y-auto flex flex-col">
         
         {/* TOP BAR */}
-        <header className="sticky top-0 z-30 backdrop-blur-xl bg-[#08080a]/80 border-b border-white/[0.04] px-8 py-4">
-          <div className="flex justify-between items-center">
+        <header className="sticky top-0 z-30 backdrop-blur-xl bg-[#08080a]/80 border-b border-white/[0.04] px-4 py-3 md:px-8 md:py-4">
+          <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3">
             <div>
-              <div className="flex items-center gap-3">
-                <Moon size={20} className="text-violet-400" />
-                <h2 className="text-xl font-bold text-white tracking-tight">Night Audit Wizard</h2>
-                <span className="text-[10px] font-bold bg-violet-500/10 text-violet-400 border border-violet-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-2 md:gap-3">
+                <div className="flex items-center gap-2">
+                  <Moon size={18} className="text-violet-400 shrink-0" />
+                  <h2 className="text-base md:text-xl font-bold text-white tracking-tight">Night Audit Wizard</h2>
+                </div>
+                <span className="text-[9px] md:text-[10px] font-bold bg-violet-500/10 text-violet-400 border border-violet-500/20 px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 shrink-0 whitespace-nowrap">
                   <span className="w-1.5 h-1.5 bg-violet-400 rounded-full animate-pulse" />
                   EOD Reconciliation
                 </span>
               </div>
-              <p className="text-[11px] text-zinc-600 mt-0.5">
+              <p className="text-[10px] md:text-[11px] text-zinc-600 mt-1">
                 Current Operational business Date: <strong className="text-zinc-400 font-semibold">{businessDate}</strong>
               </p>
             </div>
             
-            <div className="flex items-center gap-4">
-              <button 
-                onClick={loadNightAuditData}
-                className="p-2.5 rounded-xl border border-white/[0.06] text-zinc-500 hover:text-white hover:bg-white/[0.04] transition-all"
-                title="Refresh Data"
-              >
-                <RefreshCw size={14} className={actionLoading === 'refresh' ? 'animate-spin' : ''} />
-              </button>
+            <div className="flex items-center justify-between md:justify-end gap-3 md:gap-4 pt-2 md:pt-0 border-t border-white/[0.02] md:border-none">
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={loadNightAuditData}
+                  className="p-2 rounded-lg border border-white/[0.06] text-zinc-500 hover:text-white hover:bg-white/[0.04] transition-all"
+                  title="Refresh Data"
+                >
+                  <RefreshCw size={12} className={actionLoading === 'refresh' ? 'animate-spin' : ''} />
+                </button>
+                <span className="text-[10px] text-zinc-500 md:hidden font-medium">Refresh Data</span>
+              </div>
               <div className="text-right text-xs">
-                <span className="text-zinc-600">Active Property:</span>
-                <p className="text-white font-bold">{property?.name || 'N/A'}</p>
+                <span className="text-zinc-600 text-[10px] md:text-[11px] block">Active Property:</span>
+                <p className="text-white font-bold text-[11px] md:text-sm truncate max-w-[150px] md:max-w-none">{property?.name || 'N/A'}</p>
               </div>
             </div>
           </div>
         </header>
 
         {/* WORKSPACE AREA */}
-        <div className="p-8 flex-1 max-w-6xl w-full mx-auto space-y-8">
+        <div className="p-4 md:p-8 flex-1 max-w-6xl w-full mx-auto space-y-6 md:space-y-8">
           
           {/* STEP PROGRESS BAR */}
           {!isRolloverComplete && (
-            <div className="grid grid-cols-3 gap-4 bg-zinc-950/40 p-1.5 rounded-2xl border border-white/[0.04]">
+            <div className="grid grid-cols-3 gap-2 md:gap-4 bg-zinc-950/40 p-1 md:p-1.5 rounded-xl md:rounded-2xl border border-white/[0.04]">
               {[
                 { step: 1, label: "Operational Check", desc: "Verify Departures" },
                 { step: 2, label: "Posting Charges", desc: "Post room rates to folios" },
@@ -888,24 +893,24 @@ export default function NightAuditPage() {
                   <button
                     key={s.step}
                     onClick={() => setActiveStep(s.step)}
-                    className={`flex items-center gap-3.5 p-3 rounded-xl text-left transition-all relative overflow-hidden ${
+                    className={`flex flex-col md:flex-row items-center md:items-center gap-2 md:gap-3.5 p-2 md:p-3 rounded-lg md:rounded-xl text-center md:text-left transition-all relative overflow-hidden ${
                       isActive 
                         ? 'bg-zinc-900/80 border border-white/[0.08] text-white shadow-[0_0_15px_rgba(99,102,241,0.05)]' 
                         : 'text-zinc-400 hover:text-white hover:bg-white/[0.02]'
                     }`}
                   >
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs border transition-colors ${
+                    <div className={`w-6 h-6 md:w-8 md:h-8 rounded md:rounded-lg flex items-center justify-center font-bold text-[10px] md:text-xs border transition-colors shrink-0 ${
                       isActive
                         ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/25 shadow-[0_0_10px_rgba(99,102,241,0.1)]'
                         : isCompleted
                           ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25'
                           : 'bg-zinc-950/40 text-zinc-700 border-white/[0.04]'
                     }`}>
-                      {isCompleted ? <Check size={14} /> : s.step}
+                      {isCompleted ? <Check size={12} /> : s.step}
                     </div>
-                    <div>
-                      <p className="text-[12px] font-bold leading-tight">{s.label}</p>
-                      <p className="text-[9px] text-zinc-500 font-medium mt-0.5">{s.desc}</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] md:text-[12px] font-bold leading-tight truncate">{s.label}</p>
+                      <p className="text-[9px] text-zinc-500 font-medium mt-0.5 hidden md:block">{s.desc}</p>
                     </div>
                     {isActive && (
                       <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-500" />
@@ -1100,7 +1105,8 @@ export default function NightAuditPage() {
 
                   {/* CHARGES TABLE WITH EDITABLE INPUTS */}
                   <div className="border border-white/[0.04] rounded-xl overflow-hidden bg-black/20">
-                    <div className="grid grid-cols-12 gap-4 text-[10px] text-zinc-500 uppercase tracking-[0.15em] font-bold p-4 bg-zinc-950/40 border-b border-white/[0.04]">
+                    {/* Header (hidden on mobile) */}
+                    <div className="hidden md:grid grid-cols-12 gap-4 text-[10px] text-zinc-500 uppercase tracking-[0.15em] font-bold p-4 bg-zinc-950/40 border-b border-white/[0.04]">
                       <div className="col-span-4">Guest</div>
                       <div className="col-span-3">Room</div>
                       <div className="col-span-3">Reservation Total</div>
@@ -1117,11 +1123,28 @@ export default function NightAuditPage() {
                           .filter(b => b.check_out !== businessDate && (b.check_out ? b.check_out.substring(0, 10) : '') !== nextBusinessDate)
                           .map((bk) => {
                             return (
-                               <div key={bk.id} className="grid grid-cols-12 gap-4 items-center p-4 text-xs">
-                                <div className="col-span-4 font-semibold text-zinc-200">{bk.guest_name}</div>
-                                <div className="col-span-3 text-zinc-400">Room {rooms.find(r => r.id === bk.room_id)?.room_number || 'N/A'} ({rooms.find(r => r.id === bk.room_id)?.type || 'N/A'})</div>
-                                <div className="col-span-3 text-zinc-500">Rs. {bk.amount} ({bk.check_in} to {bk.check_out})</div>
-                                <div className="col-span-2 text-right">
+                               <div key={bk.id} className="flex flex-col md:grid md:grid-cols-12 gap-2 md:gap-4 p-4 text-xs">
+                                {/* Guest details */}
+                                <div className="md:col-span-4 font-semibold text-zinc-200 flex justify-between items-center md:block">
+                                  <span>{bk.guest_name}</span>
+                                  <span className="md:hidden text-[9px] font-bold bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded uppercase tracking-wider">Guest</span>
+                                </div>
+                                
+                                {/* Room details */}
+                                <div className="md:col-span-3 text-zinc-400 flex md:block justify-between items-center">
+                                  <span className="md:hidden text-zinc-600 text-[10px] uppercase font-bold tracking-wider">Room</span>
+                                  <span>Room {rooms.find(r => r.id === bk.room_id)?.room_number || 'N/A'} ({rooms.find(r => r.id === bk.room_id)?.type || 'N/A'})</span>
+                                </div>
+                                
+                                {/* Total details */}
+                                <div className="md:col-span-3 text-zinc-500 flex md:block justify-between items-center">
+                                  <span className="md:hidden text-zinc-600 text-[10px] uppercase font-bold tracking-wider">Reservation Total</span>
+                                  <span>Rs. {bk.amount} ({bk.check_in} to {bk.check_out})</span>
+                                </div>
+                                
+                                {/* Edit rate input */}
+                                <div className="md:col-span-2 text-right flex md:block justify-between items-center mt-2 md:mt-0 pt-2 md:pt-0 border-t border-white/[0.02] md:border-none">
+                                  <span className="md:hidden text-zinc-500 font-bold uppercase tracking-wider text-[10px]">Daily Post Rate</span>
                                   <div className="flex items-center justify-end gap-1.5">
                                     <span className="text-zinc-600 text-[10px]">Rs.</span>
                                     <input
