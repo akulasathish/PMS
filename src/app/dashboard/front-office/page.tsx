@@ -30,7 +30,7 @@ const NAV_ITEMS = [
   { icon: Brush, label: "Housekeeping", href: "/dashboard/housekeeping", active: false, module: 'housekeeping' },
   { icon: DoorOpen, label: "Inventory", href: "/dashboard/inventory", active: false, module: 'inventory' },
   { icon: Moon, label: "Night Audit", href: "/dashboard/night-audit", active: false, module: 'night_audit' },
-  { icon: Settings, label: "Settings", href: "#", active: false, module: 'settings' },
+  { icon: FileText, label: "Daily Reports", href: "#", active: false, module: 'front_office' },
 ];
 
 const generateDaysFromDate = (baseDateStr: string) => {
@@ -2040,6 +2040,313 @@ export default function FrontOfficeTerminal() {
     }
   };
 
+  const generateMonthlyPaymentsPDFReport = async () => {
+    if (!property) return;
+    try {
+      const { jsPDF } = await import('jspdf');
+      const { default: autoTable } = await import('jspdf-autotable');
+
+      const doc = new jsPDF();
+
+      // Filter payments strictly by selected business date
+      const dayPayments = payments.filter(p => getPaymentDateStr(p) === selectedLedgerDate);
+
+      // Find monthly guest payments
+      const monthlyPayments = dayPayments.filter(p => {
+        const b = bookings.find(bk => bk.id === p.booking_id);
+        return b && b.is_monthly === true;
+      });
+
+      let totalRent = 0;
+      let totalDeposit = 0;
+      let totalGrand = 0;
+
+      const rows = monthlyPayments.map((p, idx) => {
+        const b = bookings.find(bk => bk.id === p.booking_id);
+        const guestName = b ? b.guest_name : 'Monthly Guest';
+        const roomNum = b ? (rooms.find(r => r.id === b.room_id)?.room_number || 'N/A') : 'N/A';
+        const amt = Number(p.amount);
+        totalGrand += amt;
+
+        // Classification
+        let classification = "Monthly Rent";
+        if (b) {
+          const depositAmt = Number(b.amount || 0);
+          const rentAmt = Number(b.monthly_rate || 0);
+          if (amt === depositAmt) {
+            classification = "Security Deposit";
+            totalDeposit += amt;
+          } else if (amt === rentAmt) {
+            classification = "Monthly Rent";
+            totalRent += amt;
+          } else if (depositAmt > 0 && Math.abs(amt - depositAmt) < 0.01) {
+            classification = "Security Deposit / Advance";
+            totalDeposit += amt;
+          } else if (amt < depositAmt && amt > 0) {
+            classification = "Partial Deposit / Advance";
+            totalDeposit += amt;
+          } else if (amt < rentAmt && amt > 0) {
+            classification = "Partial Monthly Rent";
+            totalRent += amt;
+          } else {
+            classification = "Rent / Advance Payment";
+            totalRent += amt;
+          }
+        } else {
+          totalRent += amt;
+        }
+
+        return [
+          idx + 1,
+          roomNum,
+          guestName,
+          p.method,
+          p.transaction_id || 'N/A',
+          classification,
+          `Rs. ${amt.toFixed(2)}`
+        ];
+      });
+
+      if (rows.length === 0) {
+        rows.push(["-", "-", "No monthly guest payments collected today.", "-", "-", "-", "Rs. 0.00"]);
+      }
+
+      // Luxury dark header block for Monthly Payments
+      doc.setFillColor(30, 27, 75); // deep royal indigo
+      doc.rect(0, 0, 210, 36, 'F');
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(15);
+      doc.setFont("helvetica", "bold");
+      doc.text("STAYSYNC PMS - MONTHLY PAYMENTS REGISTER", 15, 14);
+      
+      doc.setFontSize(8.5);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(199, 210, 254); // indigo-200
+      doc.text(`PROPERTY: ${property?.name || 'StaySync Boutique Property'}`, 15, 22);
+      doc.text(`BUSINESS DATE: ${formatFriendlyDate(selectedLedgerDate)}`, 15, 28);
+      doc.text(`GENERATED ON: ${new Date().toLocaleString()}`, 135, 28);
+
+      let currentY = 46;
+      doc.setTextColor(15, 23, 42);
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text("DAILY CO-LIVING RESIDENT PAYMENTS RECEIVED", 15, currentY);
+
+      autoTable(doc, {
+        startY: currentY + 3,
+        head: [["S.No", "Room", "Guest Name", "Payment Mode", "Transaction ID", "Classification", "Amount"]],
+        body: rows,
+        theme: 'grid',
+        styles: { fontSize: 8.5, cellPadding: 4, font: 'helvetica' },
+        headStyles: { fillColor: [49, 46, 129], textColor: [255, 255, 255], fontStyle: 'bold' }, // indigo-800
+        columnStyles: {
+          0: { halign: 'center', cellWidth: 15 },
+          1: { halign: 'center', cellWidth: 18 },
+          2: { fontStyle: 'bold', cellWidth: 40 },
+          3: { halign: 'center', cellWidth: 25 },
+          4: { halign: 'center', cellWidth: 35 },
+          5: { halign: 'center', cellWidth: 42 },
+          6: { halign: 'right', fontStyle: 'bold' }
+        }
+      });
+
+      const lastY = (doc as any).lastAutoTable.finalY + 10;
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(15, 23, 42);
+      doc.text("MONTHLY GUEST REVENUE SUMMARY", 15, lastY);
+
+      const summaryRows = [
+        ["Total Security Deposit / Advance Collected", `Rs. ${totalDeposit.toFixed(2)}`],
+        ["Total Monthly Rent Collected", `Rs. ${totalRent.toFixed(2)}`],
+        ["GRAND TOTAL MONTHLY COLLECTIONS", `Rs. ${totalGrand.toFixed(2)}`]
+      ];
+
+      autoTable(doc, {
+        startY: lastY + 3,
+        body: summaryRows,
+        theme: 'plain',
+        styles: { fontSize: 9, cellPadding: 4, font: 'helvetica' },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 100 },
+          1: { halign: 'right', fontStyle: 'bold', cellWidth: 40 }
+        },
+        margin: { left: 15 }
+      });
+
+      const finalY = (doc as any).lastAutoTable.finalY + 15;
+      doc.setDrawColor(226, 232, 240);
+      doc.line(15, finalY, 195, finalY);
+      doc.setFontSize(7.5);
+      doc.setFont("helvetica", "italic");
+      doc.setTextColor(148, 163, 184);
+      doc.text("* Reconciled automatically. Monthly guest ledgers are mapped per contractual tenancy cycles.", 15, finalY + 4);
+
+      // Output and open in a new tab
+      const pdfBlob = doc.output('blob');
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      window.open(pdfUrl, '_blank');
+    } catch (err) {
+      console.error("PDF Generate error:", err);
+      alert("Failed to build PDF. Please check console.");
+    }
+  };
+
+  const generateCentralPaymentsPDFReport = async () => {
+    if (!property) return;
+    try {
+      const { jsPDF } = await import('jspdf');
+      const { default: autoTable } = await import('jspdf-autotable');
+
+      const doc = new jsPDF();
+
+      // Filter payments strictly by selected business date
+      const dayPayments = payments.filter(p => getPaymentDateStr(p) === selectedLedgerDate);
+
+      let totalRegular = 0;
+      let totalMonthlyRent = 0;
+      let totalMonthlyDeposit = 0;
+      let totalMonthlyTotal = 0;
+
+      const rows = dayPayments.map((p, idx) => {
+        const b = bookings.find(bk => bk.id === p.booking_id);
+        const isMonthly = b ? b.is_monthly === true : false;
+        const guestName = b ? b.guest_name : 'Walk-In Guest';
+        const roomNum = b ? (rooms.find(r => r.id === b.room_id)?.room_number || 'N/A') : 'N/A';
+        const guestClass = isMonthly ? "Monthly Guest" : "Regular Guest";
+        const amt = Number(p.amount);
+
+        // Classification
+        let classification = "Base Rate / Incid.";
+        if (isMonthly && b) {
+          const depositAmt = Number(b.amount || 0);
+          const rentAmt = Number(b.monthly_rate || 0);
+          if (amt === depositAmt) {
+            classification = "Security Deposit";
+            totalMonthlyDeposit += amt;
+          } else if (amt === rentAmt) {
+            classification = "Monthly Rent";
+            totalMonthlyRent += amt;
+          } else if (depositAmt > 0 && Math.abs(amt - depositAmt) < 0.01) {
+            classification = "Security Deposit / Advance";
+            totalMonthlyDeposit += amt;
+          } else if (amt < depositAmt && amt > 0) {
+            classification = "Partial Deposit / Advance";
+            totalMonthlyDeposit += amt;
+          } else if (amt < rentAmt && amt > 0) {
+            classification = "Partial Monthly Rent";
+            totalMonthlyRent += amt;
+          } else {
+            classification = "Rent / Advance Payment";
+            totalMonthlyRent += amt;
+          }
+          totalMonthlyTotal += amt;
+        } else {
+          totalRegular += amt;
+        }
+
+        return [
+          idx + 1,
+          roomNum,
+          guestName,
+          guestClass,
+          p.method,
+          p.transaction_id || 'N/A',
+          classification,
+          `Rs. ${amt.toFixed(2)}`
+        ];
+      });
+
+      if (rows.length === 0) {
+        rows.push(["-", "-", "No payments received today.", "-", "-", "-", "-", "Rs. 0.00"]);
+      }
+
+      // Luxury dark header block for Central Master Ledger
+      doc.setFillColor(15, 23, 42); // slate-900 (highly professional)
+      doc.rect(0, 0, 210, 36, 'F');
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(15);
+      doc.setFont("helvetica", "bold");
+      doc.text("STAYSYNC PMS - CENTRAL MASTER PAYMENTS LEDGER", 15, 14);
+      
+      doc.setFontSize(8.5);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(148, 163, 184); // slate-400
+      doc.text(`PROPERTY: ${property?.name || 'StaySync Boutique Property'}`, 15, 22);
+      doc.text(`BUSINESS DATE: ${formatFriendlyDate(selectedLedgerDate)}`, 15, 28);
+      doc.text(`GENERATED ON: ${new Date().toLocaleString()}`, 135, 28);
+
+      let currentY = 46;
+      doc.setTextColor(15, 23, 42);
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text("CONSOLIDATED TRANSACTIONS LIST (ALL GUESTS)", 15, currentY);
+
+      autoTable(doc, {
+        startY: currentY + 3,
+        head: [["S.No", "Room", "Guest Name", "Guest Class", "Mode", "Transaction ID", "Classification", "Amount"]],
+        body: rows,
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 3.5, font: 'helvetica' },
+        headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontStyle: 'bold' }, // slate-700
+        columnStyles: {
+          0: { halign: 'center', cellWidth: 10 },
+          1: { halign: 'center', cellWidth: 15 },
+          2: { fontStyle: 'bold', cellWidth: 35 },
+          3: { halign: 'center', cellWidth: 25 },
+          4: { halign: 'center', cellWidth: 18 },
+          5: { halign: 'center', cellWidth: 32 },
+          6: { halign: 'center', cellWidth: 35 },
+          7: { halign: 'right', fontStyle: 'bold' }
+        }
+      });
+
+      const lastY = (doc as any).lastAutoTable.finalY + 10;
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(15, 23, 42);
+      doc.text("REVENUE RECONCILIATION SUMMARY", 15, lastY);
+
+      const summaryRows = [
+        ["Total Regular Transient Collections (Daily Guest)", `Rs. ${totalRegular.toFixed(2)}`],
+        ["Total Monthly Co-Living Rent Collected", `Rs. ${totalMonthlyRent.toFixed(2)}`],
+        ["Total Monthly Co-Living Security Deposits Collected", `Rs. ${totalMonthlyDeposit.toFixed(2)}`],
+        ["Total Monthly Co-Living Collections (Sub-Total)", `Rs. ${totalMonthlyTotal.toFixed(2)}`],
+        ["GRAND TOTAL REVENUE COLLECTIONS (CONSOLIDATED)", `Rs. ${(totalRegular + totalMonthlyTotal).toFixed(2)}`]
+      ];
+
+      autoTable(doc, {
+        startY: lastY + 3,
+        body: summaryRows,
+        theme: 'plain',
+        styles: { fontSize: 8.5, cellPadding: 4, font: 'helvetica' },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 110 },
+          1: { halign: 'right', fontStyle: 'bold', cellWidth: 40 }
+        },
+        margin: { left: 15 }
+      });
+
+      const finalY = (doc as any).lastAutoTable.finalY + 15;
+      doc.setDrawColor(226, 232, 240);
+      doc.line(15, finalY, 195, finalY);
+      doc.setFontSize(7.5);
+      doc.setFont("helvetica", "italic");
+      doc.setTextColor(148, 163, 184);
+      doc.text("* Master unified ledger statement generated automatically from live transactions data under full integrity.", 15, finalY + 4);
+
+      // Output and open in a new tab
+      const pdfBlob = doc.output('blob');
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      window.open(pdfUrl, '_blank');
+    } catch (err) {
+      console.error("PDF Generate error:", err);
+      alert("Failed to build PDF. Please check console.");
+    }
+  };
+
   const renderExpensesView = () => {
     const stats = getLedgerTotalsForDate(selectedLedgerDate);
     const dayExpenses = expenses.filter(e => e.date === selectedLedgerDate);
@@ -2109,6 +2416,20 @@ export default function FrontOfficeTerminal() {
             >
               <Moon size={14} />
               Night Audit PDF
+            </button>
+            <button
+              onClick={generateMonthlyPaymentsPDFReport}
+              className="w-full sm:w-auto bg-indigo-500/10 hover:bg-indigo-500 hover:text-black text-indigo-400 border border-indigo-500/20 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+            >
+              <Users size={14} />
+              Monthly Payments PDF
+            </button>
+            <button
+              onClick={generateCentralPaymentsPDFReport}
+              className="w-full sm:w-auto bg-emerald-500/10 hover:bg-emerald-500 hover:text-black text-emerald-400 border border-emerald-500/20 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+            >
+              <ClipboardCheck size={14} />
+              Central Payments PDF
             </button>
           </div>
         </div>
@@ -3117,6 +3438,9 @@ export default function FrontOfficeTerminal() {
         <nav className="flex-1 px-3 space-y-1 mt-4">
           {NAV_ITEMS.map((item) => {
             const locked = !hasAccess(item.module);
+            const isItemActive = item.label === "Daily Reports" 
+              ? activeTab === 'expenses' 
+              : (item.label === "Front Office" ? activeTab !== 'expenses' : item.active);
             return (
               <Link
                 key={item.label}
@@ -3125,10 +3449,13 @@ export default function FrontOfficeTerminal() {
                   if (locked) {
                     e.preventDefault();
                     alert(`Access Restricted: The ${item.label} module requires higher authorization.`);
+                  } else if (item.label === "Daily Reports") {
+                    e.preventDefault();
+                    setActiveTab('expenses');
                   }
                 }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all ${
-                  item.active ? 'bg-white/[0.06] text-white' : locked ? 'text-zinc-700' : 'text-zinc-500 hover:text-white hover:bg-white/[0.02]'
+                  isItemActive ? 'bg-white/[0.06] text-white' : locked ? 'text-zinc-700' : 'text-zinc-500 hover:text-white hover:bg-white/[0.02]'
                 }`}
               >
                 <item.icon size={17} />
@@ -4505,6 +4832,9 @@ export default function FrontOfficeTerminal() {
         <div className="flex items-center justify-around py-2 px-1 max-w-md mx-auto">
           {NAV_ITEMS.map((item) => {
             const locked = !hasAccess(item.module);
+            const isItemActive = item.label === "Daily Reports" 
+              ? activeTab === 'expenses' 
+              : (item.label === "Front Office" ? activeTab !== 'expenses' : item.active);
             return (
               <Link
                 key={item.label}
@@ -4513,17 +4843,20 @@ export default function FrontOfficeTerminal() {
                   if (locked) {
                     e.preventDefault();
                     alert(`Access Restricted: The ${item.label} module requires higher authorization.`);
+                  } else if (item.label === "Daily Reports") {
+                    e.preventDefault();
+                    setActiveTab('expenses');
                   }
                 }}
                 className={`flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl transition-all duration-300 ${
-                  item.active 
+                  isItemActive 
                     ? 'text-indigo-400 font-bold' 
                     : locked 
                       ? 'text-zinc-800' 
                       : 'text-zinc-500 active:text-zinc-200'
                 }`}
               >
-                <item.icon size={18} className={item.active ? 'text-indigo-400 drop-shadow-[0_0_8px_rgba(99,102,241,0.4)]' : ''} />
+                <item.icon size={18} className={isItemActive ? 'text-indigo-400 drop-shadow-[0_0_8px_rgba(99,102,241,0.4)]' : ''} />
                 <span className="text-[9px] uppercase tracking-wider font-semibold">{item.label}</span>
               </Link>
             );
