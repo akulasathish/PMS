@@ -36,10 +36,12 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
   // Track the dates selected in the form to dynamically filter room availability
   const [selectedCheckIn, setSelectedCheckIn] = useState(todayStr);
   const [selectedCheckOut, setSelectedCheckOut] = useState(tomorrowStr);
-  const [isMonthly, setIsMonthly] = useState(false);
 
   // Calculate truly available rooms based on physical state AND date overlap
   const availableRooms = rooms.filter(room => {
+    // Ensure the room is not strictly for monthly co-living
+    if (room.allowed_billing_type === 'monthly') return false;
+
     // 1. PHYSICAL BLOCK: A room MUST be 'Available' (Clean) right now to be assigned to a new Walk-In.
     // We cannot sell a 'Dirty', 'Occupied', or 'Blocked' room.
     if (room.status !== 'Available') return false;
@@ -240,63 +242,8 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
                 </div>
               </div>
 
-              {/* Co-Living/Monthly Options */}
-              <div className="p-3 bg-white/5 border border-white/10 rounded-xl space-y-3">
-                <label className="flex items-center gap-3 text-white text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isMonthly}
-                    onChange={(e) => setIsMonthly(e.target.checked)}
-                    className="w-4 h-4 rounded border-zinc-700 bg-zinc-800 text-azure-600 focus:ring-azure-500 focus:ring-offset-zinc-900 cursor-pointer"
-                  />
-                  <span className="font-bold text-zinc-100">Monthly Guest / Co-Living</span>
-                </label>
-                <input type="hidden" name="isMonthly" value={isMonthly ? "true" : "false"} />
-
-                {isMonthly && (
-                  <motion.div 
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    className="grid grid-cols-2 gap-4 pt-2 border-t border-white/5"
-                  >
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider pl-1">Monthly Rate ($)</label>
-                      <div className="relative">
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
-                          <DollarSign size={14} />
-                        </div>
-                        <input
-                          type="number"
-                          name="monthlyRate"
-                          required={isMonthly}
-                          min="0"
-                          step="0.01"
-                          placeholder="1500.00"
-                          className="w-full bg-black/50 border border-white/10 rounded-xl py-2 px-8 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-azure-500/50 pl-8 pr-4"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider pl-1">Billing Day (1-31)</label>
-                      <input
-                        type="number"
-                        name="billingCycleDate"
-                        required={isMonthly}
-                        min="1"
-                        max="31"
-                        placeholder="5"
-                        className="w-full bg-black/50 border border-white/10 rounded-xl py-2 px-3 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-azure-500/50"
-                      />
-                    </div>
-                  </motion.div>
-                )}
-              </div>
-
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">
-                  {isMonthly ? 'Deposit / Initial Payment ($)' : 'Total Amount ($)'}
-                </label>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Total Amount ($)</label>
                 <div className="relative">
                   <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
                     <DollarSign size={16} />
@@ -307,7 +254,7 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
                     min="0"
                     step="0.01"
                     required
-                    placeholder={isMonthly ? '500.00' : '250.00'}
+                    placeholder="250.00"
                     className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-azure-500/50"
                   />
                 </div>

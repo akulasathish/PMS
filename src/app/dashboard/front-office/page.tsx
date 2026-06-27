@@ -10,12 +10,14 @@ import {
   Plus, Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, LogOut,
   ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck, RefreshCw, RotateCcw, Printer, XCircle, Link2, Camera, X, ShieldCheck, AlertCircle, Phone, Mail,
-  Trash2, DollarSign, Moon, Banknote, Smartphone, CreditCard, Clock, TrendingDown, Download, Wallet, FileText
+  Trash2, DollarSign, Moon, Banknote, Smartphone, CreditCard, Clock, TrendingDown, Download, Wallet, FileText,
+  Home, UserPlus, User
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import BookingModal from './BookingModal';
+import CoLivingBookingModal from './CoLivingBookingModal';
 import FolioModal from '@/components/FolioModal';
 import RoomBlockModal from '@/components/RoomBlockModal';
 import { checkInGuest, checkOutGuest, updateGuestNotes, upgradeRoom, issueRefund, cancelBooking, resetGuestIdentity, updateCheckInTime } from '@/app/actions/booking';
@@ -157,7 +159,9 @@ export default function FrontOfficeTerminal() {
   const [showBookingModal, setShowBookingModal] = useState(false);
   
   // Tabs State
-  const [activeTab, setActiveTab] = useState<'tape' | 'arrivals' | 'departures' | 'house' | 'all' | 'balances' | 'expenses'>('tape');
+  const [activeTab, setActiveTab] = useState<'tape' | 'arrivals' | 'departures' | 'house' | 'all' | 'balances' | 'expenses' | 'monthly'>('tape');
+  const [showCoLivingModal, setShowCoLivingModal] = useState(false);
+  const [selectedCoLivingRoomId, setSelectedCoLivingRoomId] = useState<string | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState('');
   const [balancesFilter, setBalancesFilter] = useState<'inHouse' | 'allActive'>('inHouse');
   const [hidePaidGuests, setHidePaidGuests] = useState(true);
@@ -570,6 +574,7 @@ export default function FrontOfficeTerminal() {
   const getBookingForRoom = (roomId: string) => {
     return bookings.find(b => {
       if (b.room_id !== roomId) return false;
+      if (b.is_monthly) return false;
       if (!['Confirmed', 'Checked In', 'Checked Out'].includes(b.status)) return false;
       
       const bIn = b.check_in ? String(b.check_in).substring(0, 10) : '';
@@ -601,7 +606,7 @@ export default function FrontOfficeTerminal() {
     let filtered = bookings.filter(b => {
       // Extract only the first 10 characters (YYYY-MM-DD) from whatever Postgres returned
       const dbDate = b.check_in ? String(b.check_in).substring(0, 10) : '';
-      return dbDate === todayStr && b.status === 'Confirmed';
+      return dbDate === todayStr && b.status === 'Confirmed' && !b.is_monthly;
     });
 
     if (searchQuery) {
@@ -622,7 +627,7 @@ export default function FrontOfficeTerminal() {
     let filtered = bookings.filter(b => {
       // Extract only the first 10 characters
       const dbDate = b.check_out ? String(b.check_out).substring(0, 10) : '';
-      return dbDate === todayStr && b.status === 'Checked In';
+      return dbDate === todayStr && b.status === 'Checked In' && !b.is_monthly;
     });
 
     if (searchQuery) {
@@ -644,6 +649,7 @@ export default function FrontOfficeTerminal() {
     if (filterStartDate || filterEndDate) {
       filtered = bookings.filter(b => {
         if (!['Confirmed', 'Checked In', 'Checked Out'].includes(b.status)) return false;
+        if (b.is_monthly) return false;
 
         const bIn = b.check_in ? String(b.check_in).substring(0, 10) : '';
         const bOut = b.check_out ? String(b.check_out).substring(0, 10) : '';
@@ -654,7 +660,7 @@ export default function FrontOfficeTerminal() {
         return bIn < endBoundary && bOut > startBoundary;
       });
     } else {
-      filtered = bookings.filter(b => b.status === 'Checked In');
+      filtered = bookings.filter(b => b.status === 'Checked In' && !b.is_monthly);
     }
 
     if (searchQuery) {
@@ -673,7 +679,7 @@ export default function FrontOfficeTerminal() {
   
   
   const getAllReservations = () => {
-    let filtered = bookings;
+    let filtered = bookings.filter(b => !b.is_monthly);
     
     // 1. Status Filter
     if (reservationFilter !== 'All') {
@@ -2394,15 +2400,327 @@ export default function FrontOfficeTerminal() {
     );
   };
 
+  const renderMonthlyCoLivingView = () => {
+    const getRoomCapacity = (room: Room): number => {
+      if (room.type === 'Suite') return 3;
+      if (room.type === 'Deluxe') return 3;
+      return 2; // Standard or other rooms are 2 sharing
+    };
+
+    // Filter rooms that are allowed for monthly co-living
+    const monthlyRooms = rooms.filter(
+      r => r.allowed_billing_type === 'monthly'
+    ).sort((a, b) => a.room_number.localeCompare(b.room_number, undefined, { numeric: true, sensitivity: 'base' }));
+
+    // Apply text search filter if any
+    const searchQueryLower = searchQuery.toLowerCase().trim();
+    const filteredMonthlyRooms = searchQueryLower
+      ? monthlyRooms.filter(r => {
+          const roomMatch = r.room_number.toLowerCase().includes(searchQueryLower);
+          const hasGuestMatch = bookings.some(b => 
+            b.room_id === r.id && 
+            b.is_monthly === true &&
+            b.status !== 'Cancelled' && 
+            b.status !== 'Checked Out' &&
+            b.guest_name.toLowerCase().includes(searchQueryLower)
+          );
+          return roomMatch || hasGuestMatch;
+        })
+      : monthlyRooms;
+
+    // Calculate quick stats
+    let totalBeds = 0;
+    let occupiedBeds = 0;
+    let totalMonthlyDues = 0;
+
+    monthlyRooms.forEach(room => {
+      const cap = getRoomCapacity(room);
+      totalBeds += cap;
+      
+      const activeRoomBookings = bookings.filter(b => 
+        b.room_id === room.id && 
+        b.is_monthly === true &&
+        b.status !== 'Cancelled' && 
+        b.status !== 'Checked Out'
+      );
+      occupiedBeds += activeRoomBookings.length;
+
+      activeRoomBookings.forEach(booking => {
+        const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
+        const guestPayments = payments.filter(p => p.booking_id === booking.id);
+        const totalCharged = Number(booking.amount) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
+        const totalPaid = guestPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+        const due = totalCharged - totalPaid;
+        if (due > 0) {
+          totalMonthlyDues += due;
+        }
+      });
+    });
+
+    const vacantBeds = Math.max(0, totalBeds - occupiedBeds);
+
+    return (
+      <div className="space-y-6">
+        {/* STATS OVERVIEW CARDS */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-zinc-900/30 border border-white/[0.05] p-5 rounded-2xl flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-indigo-600/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+              <Building2 size={22} />
+            </div>
+            <div>
+              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Co-Living Rooms</p>
+              <h3 className="text-xl font-bold text-white mt-1">{monthlyRooms.length}</h3>
+            </div>
+          </div>
+
+          <div className="bg-zinc-900/30 border border-white/[0.05] p-5 rounded-2xl flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-emerald-600/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+              <UserCheck size={22} />
+            </div>
+            <div>
+              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Occupied Beds</p>
+              <h3 className="text-xl font-bold text-white mt-1">{occupiedBeds} <span className="text-xs text-zinc-500 font-normal">of {totalBeds}</span></h3>
+            </div>
+          </div>
+
+          <div className="bg-zinc-900/30 border border-white/[0.05] p-5 rounded-2xl flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-amber-600/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+              <Bed size={22} />
+            </div>
+            <div>
+              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Vacant Beds</p>
+              <h3 className="text-xl font-bold text-white mt-1">{vacantBeds} <span className="text-xs text-zinc-500 font-normal">available</span></h3>
+            </div>
+          </div>
+
+          <div className="bg-zinc-900/30 border border-white/[0.05] p-5 rounded-2xl flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-rose-600/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
+              <DollarSign size={22} />
+            </div>
+            <div>
+              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Total Monthly Dues</p>
+              <h3 className="text-xl font-bold text-white mt-1">${totalMonthlyDues.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+            </div>
+          </div>
+        </div>
+
+        {/* SECTION HEADER & CONTROL */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-zinc-900/40 border border-white/[0.06] p-4 rounded-2xl">
+          <div>
+            <h2 className="text-md font-bold text-white">Monthly Co-Living Hub</h2>
+            <p className="text-xs text-zinc-400 mt-1">Manage long-term, multi-sharing residents and billing cycles.</p>
+          </div>
+          <button
+            onClick={() => {
+              setSelectedCoLivingRoomId(undefined);
+              setShowCoLivingModal(true);
+            }}
+            className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs active:scale-95 shadow-lg shadow-indigo-500/10"
+          >
+            <UserPlus size={15} />
+            Add Co-Living Guest
+          </button>
+        </div>
+
+        {filteredMonthlyRooms.length === 0 ? (
+          <div className="py-24 text-center border border-dashed border-white/5 rounded-3xl bg-white/[0.01]">
+            <Home size={40} className="text-zinc-500/40 mx-auto mb-4" />
+            <h3 className="text-white font-bold text-sm">No Co-Living Rooms Found</h3>
+            <p className="text-xs text-zinc-500 mt-1 max-w-md mx-auto leading-relaxed">
+              Ensure you designate rooms as <span className="text-indigo-400 font-bold">Monthly Only</span> or <span className="text-indigo-400 font-bold">Both (Daily/Monthly)</span> in the Room Inventory panel to see them listed here.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+            {filteredMonthlyRooms.map(room => {
+              const capacity = getRoomCapacity(room);
+              const activeRoomBookings = bookings.filter(b => 
+                b.room_id === room.id && 
+                b.is_monthly === true &&
+                b.status !== 'Cancelled' && 
+                b.status !== 'Checked Out'
+              );
+
+              return (
+                <div key={room.id} className="bg-[#121215] border border-white/[0.08] hover:border-white/[0.15] rounded-3xl overflow-hidden transition-all shadow-xl flex flex-col">
+                  {/* Room Card Title Header */}
+                  <div className="p-5 border-b border-white/[0.05] bg-black/20 flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-indigo-600/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 font-black text-sm">
+                        {room.room_number}
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white">Room {room.room_number}</h4>
+                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">{room.type} Class</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end">
+                      <span className="text-[10px] bg-white/5 border border-white/10 px-2.5 py-1 rounded-full text-zinc-400 font-bold uppercase tracking-wider">
+                        {capacity}-Sharing
+                      </span>
+                      <p className="text-[9px] text-zinc-500 mt-1 uppercase font-bold tracking-widest">
+                        {activeRoomBookings.length} of {capacity} Occupied
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Bed Grid List */}
+                  <div className="p-5 space-y-4 flex-1">
+                    {Array.from({ length: capacity }).map((_, index) => {
+                      const booking = activeRoomBookings[index];
+                      const bedLetter = String.fromCharCode(65 + index); // Bed A, Bed B, Bed C
+
+                      if (booking) {
+                        // Compute dues for this specific guest
+                        const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
+                        const guestPayments = payments.filter(p => p.booking_id === booking.id);
+                        
+                        const totalCharged = Number(booking.amount) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
+                        const totalPaid = guestPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+                        const balanceDue = totalCharged - totalPaid;
+
+                        return (
+                          <div key={booking.id} className="p-4 bg-zinc-900/50 border border-white/[0.05] rounded-2xl space-y-3 relative overflow-hidden">
+                            {/* Bed Identifier Indicator */}
+                            <div className="flex justify-between items-start">
+                              <div className="flex items-center gap-2">
+                                <span className="bg-emerald-500/10 text-emerald-400 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border border-emerald-500/20">
+                                  Bed {bedLetter} &bull; Occupied
+                                </span>
+                              </div>
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                balanceDue > 0.01 
+                                  ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' 
+                                  : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                              }`}>
+                                {balanceDue > 0.01 ? `$${balanceDue.toFixed(2)} Due` : 'No Dues'}
+                              </span>
+                            </div>
+
+                            {/* Resident Info Details */}
+                            <div className="space-y-1">
+                              <h5 className="text-sm font-bold text-white flex items-center gap-2">
+                                <User size={14} className="text-indigo-400" />
+                                {booking.guest_name}
+                              </h5>
+                              <div className="text-xs text-zinc-500 space-y-0.5 pl-5">
+                                {booking.guest_phone && <p className="flex items-center gap-1.5"><Phone size={11} /> {booking.guest_phone}</p>}
+                                {booking.guest_email && <p className="flex items-center gap-1.5"><Mail size={11} /> {booking.guest_email}</p>}
+                                <p className="flex items-center gap-1.5"><Calendar size={11} /> Joined: {new Date(booking.check_in).toLocaleDateString()}</p>
+                              </div>
+                            </div>
+
+                            {/* Rent/Cycle/Advance Info */}
+                            <div className="grid grid-cols-2 gap-2 bg-black/30 border border-white/[0.03] p-2.5 rounded-xl text-[10px] text-zinc-400 font-bold">
+                              <div>
+                                <span className="text-zinc-500 font-normal">Monthly Rent:</span>
+                                <p className="text-white font-mono mt-0.5">${(booking.monthly_rate || 0).toFixed(2)}</p>
+                              </div>
+                              <div>
+                                <span className="text-zinc-500 font-normal">Cycle Day:</span>
+                                <p className="text-white font-mono mt-0.5">{booking.billing_cycle_date || 'N/A'}th / Month</p>
+                              </div>
+                              <div className="mt-1.5">
+                                <span className="text-zinc-500 font-normal">Security Deposit:</span>
+                                <p className="text-white font-mono mt-0.5">${Number(booking.amount).toFixed(2)}</p>
+                              </div>
+                              <div className="mt-1.5">
+                                <span className="text-zinc-500 font-normal">Total Paid:</span>
+                                <p className="text-white font-mono mt-0.5">${totalPaid.toFixed(2)}</p>
+                              </div>
+                            </div>
+
+                            {/* Guest Payments List */}
+                            <div className="space-y-1">
+                              <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider pl-1">Payment Ledger / History</span>
+                              {guestPayments.length === 0 ? (
+                                <p className="text-[10px] text-zinc-600 pl-1 italic">No payments recorded yet.</p>
+                              ) : (
+                                <div className="space-y-1 max-h-20 overflow-y-auto no-scrollbar bg-black/10 rounded-lg p-1.5 border border-white/[0.02]">
+                                  {guestPayments.map((p, idx) => (
+                                    <div key={p.id || idx} className="flex justify-between items-center text-[9px] text-zinc-400 bg-white/[0.01] px-1.5 py-1 rounded">
+                                      <span>{new Date(p.created_at || p.payment_date || Date.now()).toLocaleDateString()} ({p.payment_method || 'UPI'})</span>
+                                      <span className="font-mono text-emerald-400 font-bold">${Number(p.amount).toFixed(2)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Collect Rent / Ledger action */}
+                            <div className="flex items-center gap-2 pt-1">
+                              <button
+                                onClick={() => {
+                                  setActiveCheckoutBooking({
+                                    bookingId: booking.id,
+                                    roomId: booking.room_id,
+                                    guestName: booking.guest_name,
+                                    amount: booking.amount
+                                  });
+                                }}
+                                className="flex-1 py-1.5 bg-indigo-600/10 hover:bg-indigo-600 border border-indigo-500/20 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all text-center flex items-center justify-center gap-1"
+                              >
+                                <DollarSign size={11} />
+                                Collect Payment
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedBooking(booking);
+                                }}
+                                className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 border border-white/5 text-zinc-400 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all"
+                              >
+                                Options
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      } else {
+                        return (
+                          <div key={`vacant-${index}`} className="p-4 border border-dashed border-white/10 bg-white/[0.01] rounded-2xl flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center text-zinc-400">
+                                <Bed size={15} />
+                              </div>
+                              <div>
+                                <span className="bg-zinc-800 text-zinc-500 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border border-white/5">
+                                  Bed {bedLetter} &bull; Vacant
+                                </span>
+                                <h5 className="text-[11px] font-bold text-zinc-400 mt-0.5">Vacant Space Available</h5>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => {
+                                setSelectedCoLivingRoomId(room.id);
+                                setShowCoLivingModal(true);
+                              }}
+                              className="px-3.5 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[9px] font-bold uppercase tracking-wider text-zinc-300 hover:text-white transition-all flex items-center justify-center gap-1 active:scale-95"
+                            >
+                              <Plus size={11} />
+                              Assign Guest
+                            </button>
+                          </div>
+                        );
+                      }
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderBalancesView = () => {
     // Filter bookings based on selected balancesFilter (In-House Only or All Active)
-    let filteredBookings = bookings;
+    let filteredBookings = bookings.filter(b => !b.is_monthly);
     
     if (balancesFilter === 'inHouse') {
-      filteredBookings = bookings.filter(b => b.status === 'Checked In');
+      filteredBookings = filteredBookings.filter(b => b.status === 'Checked In');
     } else {
       // All active includes Checked In and Confirmed (excluding Checked Out and Cancelled)
-      filteredBookings = bookings.filter(b => b.status === 'Checked In' || b.status === 'Confirmed');
+      filteredBookings = filteredBookings.filter(b => b.status === 'Checked In' || b.status === 'Confirmed');
     }
 
     // Apply text search if any
@@ -2844,7 +3162,7 @@ export default function FrontOfficeTerminal() {
               <select
                 value={activeTab}
                 onChange={(e) => {
-                  setActiveTab(e.target.value as 'tape' | 'arrivals' | 'departures' | 'house' | 'all' | 'balances' | 'expenses');
+                  setActiveTab(e.target.value as 'tape' | 'arrivals' | 'departures' | 'house' | 'all' | 'balances' | 'expenses' | 'monthly');
                   setSearchQuery('');
                 }}
                 className="w-full appearance-none bg-zinc-900 border border-white/10 rounded-2xl py-3.5 pl-4 pr-12 text-xs text-white font-bold uppercase tracking-wider focus:outline-none focus:border-indigo-500/50 cursor-pointer hover:bg-zinc-800 transition-all shadow-xl active:scale-[0.99]"
@@ -2852,10 +3170,11 @@ export default function FrontOfficeTerminal() {
                 <option value="tape" className="bg-[#0c0c0e] text-white">📅 Tape Chart</option>
                 <option value="arrivals" className="bg-[#0c0c0e] text-white">👤 Arrivals Today ({getArrivalsToday().length})</option>
                 <option value="departures" className="bg-[#0c0c0e] text-white">🚪 Departures Today</option>
-                <option value="house" className="bg-[#0c0c0e] text-white">🛏️ In-House ({bookings.filter(b => b.status === 'Checked In').length} Occupied)</option>
+                <option value="house" className="bg-[#0c0c0e] text-white">🛏️ In-House ({bookings.filter(b => b.status === 'Checked In' && !b.is_monthly).length} Occupied)</option>
                 <option value="balances" className="bg-[#0c0c0e] text-white">💵 Pending Payments</option>
                 <option value="expenses" className="bg-[#0c0c0e] text-white">💸 Expenses & Cash Ledger</option>
                 <option value="all" className="bg-[#0c0c0e] text-white">🔍 Reservations</option>
+                <option value="monthly" className="bg-[#0c0c0e] text-white">🏢 Monthly Co-Living Hub</option>
               </select>
               <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-400">
                 <ChevronsUpDown size={14} />
@@ -2872,6 +3191,7 @@ export default function FrontOfficeTerminal() {
                 { id: 'balances', label: 'Pending Payments', icon: DollarSign },
                 { id: 'expenses', label: 'Expenses & Cash', icon: TrendingDown },
                 { id: 'all', label: 'Reservations', icon: Search },
+                { id: 'monthly', label: 'Monthly Co-Living', icon: Home },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -2888,7 +3208,7 @@ export default function FrontOfficeTerminal() {
                   <tab.icon size={13} />
                   {tab.label}
                   {tab.id === 'arrivals' && getArrivalsToday().length > 0 && <span className="ml-1 bg-white text-indigo-600 px-1.5 py-0.5 rounded-md text-[9px]">{getArrivalsToday().length}</span>}
-                  {tab.id === 'house' && bookings.filter(b => b.status === 'Checked In').length > 0 && <span className="ml-1 bg-emerald-500 text-white px-1.5 py-0.5 rounded-md text-[9px]">{bookings.filter(b => b.status === 'Checked In').length}</span>}
+                  {tab.id === 'house' && bookings.filter(b => b.status === 'Checked In' && !b.is_monthly).length > 0 && <span className="ml-1 bg-emerald-500 text-white px-1.5 py-0.5 rounded-md text-[9px]">{bookings.filter(b => b.status === 'Checked In' && !b.is_monthly).length}</span>}
                 </button>
               ))}
             </div>
@@ -3068,7 +3388,7 @@ export default function FrontOfficeTerminal() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rooms.map((room) => {
+                  {rooms.filter(room => room.allowed_billing_type !== 'monthly').map((room) => {
                     const booking = getBookingForRoom(room.id);
                     return (
                       <tr key={room.id} className="border-b border-white/5 hover:bg-white/[0.01]">
@@ -3206,9 +3526,9 @@ export default function FrontOfficeTerminal() {
                     </div>
                     <div className="text-right">
                       <span className="text-lg sm:text-xl font-black text-emerald-400 tracking-tighter">
-                        {bookings.filter(b => b.status === 'Checked In').length} Rooms Occupied
+                        {bookings.filter(b => b.status === 'Checked In' && !b.is_monthly).length} Rooms Occupied
                       </span>
-                      <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest mt-0.5">out of {rooms.length} total rooms</p>
+                      <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest mt-0.5">out of {rooms.filter(room => room.allowed_billing_type !== 'monthly').length} total rooms</p>
                     </div>
                   </div>
 
@@ -3230,6 +3550,7 @@ export default function FrontOfficeTerminal() {
               )}
               {activeTab === 'balances' && renderBalancesView()}
               {activeTab === 'expenses' && renderExpensesView()}
+              {activeTab === 'monthly' && renderMonthlyCoLivingView()}
             </div>
           )}
         </div>
@@ -4076,6 +4397,20 @@ export default function FrontOfficeTerminal() {
           propertyId={property?.id || ''} 
           rooms={rooms}
           bookings={bookings}
+        />
+      )}
+
+      {showCoLivingModal && (
+        <CoLivingBookingModal 
+          isOpen={showCoLivingModal} 
+          onClose={() => {
+            setShowCoLivingModal(false);
+            setSelectedCoLivingRoomId(undefined);
+          }}
+          propertyId={property?.id || ''} 
+          rooms={rooms}
+          bookings={bookings}
+          defaultRoomId={selectedCoLivingRoomId}
         />
       )}
 
