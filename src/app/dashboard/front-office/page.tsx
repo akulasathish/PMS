@@ -2408,7 +2408,7 @@ export default function FrontOfficeTerminal() {
               className="w-full sm:w-auto bg-emerald-500/10 hover:bg-emerald-500 hover:text-black text-emerald-400 border border-emerald-500/20 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
             >
               <FileText size={14} />
-              Reconcile PDF
+              Shift Handover PDF
             </button>
             <button
               onClick={generateNightAuditPDFReport}
