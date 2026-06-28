@@ -110,6 +110,7 @@ interface CashBalance {
   handed_over_cash?: number | null;
 }
 
+// Synchronized room-related charge checker to align with front-office
 const isRoomRelatedCharge = (desc: string): boolean => {
   const d = (desc || '').toLowerCase();
   return (
