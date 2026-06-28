@@ -186,7 +186,7 @@ export default function FrontOfficeTerminal() {
   const [showBookingModal, setShowBookingModal] = useState(false);
   
   // Tabs State
-  const [activeTab, setActiveTab] = useState<'tape' | 'arrivals' | 'departures' | 'house' | 'all' | 'balances' | 'expenses' | 'monthly'>('tape');
+  const [activeTab, setActiveTab] = useState<'tape' | 'arrivals' | 'departures' | 'house' | 'all' | 'balances' | 'expenses' | 'monthly' | 'reports'>('tape');
   const [showCoLivingModal, setShowCoLivingModal] = useState(false);
   const [selectedCoLivingRoomId, setSelectedCoLivingRoomId] = useState<string | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState('');
@@ -2424,14 +2424,9 @@ export default function FrontOfficeTerminal() {
     }
   };
 
-  const renderExpensesView = () => {
-    const stats = getLedgerTotalsForDate(selectedLedgerDate);
-    const dayExpenses = expenses.filter(e => e.date === selectedLedgerDate);
-    const totalSales = stats.cashPayments + stats.upiPayments + stats.otherPayments;
-    const totalExpensesSum = stats.cashExpenses + stats.upiExpenses;
-    const netBalance = totalSales - totalExpensesSum;
+  const renderReportsView = () => {
     return (
-      <div className="space-y-8">
+      <div className="space-y-8 animate-fade-in">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-zinc-900/40 border border-white/[0.04] p-6 rounded-3xl backdrop-blur-xl">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
             <div className="flex flex-col gap-1.5">
@@ -2447,8 +2442,8 @@ export default function FrontOfficeTerminal() {
               />
             </div>
             <div className="mt-4 sm:mt-0 sm:pl-4 sm:border-l sm:border-white/10">
-              <h3 className="text-sm font-bold text-white">Daily Ledger Overview</h3>
-              <p className="text-xs text-zinc-500 mt-1">Review ledger logs and export registers matching your notebook log.</p>
+              <h3 className="text-sm font-bold text-white">Daily Ledger Reports</h3>
+              <p className="text-xs text-zinc-500 mt-1">Review operational logs and generate export registers.</p>
             </div>
           </div>
           <div className="flex flex-wrap gap-3 w-full lg:w-auto">
@@ -2510,6 +2505,40 @@ export default function FrontOfficeTerminal() {
             </button>
           </div>
         </div>
+      </div>
+    );
+  };
+
+  const renderExpensesView = () => {
+    const stats = getLedgerTotalsForDate(selectedLedgerDate);
+    const dayExpenses = expenses.filter(e => e.date === selectedLedgerDate);
+    const totalSales = stats.cashPayments + stats.upiPayments + stats.otherPayments;
+    const totalExpensesSum = stats.cashExpenses + stats.upiExpenses;
+    const netBalance = totalSales - totalExpensesSum;
+    return (
+      <div className="space-y-8 animate-fade-in">
+        {/* Date Selector Header for Expenses */}
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-zinc-900/40 border border-white/[0.04] p-6 rounded-3xl backdrop-blur-xl">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest pl-1">Selected Ledger Date</span>
+              <input 
+                type="date"
+                value={selectedLedgerDate}
+                onChange={(e) => {
+                  setSelectedLedgerDate(e.target.value);
+                  setNewExpenseDate(e.target.value);
+                }}
+                className="bg-black/60 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white font-bold focus:outline-none focus:border-indigo-500/50 transition-all cursor-pointer [color-scheme:dark] shadow-xl"
+              />
+            </div>
+            <div className="mt-4 sm:mt-0 sm:pl-4 sm:border-l sm:border-white/10">
+              <h3 className="text-sm font-bold text-white">Daily Expenses & Cash Drawer</h3>
+              <p className="text-xs text-zinc-500 mt-1">Log property expenditures and reconcile expected drawer cash vs float.</p>
+            </div>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
           <div className="bg-zinc-900/20 border border-white/[0.04] p-6 rounded-3xl space-y-4">
             <div className="flex items-center justify-between">
@@ -2698,100 +2727,102 @@ export default function FrontOfficeTerminal() {
                     min="1"
                     value={newExpenseQuantity}
                     onChange={(e) => setNewExpenseQuantity(parseInt(e.target.value) || 1)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-2 text-white text-xs focus:outline-none focus:border-indigo-500/50 transition-all font-mono"
+                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-3 text-white text-xs focus:outline-none focus:border-indigo-500/50 transition-all [color-scheme:dark]"
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="col-span-2 space-y-1.5">
                   <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest pl-1">Amount (₹)</label>
                   <input
                     type="number"
-                    required
-                    min="0.01"
                     step="0.01"
+                    required
                     placeholder="0.00"
                     value={newExpenseAmount}
                     onChange={(e) => setNewExpenseAmount(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-2 text-white text-xs focus:outline-none focus:border-indigo-500/50 transition-all font-mono"
+                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-3 text-white text-xs focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-zinc-700"
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest pl-1">Date</label>
-                  <input
-                    type="date"
-                    required
-                    value={newExpenseDate}
-                    onChange={(e) => setNewExpenseDate(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-2 text-white text-xs focus:outline-none focus:border-indigo-500/50 transition-all [color-scheme:dark] cursor-pointer"
-                  />
-                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest pl-1">Date</label>
+                <input
+                  type="date"
+                  required
+                  value={newExpenseDate}
+                  onChange={(e) => setNewExpenseDate(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-3 text-white text-xs focus:outline-none focus:border-indigo-500/50 transition-all [color-scheme:dark] cursor-pointer"
+                />
               </div>
               <button
                 type="submit"
                 disabled={isSavingExpense}
-                className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-indigo-500/10 flex items-center justify-center gap-2 transition-all active:scale-[0.98] mt-2"
+                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs uppercase tracking-widest py-3.5 rounded-xl transition-all shadow-lg shadow-indigo-600/15 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50"
               >
-                {isSavingExpense ? <Loader2 size={14} className="animate-spin" /> : <><Plus size={14} /> Log Expense</>}
+                {isSavingExpense ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" /> Saving...
+                  </>
+                ) : (
+                  <>
+                    <Plus size={14} /> Log Expense
+                  </>
+                )}
               </button>
             </form>
           </div>
-          <div className="lg:col-span-2 bg-[#0a0a0c]/60 border border-white/[0.04] rounded-3xl overflow-hidden shadow-2xl">
-            <div className="p-6 border-b border-white/[0.04] bg-black/20 flex items-center justify-between">
+          <div className="lg:col-span-2 bg-zinc-900/20 border border-white/[0.04] p-6 rounded-3xl space-y-6">
+            <div className="flex items-center justify-between border-b border-white/[0.04] pb-4 flex-wrap gap-4">
               <div>
-                <h3 className="text-sm font-bold text-white">Today&apos;s Expense Ledger</h3>
-                <p className="text-xs text-zinc-500 mt-0.5">Summary of payments logged for {formatFriendlyDate(selectedLedgerDate)}</p>
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <TrendingDown size={16} className="text-rose-400" />
+                  Today&apos;s Expense Ledger
+                </h3>
+                <p className="text-xs text-zinc-500 mt-1">Summary of payments logged for {formatFriendlyDate(selectedLedgerDate)}</p>
               </div>
-              <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest bg-white/5 px-2.5 py-1 rounded-lg">
+              <span className="bg-zinc-800/80 border border-white/5 px-3 py-1 rounded-full text-[10px] font-black uppercase text-zinc-400 tracking-wider">
                 {dayExpenses.length} Records
               </span>
             </div>
             {dayExpenses.length === 0 ? (
-              <div className="py-24 text-center">
-                <CheckCircle2 size={36} className="text-emerald-500/40 mx-auto mb-3" />
+              <div className="py-24 text-center border border-dashed border-white/5 rounded-2xl bg-white/[0.01] flex flex-col items-center justify-center">
+                <CheckCircle2 size={32} className="text-emerald-500/40 mb-3" />
                 <p className="text-zinc-500 font-bold uppercase tracking-widest text-[10px]">No Expenses Logged For This Date</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-black/40 border-b border-white/[0.06] text-[9px] font-black text-zinc-500 uppercase tracking-widest">
-                      <th className="p-4 pl-6">SL</th>
-                      <th className="p-4">Description</th>
-                      <th className="p-4">Category</th>
-                      <th className="p-4">Method</th>
-                      <th className="p-4 text-right">Amount</th>
-                      <th className="p-4 pr-6 text-center">Action</th>
+                    <tr className="border-b border-white/5 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                      <th className="py-3 px-2">Desc</th>
+                      <th className="py-3 px-2">Cat</th>
+                      <th className="py-3 px-2">Qty</th>
+                      <th className="py-3 px-2">Method</th>
+                      <th className="py-3 px-2 text-right">Amount</th>
+                      <th className="py-3 px-2 text-center">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/[0.02]">
-                    {dayExpenses.map((expense, idx) => (
-                      <tr key={expense.id} className="hover:bg-white/[0.01] transition-colors">
-                        <td className="p-4 pl-6 align-middle text-xs font-bold text-zinc-500">{idx + 1}</td>
-                        <td className="p-4 align-middle text-xs font-bold text-white">{expense.description}</td>
-                        <td className="p-4 align-middle">
-                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-white/5 text-zinc-400 border border-white/5">
-                            {expense.category}
+                  <tbody className="divide-y divide-white/[0.03] text-xs">
+                    {dayExpenses.map((exp) => (
+                      <tr key={exp.id} className="text-zinc-300 hover:text-white transition-colors">
+                        <td className="py-3 px-2 font-medium">{exp.description}</td>
+                        <td className="py-3 px-2">
+                          <span className="bg-zinc-800 px-2 py-0.5 rounded text-[10px] font-semibold text-zinc-400">
+                            {exp.category}
                           </span>
                         </td>
-                        <td className="p-4 align-middle">
-                          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${
-                            expense.payment_method === 'Cash' 
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                              : 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
-                          }`}>
-                            {expense.payment_method}
-                          </span>
+                        <td className="py-3 px-2 text-zinc-500">{exp.quantity}x</td>
+                        <td className="py-3 px-2 font-bold text-[10px] tracking-wider text-indigo-400">{exp.payment_method}</td>
+                        <td className="py-3 px-2 text-right font-bold text-rose-400">
+                          ₹{(Number(exp.amount) * Number(exp.quantity || 1)).toFixed(2)}
                         </td>
-                        <td className="p-4 text-right align-middle font-mono font-bold text-white">
-                          ₹{Number(expense.amount).toFixed(2)}
-                        </td>
-                        <td className="p-4 pr-6 text-center align-middle">
+                        <td className="py-3 px-2 text-center">
                           <button
-                            onClick={() => handleDeleteExpense(expense.id)}
+                            onClick={() => handleDeleteExpense(exp.id)}
                             disabled={isSavingExpense}
-                            className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                            title="Delete Entry"
+                            className="p-1.5 text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
+                            title="Delete record"
                           >
-                            <Trash2 size={14} />
+                            <Trash2 size={13} />
                           </button>
                         </td>
                       </tr>
@@ -3516,8 +3547,8 @@ export default function FrontOfficeTerminal() {
           {NAV_ITEMS.map((item) => {
             const locked = !hasAccess(item.module);
             const isItemActive = item.label === "Daily Reports" 
-              ? activeTab === 'expenses' 
-              : (item.label === "Front Office" ? activeTab !== 'expenses' : item.active);
+              ? activeTab === 'reports' 
+              : (item.label === "Front Office" ? activeTab !== 'reports' : item.active);
             return (
               <Link
                 key={item.label}
@@ -3528,7 +3559,9 @@ export default function FrontOfficeTerminal() {
                     alert(`Access Restricted: The ${item.label} module requires higher authorization.`);
                   } else if (item.label === "Daily Reports") {
                     e.preventDefault();
-                    setActiveTab('expenses');
+                    setActiveTab('reports');
+                  } else if (item.label === "Front Office" && activeTab === 'reports') {
+                    setActiveTab('tape');
                   }
                 }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all ${
@@ -3548,15 +3581,25 @@ export default function FrontOfficeTerminal() {
       <main className="flex-1 flex flex-col overflow-hidden">
         <header className="p-4 md:p-8 border-b border-white/[0.04] bg-[#08080a] flex flex-col gap-4 md:gap-6">
           <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-            <div>
-              <h2 className="text-xl sm:text-3xl font-bold text-white tracking-tight flex items-center gap-2 sm:gap-3">
-                <Activity className="text-emerald-400" />
-                Front Office Terminal
-              </h2>
-              <p className="text-zinc-500 text-xs sm:text-sm mt-1">Real-time availability and guest management</p>
-            </div>
+            {activeTab === 'reports' ? (
+              <div>
+                <h2 className="text-xl sm:text-3xl font-bold text-white tracking-tight flex items-center gap-2 sm:gap-3">
+                  <FileText className="text-indigo-400" />
+                  Daily Reports Terminal
+                </h2>
+                <p className="text-zinc-500 text-xs sm:text-sm mt-1">Audit operations and generate export registers</p>
+              </div>
+            ) : (
+              <div>
+                <h2 className="text-xl sm:text-3xl font-bold text-white tracking-tight flex items-center gap-2 sm:gap-3">
+                  <Activity className="text-emerald-400" />
+                  Front Office Terminal
+                </h2>
+                <p className="text-zinc-500 text-xs sm:text-sm mt-1">Real-time availability and guest management</p>
+              </div>
+            )}
             
-            {canCreateBooking() && (
+            {activeTab !== 'reports' && canCreateBooking() && (
               <button 
                 onClick={() => setShowBookingModal(true)}
                 className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg active:scale-95 text-xs sm:text-sm"
@@ -3568,13 +3611,14 @@ export default function FrontOfficeTerminal() {
           </div>
 
           {/* TAB SYSTEM */}
-          <div className="flex flex-col w-full gap-6">
-            {/* Mobile Dropdown Tab Selector */}
-            <div className="block md:hidden w-full relative">
-              <select
-                value={activeTab}
-                onChange={(e) => {
-                  setActiveTab(e.target.value as 'tape' | 'arrivals' | 'departures' | 'house' | 'all' | 'balances' | 'expenses' | 'monthly');
+          {activeTab !== 'reports' && (
+            <div className="flex flex-col w-full gap-6">
+              {/* Mobile Dropdown Tab Selector */}
+              <div className="block md:hidden w-full relative">
+                <select
+                  value={activeTab}
+                  onChange={(e) => {
+                    setActiveTab(e.target.value as 'tape' | 'arrivals' | 'departures' | 'house' | 'all' | 'balances' | 'expenses' | 'monthly' | 'reports');
                   setSearchQuery('');
                 }}
                 className="w-full appearance-none bg-zinc-900 border border-white/10 rounded-2xl py-3.5 pl-4 pr-12 text-xs text-white font-bold uppercase tracking-wider focus:outline-none focus:border-indigo-500/50 cursor-pointer hover:bg-zinc-800 transition-all shadow-xl active:scale-[0.99]"
@@ -3785,6 +3829,7 @@ export default function FrontOfficeTerminal() {
             )}
 
           </div>
+          )}
         </header>
 
         <div className="flex-1 p-4 md:p-8 pb-28 lg:pb-8 overflow-auto">
@@ -3963,6 +4008,7 @@ export default function FrontOfficeTerminal() {
               {activeTab === 'balances' && renderBalancesView()}
               {activeTab === 'expenses' && renderExpensesView()}
               {activeTab === 'monthly' && renderMonthlyCoLivingView()}
+              {activeTab === 'reports' && renderReportsView()}
             </div>
           )}
         </div>
@@ -4910,8 +4956,8 @@ export default function FrontOfficeTerminal() {
           {NAV_ITEMS.map((item) => {
             const locked = !hasAccess(item.module);
             const isItemActive = item.label === "Daily Reports" 
-              ? activeTab === 'expenses' 
-              : (item.label === "Front Office" ? activeTab !== 'expenses' : item.active);
+              ? activeTab === 'reports' 
+              : (item.label === "Front Office" ? activeTab !== 'reports' : item.active);
             return (
               <Link
                 key={item.label}
@@ -4922,7 +4968,9 @@ export default function FrontOfficeTerminal() {
                     alert(`Access Restricted: The ${item.label} module requires higher authorization.`);
                   } else if (item.label === "Daily Reports") {
                     e.preventDefault();
-                    setActiveTab('expenses');
+                    setActiveTab('reports');
+                  } else if (item.label === "Front Office" && activeTab === 'reports') {
+                    setActiveTab('tape');
                   }
                 }}
                 className={`flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl transition-all duration-300 ${
