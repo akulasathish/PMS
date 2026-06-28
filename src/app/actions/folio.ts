@@ -83,6 +83,7 @@ export async function postPayment(formData: FormData) {
   const amountStr = formData.get('amount') as string;
   const method = formData.get('method') as string;
   const transactionId = formData.get('transactionId') as string | null;
+  const customBusinessDate = formData.get('businessDate') as string | null;
 
   if (!bookingId || !propertyId || !amountStr || !method) {
     return { error: 'Missing required fields.' };
@@ -95,13 +96,16 @@ export async function postPayment(formData: FormData) {
 
   const supabaseAdmin = getSupabaseAdmin();
   
-  // Fetch current business_date from app_settings
-  const { data: settings } = await supabaseAdmin
-    .from('app_settings')
-    .select('value')
-    .eq('key', 'business_date')
-    .single();
-  const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+  let businessDate = customBusinessDate;
+  if (!businessDate) {
+    // Fetch current business_date from app_settings
+    const { data: settings } = await supabaseAdmin
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'business_date')
+      .single();
+    businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+  }
   
   // Insert the payment securely
   const { data, error } = await supabaseAdmin
@@ -127,7 +131,7 @@ export async function postPayment(formData: FormData) {
   await logAction({
     propertyId,
     action: 'PAYMENT_RECEIVED',
-    details: { bookingId, amount, method, transactionId, paymentId: data.id },
+    details: { bookingId, amount, method, transactionId, paymentId: data.id, businessDate },
     userId: user.id
   });
 
@@ -282,10 +286,19 @@ export async function getFolioSummary(bookingId: string) {
     }
   }
 
+  // Fetch current business_date from app_settings to default the payment logging date
+  const { data: settings } = await supabaseAdmin
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'business_date')
+    .single();
+  const activeBusinessDate = settings?.value || new Date().toISOString().substring(0, 10);
+
   return {
     success: true,
     data: {
       bookingId: booking.id,
+      businessDate: activeBusinessDate,
       isMonthly: !!booking.is_monthly,
       roomAmount,
       bookingStatus: booking.status,

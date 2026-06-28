@@ -39,6 +39,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
   
   // Track selected payment method
   const [paymentMethod, setPaymentMethod] = useState('UPI');
+  const [isPrepaid, setIsPrepaid] = useState(false);
 
   // Post charge dropdown states
   const [chargeCategory, setChargeCategory] = useState('Food & Water');
@@ -168,6 +169,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
       await loadFolio();
       setActiveTab('summary');
       setPaymentMethod('UPI'); // Reset to default
+      setIsPrepaid(false); // Reset prepaid toggle
       setActionLoading(false);
     }
   };
@@ -677,6 +679,42 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                             className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all font-mono"
                           />
                         </div>
+
+                        <div className="flex items-center gap-2.5 py-1 px-1">
+                          <input 
+                            type="checkbox" 
+                            id="isPrepaid"
+                            checked={isPrepaid}
+                            onChange={(e) => setIsPrepaid(e.target.checked)}
+                            className="w-4 h-4 rounded border-white/10 bg-black/40 text-indigo-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+                          />
+                          <label htmlFor="isPrepaid" className="text-xs font-medium text-zinc-400 cursor-pointer hover:text-white select-none transition-colors">
+                            Prepaid / Advance Payment Received
+                          </label>
+                        </div>
+
+                        <AnimatePresence>
+                          {isPrepaid && (
+                            <motion.div 
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="space-y-1.5 pt-2 border-t border-white/5 overflow-hidden"
+                            >
+                              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Payment Receipt Date (Prepaid Date)</label>
+                              <input 
+                                name="businessDate" 
+                                type="date" 
+                                required
+                                defaultValue={folio?.businessDate || new Date().toISOString().substring(0, 10)}
+                                className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all font-mono"
+                              />
+                              <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
+                                Specifying the prepaid receipt date ensures this payment is accounted for on the correct day in your PMS accounting reports, matching your physical bank statement.
+                              </p>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                         <button disabled={actionLoading} type="submit" className="w-full bg-emerald-500 text-black font-bold uppercase tracking-wider text-xs py-3 rounded-xl mt-4 hover:bg-emerald-400 transition-colors flex justify-center">
                           {actionLoading ? <Loader2 size={16} className="animate-spin" /> : 'Confirm Payment'}
                         </button>
