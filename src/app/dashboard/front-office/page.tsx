@@ -4872,6 +4872,7 @@ export default function FrontOfficeTerminal() {
           propertyId={property?.id || ''} 
           rooms={rooms}
           bookings={bookings}
+          businessDate={businessDate}
         />
       )}
 
@@ -4886,6 +4887,7 @@ export default function FrontOfficeTerminal() {
           rooms={rooms}
           bookings={bookings}
           defaultRoomId={selectedCoLivingRoomId}
+          businessDate={businessDate}
         />
       )}
 

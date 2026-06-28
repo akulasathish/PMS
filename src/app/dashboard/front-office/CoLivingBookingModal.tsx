@@ -14,9 +14,10 @@ interface CoLivingBookingModalProps {
   rooms: Room[];
   bookings: Booking[];
   defaultRoomId?: string;
+  businessDate?: string;
 }
 
-export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, propertyId, rooms, bookings, defaultRoomId }: CoLivingBookingModalProps) {
+export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, propertyId, rooms, bookings, defaultRoomId, businessDate }: CoLivingBookingModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -28,10 +29,15 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
     return `${year}-${month}-${day}`;
   };
 
-  const todayStr = getLocalYYYYMMDD(new Date());
-  const nextYear = new Date();
-  nextYear.setFullYear(nextYear.getFullYear() + 1);
-  const nextYearStr = getLocalYYYYMMDD(nextYear);
+  const todayStr = businessDate || getLocalYYYYMMDD(new Date());
+
+  const getNextYearFromStr = (dateStr: string) => {
+    const parts = dateStr.split('-');
+    const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    d.setFullYear(d.getFullYear() + 1);
+    return getLocalYYYYMMDD(d);
+  };
+  const nextYearStr = getNextYearFromStr(todayStr);
 
   const [selectedCheckIn, setSelectedCheckIn] = useState(todayStr);
   const [selectedCheckOut, setSelectedCheckOut] = useState(nextYearStr); // Co-living defaults to 1 year/long-term

@@ -13,9 +13,10 @@ interface BookingModalProps {
   propertyId: string;
   rooms: Room[];
   bookings: Booking[]; // Accept all bookings to check for overlaps
+  businessDate?: string;
 }
 
-export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, rooms, bookings }: BookingModalProps) {
+export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, rooms, bookings, businessDate }: BookingModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -28,10 +29,15 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
     return `${year}-${month}-${day}`;
   };
 
-  const todayStr = getLocalYYYYMMDD(new Date());
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = getLocalYYYYMMDD(tomorrow);
+  const todayStr = businessDate || getLocalYYYYMMDD(new Date());
+
+  const getTomorrowFromStr = (dateStr: string) => {
+    const parts = dateStr.split('-');
+    const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    d.setDate(d.getDate() + 1);
+    return getLocalYYYYMMDD(d);
+  };
+  const tomorrowStr = getTomorrowFromStr(todayStr);
 
   // Track the dates selected in the form to dynamically filter room availability
   const [selectedCheckIn, setSelectedCheckIn] = useState(todayStr);
