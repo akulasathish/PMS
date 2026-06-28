@@ -126,6 +126,8 @@ const isRoomRelatedCharge = (desc: string): boolean => {
     d.includes('due amount') ||
     d.includes('balance transfer') ||
     d.includes('extra guest') ||
+    d.includes('extra person') ||
+    d.includes('extra occupant') ||
     d.includes('extra bed') ||
     d.includes('upgrade')
   );
