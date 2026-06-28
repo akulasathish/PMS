@@ -96,7 +96,34 @@ const isCardRoomCharge = (desc: string): boolean => {
     return false;
   }
   return isRoomRelatedCharge(desc);
-};const compressImage = (file: File, maxWidth = 1600, maxHeight = 1600, quality = 0.75): Promise<Blob> => {
+};
+
+const openSecurePDFWindow = () => {
+  if (typeof window === 'undefined') return null;
+  const newWindow = window.open('', '_blank');
+  if (newWindow) {
+    try {
+      newWindow.document.title = "Generating Report...";
+      newWindow.document.body.innerHTML = `
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0a0a0c; color: #fff; margin: 0; padding: 20px; box-sizing: border-box; text-align: center;">
+          <div style="width: 48px; height: 48px; border: 3px solid rgba(255,255,255,0.05); border-radius: 50%; border-top-color: #4f46e5; animation: spin 1s linear infinite;"></div>
+          <p style="margin-top: 24px; font-size: 15px; font-weight: 700; color: #f4f4f5; letter-spacing: 0.1em; text-transform: uppercase;">Generating Secure Report</p>
+          <p style="margin-top: 6px; font-size: 12px; color: #71717a; max-width: 280px; line-height: 1.5;">Please wait while your PDF report is compiled on-the-fly.</p>
+          <style>
+            @keyframes spin {
+              to { transform: rotate(360deg); }
+            }
+          </style>
+        </div>
+      `;
+    } catch (e) {
+      console.warn("Could not write loader to new window", e);
+    }
+  }
+  return newWindow;
+};
+
+const compressImage = (file: File, maxWidth = 1600, maxHeight = 1600, quality = 0.75): Promise<Blob> => {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -1329,8 +1356,13 @@ export default function FrontOfficeTerminal() {
   };
 
   const generateHorizontalPDFReport = async (type: 'checkins' | 'checkouts' | 'pending' | 'inhouse') => {
-    if (!property) return;
-    const { jsPDF } = await import('jspdf');
+    const newWindow = openSecurePDFWindow();
+    if (!property) {
+      if (newWindow) newWindow.close();
+      return;
+    }
+    try {
+      const { jsPDF } = await import('jspdf');
     
     // Polyfill window.jsPDF to ensure jspdf-autotable loads/binds properly in Next.js
     if (typeof window !== 'undefined') {
@@ -1505,14 +1537,27 @@ export default function FrontOfficeTerminal() {
       }
     });
     
-    // Output a Blob and open it in a new tab for inline previewing/printing/downloading
-    const pdfBlob = doc.output('blob');
-    const pdfUrl = URL.createObjectURL(pdfBlob);
-    window.open(pdfUrl, '_blank');
+      // Output a Blob and open it in a new tab for inline previewing/printing/downloading
+      const pdfBlob = doc.output('blob');
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      if (newWindow) {
+        newWindow.location.href = pdfUrl;
+      } else {
+        window.open(pdfUrl, '_blank');
+      }
+    } catch (err: any) {
+      if (newWindow) newWindow.close();
+      console.error("PDF Generate error:", err);
+      alert("Failed to build PDF. Please check console.");
+    }
   };
 
   const generateReconciliationPDFReport = async () => {
-    if (!property) return;
+    const newWindow = openSecurePDFWindow();
+    if (!property) {
+      if (newWindow) newWindow.close();
+      return;
+    }
     try {
       const { jsPDF } = await import('jspdf');
       const { default: autoTable } = await import('jspdf-autotable');
@@ -1781,15 +1826,24 @@ export default function FrontOfficeTerminal() {
       // Output and open in a new tab (inline PDF viewer)
       const pdfBlob = doc.output('blob');
       const pdfUrl = URL.createObjectURL(pdfBlob);
-      window.open(pdfUrl, '_blank');
+      if (newWindow) {
+        newWindow.location.href = pdfUrl;
+      } else {
+        window.open(pdfUrl, '_blank');
+      }
     } catch (err) {
+      if (newWindow) newWindow.close();
       console.error("PDF Generate error:", err);
       alert("Failed to build PDF. Please check console.");
     }
   };
 
   const generateNightAuditPDFReport = async () => {
-    if (!property) return;
+    const newWindow = openSecurePDFWindow();
+    if (!property) {
+      if (newWindow) newWindow.close();
+      return;
+    }
     try {
       const { jsPDF } = await import('jspdf');
       const { default: autoTable } = await import('jspdf-autotable');
@@ -2033,15 +2087,24 @@ export default function FrontOfficeTerminal() {
       // Output and open in a new tab (inline PDF viewer)
       const pdfBlob = doc.output('blob');
       const pdfUrl = URL.createObjectURL(pdfBlob);
-      window.open(pdfUrl, '_blank');
+      if (newWindow) {
+        newWindow.location.href = pdfUrl;
+      } else {
+        window.open(pdfUrl, '_blank');
+      }
     } catch (err) {
+      if (newWindow) newWindow.close();
       console.error("PDF Generate error:", err);
       alert("Failed to build PDF. Please check console.");
     }
   };
 
   const generateMonthlyPaymentsPDFReport = async () => {
-    if (!property) return;
+    const newWindow = openSecurePDFWindow();
+    if (!property) {
+      if (newWindow) newWindow.close();
+      return;
+    }
     try {
       const { jsPDF } = await import('jspdf');
       const { default: autoTable } = await import('jspdf-autotable');
@@ -2186,15 +2249,24 @@ export default function FrontOfficeTerminal() {
       // Output and open in a new tab
       const pdfBlob = doc.output('blob');
       const pdfUrl = URL.createObjectURL(pdfBlob);
-      window.open(pdfUrl, '_blank');
+      if (newWindow) {
+        newWindow.location.href = pdfUrl;
+      } else {
+        window.open(pdfUrl, '_blank');
+      }
     } catch (err) {
+      if (newWindow) newWindow.close();
       console.error("PDF Generate error:", err);
       alert("Failed to build PDF. Please check console.");
     }
   };
 
   const generateCentralPaymentsPDFReport = async () => {
-    if (!property) return;
+    const newWindow = openSecurePDFWindow();
+    if (!property) {
+      if (newWindow) newWindow.close();
+      return;
+    }
     try {
       const { jsPDF } = await import('jspdf');
       const { default: autoTable } = await import('jspdf-autotable');
@@ -2340,8 +2412,13 @@ export default function FrontOfficeTerminal() {
       // Output and open in a new tab
       const pdfBlob = doc.output('blob');
       const pdfUrl = URL.createObjectURL(pdfBlob);
-      window.open(pdfUrl, '_blank');
+      if (newWindow) {
+        newWindow.location.href = pdfUrl;
+      } else {
+        window.open(pdfUrl, '_blank');
+      }
     } catch (err) {
+      if (newWindow) newWindow.close();
       console.error("PDF Generate error:", err);
       alert("Failed to build PDF. Please check console.");
     }
@@ -2380,56 +2457,56 @@ export default function FrontOfficeTerminal() {
               className="flex-1 sm:flex-initial bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
             >
               <Download size={14} />
-              Check-Ins PDF
+              Check-Ins Report
             </button>
             <button
               onClick={() => generateHorizontalPDFReport('inhouse')}
               className="flex-1 sm:flex-initial bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
             >
               <Download size={14} />
-              In-House PDF
+              In-House Report
             </button>
             <button
               onClick={() => generateHorizontalPDFReport('checkouts')}
               className="flex-1 sm:flex-initial bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
             >
               <Download size={14} />
-              Check-Outs PDF
+              Check-Outs Report
             </button>
             <button
               onClick={() => generateHorizontalPDFReport('pending')}
               className="flex-1 sm:flex-initial bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
             >
               <Download size={14} />
-              Dues PDF
+              Dues Report
             </button>
             <button
               onClick={generateReconciliationPDFReport}
               className="w-full sm:w-auto bg-emerald-500/10 hover:bg-emerald-500 hover:text-black text-emerald-400 border border-emerald-500/20 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
             >
               <FileText size={14} />
-              Shift Handover PDF
+              Shift Handover Report
             </button>
             <button
               onClick={generateNightAuditPDFReport}
               className="w-full sm:w-auto bg-amber-500/10 hover:bg-amber-500 hover:text-black text-amber-400 border border-amber-500/20 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
             >
               <Moon size={14} />
-              Night Audit PDF
+              Night Audit Report
             </button>
             <button
               onClick={generateMonthlyPaymentsPDFReport}
               className="w-full sm:w-auto bg-indigo-500/10 hover:bg-indigo-500 hover:text-black text-indigo-400 border border-indigo-500/20 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
             >
               <Users size={14} />
-              Monthly Payments PDF
+              Monthly Payments Report
             </button>
             <button
               onClick={generateCentralPaymentsPDFReport}
               className="w-full sm:w-auto bg-emerald-500/10 hover:bg-emerald-500 hover:text-black text-emerald-400 border border-emerald-500/20 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
             >
               <ClipboardCheck size={14} />
-              Central Payments PDF
+              Central Payments Report
             </button>
           </div>
         </div>
