@@ -2201,16 +2201,16 @@ export default function FrontOfficeTerminal() {
         head: [["S.No", "Room", "Guest Name", "Payment Mode", "Transaction ID", "Classification", "Amount"]],
         body: rows,
         theme: 'grid',
-        styles: { fontSize: 8.5, cellPadding: 4, font: 'helvetica' },
+        styles: { fontSize: 8.5, cellPadding: 2.2, font: 'helvetica' },
         headStyles: { fillColor: [49, 46, 129], textColor: [255, 255, 255], fontStyle: 'bold' }, // indigo-800
         columnStyles: {
-          0: { halign: 'center', cellWidth: 15 },
-          1: { halign: 'center', cellWidth: 18 },
+          0: { halign: 'center', cellWidth: 10 },
+          1: { halign: 'center', cellWidth: 15 },
           2: { fontStyle: 'bold', cellWidth: 40 },
-          3: { halign: 'center', cellWidth: 25 },
-          4: { halign: 'center', cellWidth: 35 },
-          5: { halign: 'center', cellWidth: 42 },
-          6: { halign: 'right', fontStyle: 'bold' }
+          3: { halign: 'center', cellWidth: 22 },
+          4: { halign: 'center', cellWidth: 30 },
+          5: { halign: 'center', cellWidth: 38 },
+          6: { halign: 'right', fontStyle: 'bold', cellWidth: 25 }
         }
       });
 
@@ -2361,17 +2361,17 @@ export default function FrontOfficeTerminal() {
         head: [["S.No", "Room", "Guest Name", "Guest Class", "Mode", "Transaction ID", "Classification", "Amount"]],
         body: rows,
         theme: 'grid',
-        styles: { fontSize: 8, cellPadding: 3.5, font: 'helvetica' },
+        styles: { fontSize: 8, cellPadding: 2, font: 'helvetica' },
         headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontStyle: 'bold' }, // slate-700
         columnStyles: {
           0: { halign: 'center', cellWidth: 10 },
-          1: { halign: 'center', cellWidth: 15 },
-          2: { fontStyle: 'bold', cellWidth: 35 },
-          3: { halign: 'center', cellWidth: 25 },
-          4: { halign: 'center', cellWidth: 18 },
-          5: { halign: 'center', cellWidth: 32 },
-          6: { halign: 'center', cellWidth: 35 },
-          7: { halign: 'right', fontStyle: 'bold' }
+          1: { halign: 'center', cellWidth: 12 },
+          2: { fontStyle: 'bold', cellWidth: 32 },
+          3: { halign: 'center', cellWidth: 22 },
+          4: { halign: 'center', cellWidth: 14 },
+          5: { halign: 'center', cellWidth: 28 },
+          6: { halign: 'center', cellWidth: 34 },
+          7: { halign: 'right', fontStyle: 'bold', cellWidth: 28 }
         }
       });
 

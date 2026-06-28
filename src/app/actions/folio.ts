@@ -286,6 +286,7 @@ export async function getFolioSummary(bookingId: string) {
     success: true,
     data: {
       bookingId: booking.id,
+      isMonthly: !!booking.is_monthly,
       roomAmount,
       bookingStatus: booking.status,
       checkIn: booking.check_in,

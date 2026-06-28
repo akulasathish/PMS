@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { X, Loader2, Bed, Calendar, User, Mail, Phone, DollarSign, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import { X, Loader2, Bed, Calendar, User, Mail, Phone, DollarSign, ShieldAlert, CheckCircle2, Search } from 'lucide-react';
 import { createBooking } from '@/app/actions/booking';
 import { Room, Booking } from '@/lib/types';
 
@@ -36,6 +36,7 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
   // Track the dates selected in the form to dynamically filter room availability
   const [selectedCheckIn, setSelectedCheckIn] = useState(todayStr);
   const [selectedCheckOut, setSelectedCheckOut] = useState(tomorrowStr);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Calculate truly available rooms based on physical state AND date overlap
   const availableRooms = rooms.filter(room => {
@@ -124,21 +125,41 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
             <form action={handleSubmit} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Room Assignment (Select 1 or more for Group Booking)</label>
+                
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Search room number..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2 px-3 pl-9 text-white text-xs placeholder:text-zinc-600 focus:outline-none focus:border-azure-500/50 transition-all mb-2"
+                  />
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 -mt-1 text-zinc-500">
+                    <Search size={14} />
+                  </div>
+                </div>
+
                 <div className="max-h-40 overflow-y-auto border border-white/10 bg-black/50 rounded-xl p-3 space-y-2 no-scrollbar">
                   {availableRooms.length === 0 ? (
                     <div className="text-sm text-zinc-500 text-center py-2">NO ROOMS AVAILABLE FOR THESE DATES</div>
                   ) : (
-                    availableRooms.map(room => (
-                      <label key={room.id} className="flex items-center gap-3 text-white text-sm cursor-pointer hover:bg-white/5 p-2 rounded-lg transition-colors">
-                        <input
-                          type="checkbox"
-                          name="roomIds"
-                          value={room.id}
-                          className="w-4 h-4 rounded border-zinc-700 bg-zinc-800 text-azure-600 focus:ring-azure-500 focus:ring-offset-zinc-900 cursor-pointer"
-                        />
-                        <span className="font-bold text-zinc-100">Room {room.room_number} <span className="text-zinc-500 font-normal">({room.type})</span></span>
-                      </label>
-                    ))
+                    availableRooms.filter(room => room.room_number.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 ? (
+                      <div className="text-sm text-zinc-500 text-center py-2">NO MATCHING ROOMS FOUND</div>
+                    ) : (
+                      availableRooms
+                        .filter(room => room.room_number.toLowerCase().includes(searchQuery.toLowerCase()))
+                        .map(room => (
+                          <label key={room.id} className="flex items-center gap-3 text-white text-sm cursor-pointer hover:bg-white/5 p-2 rounded-lg transition-colors">
+                            <input
+                              type="checkbox"
+                              name="roomIds"
+                              value={room.id}
+                              className="w-4 h-4 rounded border-zinc-700 bg-zinc-800 text-azure-600 focus:ring-azure-500 focus:ring-offset-zinc-900 cursor-pointer"
+                            />
+                            <span className="font-bold text-zinc-100">Room {room.room_number} <span className="text-zinc-500 font-normal">({room.type})</span></span>
+                          </label>
+                        ))
+                    )
                   )}
                 </div>
               </div>

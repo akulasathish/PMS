@@ -57,6 +57,11 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
       setError(res.error);
     } else {
       setFolio(res.data);
+      if (res.data?.isMonthly) {
+        setChargeCategory('Room Rent');
+      } else {
+        setChargeCategory('Food & Water');
+      }
     }
     setLoading(false);
   };
@@ -359,7 +364,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                   <motion.div key="summary" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
                     
                     {/* Automated Time Rule Recommendation Banner */}
-                    {((folio?.proposedLateCheckoutFee > 0 || folio?.proposedEarlyCheckinFee > 0) && !loading) && (
+                    {((folio?.proposedLateCheckoutFee > 0 || folio?.proposedEarlyCheckinFee > 0) && !loading && !folio?.isMonthly) && (
                       <motion.div 
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -549,11 +554,24 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                             onChange={(e) => setChargeCategory(e.target.value)}
                             className="w-full bg-black/40 border border-white/10 rounded-xl py-3.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all appearance-none"
                           >
-                            <option value="Food & Water" className="bg-zinc-900 text-white">Food & Water</option>
-                            <option value="Late Checkout" className="bg-zinc-900 text-white">Late Checkout</option>
-                            <option value="Early Check-In" className="bg-zinc-900 text-white">Early Check-In</option>
-                            <option value="Previous Stay Past Due" className="bg-zinc-900 text-white">Previous Stay Pending Dues</option>
-                            <option value="Others" className="bg-zinc-900 text-white">Others</option>
+                            {folio?.isMonthly ? (
+                              <>
+                                <option value="Room Rent" className="bg-zinc-900 text-white">Room Rent</option>
+                                <option value="Advance Payment" className="bg-zinc-900 text-white">Advance Payment</option>
+                                <option value="Food & Water Charges" className="bg-zinc-900 text-white">Food & Water Charges</option>
+                                <option value="Other Utilities" className="bg-zinc-900 text-white">Other Utilities</option>
+                                <option value="Others" className="bg-zinc-900 text-white">Others</option>
+                              </>
+                            ) : (
+                              <>
+                                <option value="Food & Water" className="bg-zinc-900 text-white">Food & Water</option>
+                                <option value="Late Checkout" className="bg-zinc-900 text-white">Late Checkout</option>
+                                <option value="Early Check-In" className="bg-zinc-900 text-white">Early Check-In</option>
+                                <option value="Extra Person Charge" className="bg-zinc-900 text-white">Extra Person Charge</option>
+                                <option value="Previous Stay Past Due" className="bg-zinc-900 text-white">Previous Stay Pending Dues</option>
+                                <option value="Others" className="bg-zinc-900 text-white">Others</option>
+                              </>
+                            )}
                           </select>
                         </div>
 
@@ -649,9 +667,13 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                         )}
 
                         <div className="space-y-1.5">
-                          <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Transaction ID (Optional)</label>
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">
+                            {folio?.isMonthly ? "Transaction No / Bill No" : "Transaction ID (Optional)"}
+                          </label>
                           <input 
-                            name="transactionId" type="text" placeholder="e.g. txn_12345"
+                            name="transactionId" 
+                            type="text" 
+                            placeholder={folio?.isMonthly ? "e.g. BILL-102 or UPI Transaction ID" : "e.g. txn_12345"}
                             className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all font-mono"
                           />
                         </div>

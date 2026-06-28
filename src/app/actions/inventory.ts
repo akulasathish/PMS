@@ -315,3 +315,54 @@ export async function resolveRoomBlockByRoom(roomId: string) {
 
   return resolveRoomBlock(block.id);
 }
+
+/**
+ * Convert a room category between daily and monthly with booking validation checks
+ */
+export async function convertRoomCategory(roomId: string, targetType: 'daily' | 'monthly', sharingCapacity?: number) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) return { error: 'Unauthorized. No session found.' };
+  
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // Safety check: Are there any active or future bookings?
+  const { data: activeBookings } = await supabaseAdmin
+    .from('bookings')
+    .select('id, guest_name')
+    .eq('room_id', roomId)
+    .in('status', ['Confirmed', 'Checked In']);
+
+  if (activeBookings && activeBookings.length > 0) {
+    const names = activeBookings.map(b => b.guest_name).join(', ');
+    return { error: `Cannot convert room category because there are active or future bookings assigned to this room (Guests: ${names}).` };
+  }
+
+  const updatePayload: any = {
+    allowed_billing_type: targetType
+  };
+
+  if (targetType === 'monthly') {
+    updatePayload.sharing_capacity = sharingCapacity || 2;
+  } else {
+    updatePayload.sharing_capacity = 1;
+  }
+
+  const { error } = await supabaseAdmin
+    .from('rooms')
+    .update(updatePayload)
+    .eq('id', roomId);
+
+  if (error) {
+    console.error("Database Error converting room:", error);
+    return { error: `Database Error: ${error.message}` };
+  }
+
+  revalidatePath('/dashboard/inventory');
+  revalidatePath('/dashboard/front-office');
+  revalidatePath('/dashboard/housekeeping');
+
+  return { success: true };
+}
+
