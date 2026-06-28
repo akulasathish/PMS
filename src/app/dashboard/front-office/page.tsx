@@ -4934,7 +4934,10 @@ export default function FrontOfficeTerminal() {
           roomId={activeCheckoutBooking.roomId}
           roomNumber={rooms.find(r => r.id === activeCheckoutBooking.roomId)?.room_number || ''}
           baseAmount={activeCheckoutBooking.amount}
-          onClose={() => setActiveCheckoutBooking(null)}
+          onClose={() => {
+            setActiveCheckoutBooking(null);
+            loadDashboardData();
+          }}
           onSuccess={() => {
             setActiveCheckoutBooking(null);
             loadDashboardData();
