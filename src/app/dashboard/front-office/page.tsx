@@ -986,7 +986,7 @@ export default function FrontOfficeTerminal() {
   // --- SUB-COMPONENT: LIST ITEM ---
   const BookingRow = ({ booking }: { booking: Booking }) => {
     const bookingIncidentals = incidentals.filter(i => i.booking_id === booking.id);
-    const bookingPayments = payments.filter(p => p.booking_id === booking.id);
+    const bookingPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
 
     const dailyRoomChargesSum = bookingIncidentals
       .filter(item => item.description?.startsWith('Daily Room Charge'))
@@ -1135,7 +1135,7 @@ export default function FrontOfficeTerminal() {
   const getExpectedCashForDate = (dateStr: string): number => {
     const opening = getOpeningCashForDate(dateStr);
     const cashPayments = payments
-      .filter(p => p.method === 'Cash' && getPaymentDateStr(p) === dateStr)
+      .filter(p => !p.is_void && p.method === 'Cash' && getPaymentDateStr(p) === dateStr)
       .reduce((sum, p) => sum + Number(p.amount), 0);
     const cashExpenses = expenses
       .filter(e => e.payment_method === 'Cash' && e.date === dateStr)
@@ -1146,13 +1146,13 @@ export default function FrontOfficeTerminal() {
   const getLedgerTotalsForDate = (dateStr: string) => {
     const openingCash = getOpeningCashForDate(dateStr);
     const cashPayments = payments
-      .filter(p => p.method === 'Cash' && getPaymentDateStr(p) === dateStr)
+      .filter(p => !p.is_void && p.method === 'Cash' && getPaymentDateStr(p) === dateStr)
       .reduce((sum, p) => sum + Number(p.amount), 0);
     const upiPayments = payments
-      .filter(p => p.method === 'UPI' && getPaymentDateStr(p) === dateStr)
+      .filter(p => !p.is_void && p.method === 'UPI' && getPaymentDateStr(p) === dateStr)
       .reduce((sum, p) => sum + Number(p.amount), 0);
     const otherPayments = payments
-      .filter(p => !['Cash', 'UPI'].includes(p.method) && getPaymentDateStr(p) === dateStr)
+      .filter(p => !p.is_void && !['Cash', 'UPI'].includes(p.method) && getPaymentDateStr(p) === dateStr)
       .reduce((sum, p) => sum + Number(p.amount), 0);
     const cashExpenses = expenses
       .filter(e => e.payment_method === 'Cash' && e.date === dateStr)
@@ -1380,6 +1380,7 @@ export default function FrontOfficeTerminal() {
     if (type === 'checkins') {
       title = `Daily Check-Ins Report - ${formatFriendlyDate(selectedLedgerDate)}`;
       dataList = bookings.filter(b => {
+        if (b.is_monthly) return false; // Isolate from daily transient reports
         const cInTimeStr = b.check_in_time ? getLocalYYYYMMDD(new Date(b.check_in_time)) : '';
         const cInDateStr = b.check_in ? b.check_in.substring(0, 10) : '';
         const actDate = cInTimeStr || cInDateStr;
@@ -1388,6 +1389,7 @@ export default function FrontOfficeTerminal() {
     } else if (type === 'checkouts') {
       title = `Daily Check-Outs Report - ${formatFriendlyDate(selectedLedgerDate)}`;
       dataList = bookings.filter(b => {
+        if (b.is_monthly) return false; // Isolate from daily transient reports
         const cOutTimeStr = b.check_out_time ? getLocalYYYYMMDD(new Date(b.check_out_time)) : '';
         const cOutDateStr = b.check_out ? b.check_out.substring(0, 10) : '';
         const actDate = cOutTimeStr || cOutDateStr;
@@ -1396,6 +1398,7 @@ export default function FrontOfficeTerminal() {
     } else if (type === 'inhouse') {
       title = `Daily In-House Guests Report - ${formatFriendlyDate(selectedLedgerDate)}`;
       dataList = bookings.filter(b => {
+        if (b.is_monthly) return false; // Isolate from daily transient reports
         const checkInDate = b.check_in_time ? getLocalYYYYMMDD(new Date(b.check_in_time)) : (b.check_in ? b.check_in.substring(0, 10) : '');
         const checkOutDate = b.check_out_time ? getLocalYYYYMMDD(new Date(b.check_out_time)) : (b.check_out ? b.check_out.substring(0, 10) : '');
         
@@ -1411,9 +1414,10 @@ export default function FrontOfficeTerminal() {
     } else if (type === 'pending') {
       title = `Daily Pending Bills Report - ${formatFriendlyDate(selectedLedgerDate)}`;
       dataList = bookings.filter(b => {
+        if (b.is_monthly) return false; // Isolate from daily transient reports
         if (b.status !== 'Checked In') return false;
         const bookingIncidentals = incidentals.filter(i => i.booking_id === b.id);
-        const bookingPayments = payments.filter(p => p.booking_id === b.id);
+        const bookingPayments = payments.filter(p => p.booking_id === b.id && !p.is_void);
         const dailyRoomChargesSum = bookingIncidentals
           .filter(item => item.description?.startsWith('Daily Room Charge'))
           .reduce((sum, item) => sum + Number(item.amount), 0);
@@ -1432,12 +1436,12 @@ export default function FrontOfficeTerminal() {
     let totalDue = 0;
     const rows = dataList.map((b, idx) => {
       const roomNum = rooms.find(r => r.id === b.room_id)?.room_number || 'N/A';
-      const bookingPaymentsOnDate = payments.filter(p => p.booking_id === b.id && getPaymentDateStr(p) === selectedLedgerDate);
+      const bookingPaymentsOnDate = payments.filter(p => p.booking_id === b.id && getPaymentDateStr(p) === selectedLedgerDate && !p.is_void);
       const cashAmt = bookingPaymentsOnDate.filter(p => p.method === 'Cash').reduce((sum, p) => sum + Number(p.amount), 0);
       const upiAmt = bookingPaymentsOnDate.filter(p => p.method === 'UPI').reduce((sum, p) => sum + Number(p.amount), 0);
       
       const bookingIncidentals = incidentals.filter(i => i.booking_id === b.id);
-      const bookingPaymentsAll = payments.filter(p => p.booking_id === b.id);
+      const bookingPaymentsAll = payments.filter(p => p.booking_id === b.id && !p.is_void);
       const dailyRoomChargesSum = bookingIncidentals
         .filter(item => item.description?.startsWith('Daily Room Charge'))
         .reduce((sum, item) => sum + Number(item.amount), 0);
@@ -1565,7 +1569,7 @@ export default function FrontOfficeTerminal() {
       const doc = new jsPDF();
       
       // Calculate identical metrics as Night Audit to guarantee absolute precision
-      const dayPayments = payments.filter(p => getPaymentDateStr(p) === selectedLedgerDate);
+      const dayPayments = payments.filter(p => getPaymentDateStr(p) === selectedLedgerDate && !p.is_void);
 
       let roomCash = 0, roomUPI = 0, roomSwipe = 0, roomOthers = 0;
       let foodCash = 0, foodUPI = 0, foodSwipe = 0, foodOthers = 0;
@@ -1577,7 +1581,7 @@ export default function FrontOfficeTerminal() {
         
         // Find all incidentals and payments for this booking
         const bookingIncidentals = incidentals.filter(inc => inc.booking_id === bkId);
-        const bookingPayments = payments.filter(pm => pm.booking_id === bkId);
+        const bookingPayments = payments.filter(pm => pm.booking_id === bkId && !pm.is_void);
 
         // Sum food & water charges
         const foodChargesTotal = bookingIncidentals
@@ -1851,7 +1855,7 @@ export default function FrontOfficeTerminal() {
       const doc = new jsPDF();
       
       // Split calculation logic matching Step 3
-      const dayPayments = payments.filter(p => getPaymentDateStr(p) === selectedLedgerDate);
+      const dayPayments = payments.filter(p => getPaymentDateStr(p) === selectedLedgerDate && !p.is_void);
 
       let roomCash = 0, roomUPI = 0, roomSwipe = 0, roomOthers = 0;
       let foodCash = 0, foodUPI = 0, foodSwipe = 0, foodOthers = 0;
@@ -1863,7 +1867,7 @@ export default function FrontOfficeTerminal() {
         
         // Find all incidentals and payments for this booking
         const bookingIncidentals = incidentals.filter(inc => inc.booking_id === bkId);
-        const bookingPayments = payments.filter(pm => pm.booking_id === bkId);
+        const bookingPayments = payments.filter(pm => pm.booking_id === bkId && !pm.is_void);
 
         // Sum food & water charges
         const foodChargesTotal = bookingIncidentals
@@ -2112,7 +2116,7 @@ export default function FrontOfficeTerminal() {
       const doc = new jsPDF();
 
       // Filter payments strictly by selected business date
-      const dayPayments = payments.filter(p => getPaymentDateStr(p) === selectedLedgerDate);
+      const dayPayments = payments.filter(p => getPaymentDateStr(p) === selectedLedgerDate && !p.is_void);
 
       // Find monthly guest payments
       const monthlyPayments = dayPayments.filter(p => {
@@ -2273,66 +2277,58 @@ export default function FrontOfficeTerminal() {
 
       const doc = new jsPDF();
 
-      // Filter payments strictly by selected business date
-      const dayPayments = payments.filter(p => getPaymentDateStr(p) === selectedLedgerDate);
+      // Filter payments strictly by selected business date, excluding voided payments
+      const dayPayments = payments.filter(p => getPaymentDateStr(p) === selectedLedgerDate && !p.is_void);
 
       let totalRegular = 0;
       let totalMonthlyRent = 0;
       let totalMonthlyDeposit = 0;
       let totalMonthlyTotal = 0;
 
-      const rows = dayPayments.map((p, idx) => {
+      // Group payments into Transient and Monthly
+      const transientPayments: any[] = [];
+      const monthlyPayments: any[] = [];
+
+      dayPayments.forEach(p => {
         const b = bookings.find(bk => bk.id === p.booking_id);
         const isMonthly = b ? b.is_monthly === true : false;
-        const guestName = b ? b.guest_name : 'Walk-In Guest';
-        const roomNum = b ? (rooms.find(r => r.id === b.room_id)?.room_number || 'N/A') : 'N/A';
-        const guestClass = isMonthly ? "Monthly Guest" : "Regular Guest";
         const amt = Number(p.amount);
 
-        // Classification
-        let classification = "Base Rate / Incid.";
         if (isMonthly && b) {
           const depositAmt = Number(b.amount || 0);
           const rentAmt = Number(b.monthly_rate || 0);
           if (amt === depositAmt) {
-            classification = "Security Deposit";
             totalMonthlyDeposit += amt;
           } else if (amt === rentAmt) {
-            classification = "Monthly Rent";
             totalMonthlyRent += amt;
           } else if (depositAmt > 0 && Math.abs(amt - depositAmt) < 0.01) {
-            classification = "Security Deposit / Advance";
             totalMonthlyDeposit += amt;
           } else if (amt < depositAmt && amt > 0) {
-            classification = "Partial Deposit / Advance";
             totalMonthlyDeposit += amt;
           } else if (amt < rentAmt && amt > 0) {
-            classification = "Partial Monthly Rent";
             totalMonthlyRent += amt;
           } else {
-            classification = "Rent / Advance Payment";
             totalMonthlyRent += amt;
           }
           totalMonthlyTotal += amt;
+          monthlyPayments.push(p);
         } else {
           totalRegular += amt;
+          transientPayments.push(p);
         }
-
-        return [
-          idx + 1,
-          roomNum,
-          guestName,
-          guestClass,
-          p.method,
-          p.transaction_id || 'N/A',
-          classification,
-          `Rs. ${amt.toFixed(2)}`
-        ];
       });
 
-      if (rows.length === 0) {
-        rows.push(["-", "-", "No payments received today.", "-", "-", "-", "-", "Rs. 0.00"]);
-      }
+      // UPI metrics calculations
+      const dailyUPIPayments = transientPayments.filter(p => p.method === 'UPI');
+      const dailyUPICount = dailyUPIPayments.length;
+      const dailyUPISum = dailyUPIPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+
+      const monthlyUPIPayments = monthlyPayments.filter(p => p.method === 'UPI');
+      const monthlyUPICount = monthlyUPIPayments.length;
+      const monthlyUPISum = monthlyUPIPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+
+      const totalUPICount = dailyUPICount + monthlyUPICount;
+      const totalUPISum = dailyUPISum + monthlyUPISum;
 
       // Luxury dark header block for Central Master Ledger
       doc.setFillColor(15, 23, 42); // slate-900 (highly professional)
@@ -2351,27 +2347,161 @@ export default function FrontOfficeTerminal() {
       doc.text(`GENERATED ON: ${new Date().toLocaleString()}`, 135, 28);
 
       let currentY = 46;
+
+      // Section 1: Transient Daily Guest Payments
       doc.setTextColor(15, 23, 42);
       doc.setFontSize(11);
       doc.setFont("helvetica", "bold");
-      doc.text("CONSOLIDATED TRANSACTIONS LIST (ALL GUESTS)", 15, currentY);
+      doc.text("1. DAILY TRANSIENT GUEST PAYMENTS", 15, currentY);
+
+      const transientRows = transientPayments.map((p, idx) => {
+        const b = bookings.find(bk => bk.id === p.booking_id);
+        const guestName = b ? b.guest_name : 'Walk-In Guest';
+        const roomNum = b ? (rooms.find(r => r.id === b.room_id)?.room_number || 'N/A') : 'N/A';
+        const amt = Number(p.amount);
+        return [
+          idx + 1,
+          roomNum,
+          guestName,
+          p.method,
+          p.transaction_id || 'N/A',
+          "Base Rate / Incidentals",
+          `Rs. ${amt.toFixed(2)}`
+        ];
+      });
+
+      if (transientRows.length === 0) {
+        transientRows.push(["-", "-", "No transient payments received today.", "-", "-", "-", "Rs. 0.00"]);
+      }
 
       autoTable(doc, {
         startY: currentY + 3,
-        head: [["S.No", "Room", "Guest Name", "Guest Class", "Mode", "Transaction ID", "Classification", "Amount"]],
-        body: rows,
+        head: [["S.No", "Room", "Guest Name", "Mode", "Transaction ID", "Classification", "Amount"]],
+        body: transientRows,
         theme: 'grid',
         styles: { fontSize: 8, cellPadding: 2, font: 'helvetica' },
-        headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontStyle: 'bold' }, // slate-700
+        headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontStyle: 'bold' },
         columnStyles: {
           0: { halign: 'center', cellWidth: 10 },
-          1: { halign: 'center', cellWidth: 12 },
-          2: { fontStyle: 'bold', cellWidth: 32 },
-          3: { halign: 'center', cellWidth: 22 },
-          4: { halign: 'center', cellWidth: 14 },
-          5: { halign: 'center', cellWidth: 28 },
-          6: { halign: 'center', cellWidth: 34 },
-          7: { halign: 'right', fontStyle: 'bold', cellWidth: 28 }
+          1: { halign: 'center', cellWidth: 15 },
+          2: { fontStyle: 'bold', cellWidth: 45 },
+          3: { halign: 'center', cellWidth: 18 },
+          4: { halign: 'center', cellWidth: 32 },
+          5: { halign: 'center', cellWidth: 35 },
+          6: { halign: 'right', fontStyle: 'bold', cellWidth: 25 }
+        }
+      });
+
+      currentY = (doc as any).lastAutoTable.finalY + 8;
+
+      // Section 2: Monthly Co-Living Guest Payments
+      doc.setTextColor(15, 23, 42);
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text("2. MONTHLY CO-LIVING GUEST PAYMENTS", 15, currentY);
+
+      const monthlyRows = monthlyPayments.map((p, idx) => {
+        const b = bookings.find(bk => bk.id === p.booking_id);
+        const guestName = b ? b.guest_name : 'Monthly Guest';
+        const roomNum = b ? (rooms.find(r => r.id === b.room_id)?.room_number || 'N/A') : 'N/A';
+        const amt = Number(p.amount);
+
+        let classification = "Monthly Rent";
+        if (b) {
+          const depositAmt = Number(b.amount || 0);
+          const rentAmt = Number(b.monthly_rate || 0);
+          if (amt === depositAmt) {
+            classification = "Security Deposit";
+          } else if (amt === rentAmt) {
+            classification = "Monthly Rent";
+          } else if (depositAmt > 0 && Math.abs(amt - depositAmt) < 0.01) {
+            classification = "Security Deposit / Advance";
+          } else if (amt < depositAmt && amt > 0) {
+            classification = "Partial Deposit / Advance";
+          } else if (amt < rentAmt && amt > 0) {
+            classification = "Partial Monthly Rent";
+          } else {
+            classification = "Rent / Advance Payment";
+          }
+        }
+
+        return [
+          idx + 1,
+          roomNum,
+          guestName,
+          p.method,
+          p.transaction_id || 'N/A',
+          classification,
+          `Rs. ${amt.toFixed(2)}`
+        ];
+      });
+
+      if (monthlyRows.length === 0) {
+        monthlyRows.push(["-", "-", "No monthly payments received today.", "-", "-", "-", "Rs. 0.00"]);
+      }
+
+      autoTable(doc, {
+        startY: currentY + 3,
+        head: [["S.No", "Room", "Guest Name", "Mode", "Transaction ID", "Classification", "Amount"]],
+        body: monthlyRows,
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 2, font: 'helvetica' },
+        headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontStyle: 'bold' },
+        columnStyles: {
+          0: { halign: 'center', cellWidth: 10 },
+          1: { halign: 'center', cellWidth: 15 },
+          2: { fontStyle: 'bold', cellWidth: 45 },
+          3: { halign: 'center', cellWidth: 18 },
+          4: { halign: 'center', cellWidth: 32 },
+          5: { halign: 'center', cellWidth: 35 },
+          6: { halign: 'right', fontStyle: 'bold', cellWidth: 25 }
+        }
+      });
+
+      currentY = (doc as any).lastAutoTable.finalY + 8;
+
+      // Section 3: UPI Payments and Tally Details
+      doc.setTextColor(15, 23, 42);
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text("3. UPI TRANSACTIONS & TALLY DETAILS", 15, currentY);
+
+      const upiPaymentsOnly = dayPayments.filter(p => p.method === 'UPI');
+      const upiRows = upiPaymentsOnly.map((p, idx) => {
+        const b = bookings.find(bk => bk.id === p.booking_id);
+        const guestName = b ? b.guest_name : 'Guest';
+        const roomNum = b ? (rooms.find(r => r.id === b.room_id)?.room_number || 'N/A') : 'N/A';
+        const isMonthly = b ? b.is_monthly === true : false;
+        const guestClass = isMonthly ? "Monthly" : "Daily Transient";
+        const amt = Number(p.amount);
+        return [
+          idx + 1,
+          roomNum,
+          guestName,
+          guestClass,
+          p.transaction_id || 'N/A',
+          `Rs. ${amt.toFixed(2)}`
+        ];
+      });
+
+      if (upiRows.length === 0) {
+        upiRows.push(["-", "-", "No UPI payments received today.", "-", "-", "Rs. 0.00"]);
+      }
+
+      autoTable(doc, {
+        startY: currentY + 3,
+        head: [["S.No", "Room", "Guest Name", "Guest Class", "UPI Transaction ID", "Amount"]],
+        body: upiRows,
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 2, font: 'helvetica' },
+        headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontStyle: 'bold' },
+        columnStyles: {
+          0: { halign: 'center', cellWidth: 10 },
+          1: { halign: 'center', cellWidth: 15 },
+          2: { fontStyle: 'bold', cellWidth: 45 },
+          3: { halign: 'center', cellWidth: 35 },
+          4: { halign: 'center', cellWidth: 45 },
+          5: { halign: 'right', fontStyle: 'bold', cellWidth: 30 }
         }
       });
 
@@ -2386,7 +2516,11 @@ export default function FrontOfficeTerminal() {
         ["Total Monthly Co-Living Rent Collected", `Rs. ${totalMonthlyRent.toFixed(2)}`],
         ["Total Monthly Co-Living Security Deposits Collected", `Rs. ${totalMonthlyDeposit.toFixed(2)}`],
         ["Total Monthly Co-Living Collections (Sub-Total)", `Rs. ${totalMonthlyTotal.toFixed(2)}`],
-        ["GRAND TOTAL REVENUE COLLECTIONS (CONSOLIDATED)", `Rs. ${(totalRegular + totalMonthlyTotal).toFixed(2)}`]
+        ["GRAND TOTAL REVENUE COLLECTIONS (CONSOLIDATED)", `Rs. ${(totalRegular + totalMonthlyTotal).toFixed(2)}`],
+        ["", ""], // spacer
+        ["[TALLY] UPI TRANSIENT COLLECTIONS", `${dailyUPICount} Payment(s) - Rs. ${dailyUPISum.toFixed(2)}`],
+        ["[TALLY] UPI MONTHLY COLLECTIONS", `${monthlyUPICount} Payment(s) - Rs. ${monthlyUPISum.toFixed(2)}`],
+        ["[TALLY] GRAND TOTAL UPI COLLECTIONS", `${totalUPICount} Payment(s) - Rs. ${totalUPISum.toFixed(2)}`]
       ];
 
       autoTable(doc, {
@@ -2396,7 +2530,7 @@ export default function FrontOfficeTerminal() {
         styles: { fontSize: 8.5, cellPadding: 4, font: 'helvetica' },
         columnStyles: {
           0: { fontStyle: 'bold', cellWidth: 110 },
-          1: { halign: 'right', fontStyle: 'bold', cellWidth: 40 }
+          1: { halign: 'right', fontStyle: 'bold', cellWidth: 65 }
         },
         margin: { left: 15 }
       });
@@ -2882,7 +3016,7 @@ export default function FrontOfficeTerminal() {
 
       activeRoomBookings.forEach(booking => {
         const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
-        const guestPayments = payments.filter(p => p.booking_id === booking.id);
+        const guestPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
          const totalCharged = Number(booking.monthly_rate || 0) + Number(booking.amount) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
         const totalPaid = guestPayments.reduce((sum, p) => sum + Number(p.amount), 0);
         const due = totalCharged - totalPaid;
@@ -3008,7 +3142,7 @@ export default function FrontOfficeTerminal() {
                       if (booking) {
                         // Compute dues for this specific guest
                         const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
-                        const guestPayments = payments.filter(p => p.booking_id === booking.id);
+                        const guestPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
                         
                         const totalCharged = Number(booking.monthly_rate || 0) + Number(booking.amount) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
                         const totalPaid = guestPayments.reduce((sum, p) => sum + Number(p.amount), 0);
@@ -3175,7 +3309,7 @@ export default function FrontOfficeTerminal() {
       const roomNum = room?.room_number || 'N/A';
       
       const bookingIncidentals = incidentals.filter(i => i.booking_id === booking.id);
-      const bookingPayments = payments.filter(p => p.booking_id === booking.id);
+      const bookingPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
 
       const dailyRoomChargesSum = bookingIncidentals
         .filter(item => item.description?.startsWith('Daily Room Charge'))
