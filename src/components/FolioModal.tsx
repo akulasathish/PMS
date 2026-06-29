@@ -7,7 +7,7 @@ import {
   ArrowRight, ShieldCheck, Loader2, AlertCircle, Printer, Trash2, Percent
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { getFolioSummary, postIncidentalCharge, postPayment, postProposedTimeCharge, waiveProposedTimeCharge, voidPayment } from '@/app/actions/folio';
+import { getFolioSummary, postIncidentalCharge, postPayment, postProposedTimeCharge, waiveProposedTimeCharge, voidPayment, deleteIncidentalCharge } from '@/app/actions/folio';
 import { checkOutGuest, undoCheckOutGuest, applyBookingDiscount } from '@/app/actions/booking';
 import { generateGuestBillPDF } from '@/utils/folio-pdf';
 
@@ -29,6 +29,18 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
   const [error, setError] = useState('');
   
   const [folio, setFolio] = useState<any>(null);
+
+  const hasEarlyCheckinPosted = folio?.incidentals?.some((item: any) => 
+    item.description.toLowerCase().includes('early check-in') || 
+    item.description.toLowerCase().includes('early checkin') ||
+    item.description.toLowerCase().includes('automated early check-in fee')
+  ) || false;
+
+  const hasLateCheckoutPosted = folio?.incidentals?.some((item: any) => 
+    item.description.toLowerCase().includes('late checkout') || 
+    item.description.toLowerCase().includes('late check-out') ||
+    item.description.toLowerCase().includes('automated late checkout fee')
+  ) || false;
   
   // Waiver inputs for automated rules
   const [showWaiver, setShowWaiver] = useState<'early' | 'late' | null>(null);
@@ -119,6 +131,25 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
       setActionLoading(false);
       return;
     }
+
+    const finalDescLower = finalDescription.toLowerCase();
+    if (
+      (finalDescLower.includes('early check-in') || finalDescLower.includes('early checkin')) &&
+      hasEarlyCheckinPosted
+    ) {
+      setError('An Early Check-In charge has already been recorded for this booking. Multiple entries are not allowed.');
+      setActionLoading(false);
+      return;
+    }
+
+    if (
+      (finalDescLower.includes('late checkout') || finalDescLower.includes('late check-out')) &&
+      hasLateCheckoutPosted
+    ) {
+      setError('A Late Checkout charge has already been recorded for this booking. Multiple entries are not allowed.');
+      setActionLoading(false);
+      return;
+    }
     
     // Append quantity manually if greater than 1
     if (quantity > 1) {
@@ -186,6 +217,22 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
     setError('');
 
     const res = await voidPayment(paymentId, propertyId, reason);
+    if (res.error) {
+      setError(res.error);
+      setActionLoading(false);
+    } else {
+      await loadFolio();
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteIncidental = async (chargeId: string) => {
+    if (!confirm("Are you sure you want to delete this incidental charge entry? This action cannot be undone.")) return;
+
+    setActionLoading(true);
+    setError('');
+
+    const res = await deleteIncidentalCharge(chargeId, propertyId);
     if (res.error) {
       setError(res.error);
       setActionLoading(false);
@@ -469,13 +516,28 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                             </div>
                           )}
                           
-                          {folio?.incidentals?.map((item: any) => (
+                           {folio?.incidentals?.map((item: any) => (
                             <div key={item.id} className="flex justify-between items-center p-3 rounded-xl bg-white/5 border border-white/5">
                               <div>
                                 <div className="text-sm font-medium text-white">{item.description}</div>
-                                <div className="text-[10px] text-zinc-500">Incidental</div>
+                                <div className="text-[10px] text-zinc-500">
+                                  {item.business_date ? `${new Date(item.business_date).toLocaleDateString()} • ` : ''}
+                                  Incidental
+                                </div>
                               </div>
-                              <div className="font-mono text-sm text-white">₹{Number(item.amount).toFixed(2)}</div>
+                              <div className="flex items-center gap-3">
+                                <div className="font-mono text-sm text-white">₹{Number(item.amount).toFixed(2)}</div>
+                                {item.id !== 'security-deposit-charge' && (
+                                  <button 
+                                    onClick={() => handleDeleteIncidental(item.id)}
+                                    className="p-1 rounded text-red-400/70 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                                    title="Delete Charge"
+                                    disabled={actionLoading}
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -567,8 +629,20 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                             ) : (
                               <>
                                 <option value="Food & Water" className="bg-zinc-900 text-white">Food & Water</option>
-                                <option value="Late Checkout" className="bg-zinc-900 text-white">Late Checkout</option>
-                                <option value="Early Check-In" className="bg-zinc-900 text-white">Early Check-In</option>
+                                <option 
+                                  value="Late Checkout" 
+                                  className="bg-zinc-900 text-white disabled:text-zinc-500 disabled:opacity-55"
+                                  disabled={hasLateCheckoutPosted}
+                                >
+                                  Late Checkout {hasLateCheckoutPosted && '(Already Recorded)'}
+                                </option>
+                                <option 
+                                  value="Early Check-In" 
+                                  className="bg-zinc-900 text-white disabled:text-zinc-500 disabled:opacity-55"
+                                  disabled={hasEarlyCheckinPosted}
+                                >
+                                  Early Check-In {hasEarlyCheckinPosted && '(Already Recorded)'}
+                                </option>
                                 <option value="Extra Person Charge" className="bg-zinc-900 text-white">Extra Person Charge</option>
                                 <option value="Previous Stay Past Due" className="bg-zinc-900 text-white">Previous Stay Pending Dues</option>
                                 <option value="Others" className="bg-zinc-900 text-white">Others</option>

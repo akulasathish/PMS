@@ -477,3 +477,49 @@ export async function voidPayment(paymentId: string, propertyId: string, reason:
   return { success: true };
 }
 
+/**
+ * Server action to delete an existing incidental charge
+ */
+export async function deleteIncidentalCharge(chargeId: string, propertyId: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) return { error: 'Unauthorized.' };
+
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // Fetch the charge description/details first to audit
+  const { data: chargeData, error: fetchError } = await supabaseAdmin
+    .from('incidental_charges')
+    .select('booking_id, amount, description')
+    .eq('id', chargeId)
+    .single();
+
+  if (fetchError || !chargeData) {
+    return { error: 'Incidental charge not found.' };
+  }
+
+  // Delete the charge
+  const { error } = await supabaseAdmin
+    .from('incidental_charges')
+    .delete()
+    .eq('id', chargeId);
+
+  if (error) {
+    console.error("Delete Incidental Error:", error.message);
+    return { error: `Failed to delete charge: ${error.message}` };
+  }
+
+  // Audit the deletion
+  await logAction({
+    propertyId,
+    action: 'INCIDENTAL_CHARGE_DELETED',
+    details: { chargeId, bookingId: chargeData.booking_id, amount: chargeData.amount, description: chargeData.description },
+    userId: user.id
+  });
+
+  revalidatePath('/dashboard/front-office');
+  return { success: true };
+}
+
+
