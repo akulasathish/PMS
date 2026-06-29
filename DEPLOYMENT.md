@@ -47,7 +47,7 @@ The following native AWS resources are configured to run StaySync:
 | **Route 53 & ACM** | SSL Certificate (AWS Certificate Manager) | Manages domain DNS routing and serves secure HTTPS traffic. |
 
 ### Supporting External Services
-* **Supabase:** Managed PostgreSQL database (`xjsuwjivetlmzzbngeuy`), real-time GoTrue authentication engine, and user accounts.
+* **Supabase:** Managed PostgreSQL database (`njblemtrkqdnijwrnvjp`), real-time GoTrue authentication engine, and user accounts.
 * **n8n:** Trigger-based webhook runner dispatching transaction receipts and guest registration emails.
 
 ---
@@ -85,13 +85,13 @@ Always update your Supabase database schema *before* building your code so the c
 ```bash
 npx supabase db push --linked
 ```
-*(Confirms project reference target is `xjsuwjivetlmzzbngeuy`)*
+*(Confirms project reference target is `njblemtrkqdnijwrnvjp`)*
 
 ### 2. Manual Docker Build & Bake
 Ensure production keys are passed to build arguments (replace `<PROD_ANON_KEY>` with your actual production Anon Key):
 ```bash
 docker build --no-cache \
-  --build-arg NEXT_PUBLIC_SUPABASE_URL=https://xjsuwjivetlmzzbngeuy.supabase.co \
+  --build-arg NEXT_PUBLIC_SUPABASE_URL=https://njblemtrkqdnijwrnvjp.supabase.co \
   --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=<PROD_ANON_KEY> \
   -t 401644592968.dkr.ecr.ap-south-1.amazonaws.com/pms/app:latest .
 ```
