@@ -42,7 +42,11 @@ import {
   Calendar,
   Receipt,
   X,
-  RefreshCw
+  RefreshCw,
+  Sparkles,
+  Check,
+  CreditCard,
+  Crown
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -163,6 +167,20 @@ export default function Dashboard() {
   const [showActivityDrawer, setShowActivityDrawer] = useState(false);
   const [activityLogs, setActivityLogs] = useState<any[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
+
+  // --- SUBSCRIPTION & PLAN STATES ---
+  const [showSubscriptionDrawer, setShowSubscriptionDrawer] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [trialDaysLeft, setTrialDaysLeft] = useState(2);
+  const [checkoutStep, setCheckoutStep] = useState<'details' | 'payment' | 'success'>('details');
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
+  
+  // Mock form state
+  const [cardName, setCardName] = useState('');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
 
   const fetchLogs = async () => {
     if (!property?.id) return;
@@ -573,6 +591,10 @@ export default function Dashboard() {
                   if (locked) {
                     e.preventDefault();
                     alert(`Access Restricted: The ${item.label} module requires higher authorization.`);
+                  } else if (item.label === 'Settings') {
+                    e.preventDefault();
+                    setCheckoutStep('details');
+                    setShowSubscriptionDrawer(true);
                   }
                 }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-300 ${
@@ -631,6 +653,25 @@ export default function Dashboard() {
             </motion.div>
 
             <div className="flex items-center gap-3">
+              {/* Dynamic Subscription / Go Pro Badge */}
+              {!isSubscribed ? (
+                <button 
+                  onClick={() => {
+                    setCheckoutStep('details');
+                    setShowSubscriptionDrawer(true);
+                  }}
+                  className="flex items-center gap-1.5 bg-gradient-to-r from-amber-500/10 to-amber-600/10 border border-amber-500/20 text-amber-400 hover:text-white hover:border-amber-500/40 px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all shadow-[0_0_15px_rgba(245,158,11,0.08)] active:scale-[0.97] animate-pulse"
+                >
+                  <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-ping" />
+                  ⭐ Trial active ({trialDaysLeft}d)
+                </button>
+              ) : (
+                <span className="hidden sm:flex items-center gap-1.5 bg-gradient-to-r from-indigo-500/10 to-violet-500/10 border border-indigo-500/25 text-indigo-400 px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider">
+                  <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
+                  Pro Active
+                </span>
+              )}
+
               <button className="p-2.5 rounded-xl border border-white/[0.06] text-zinc-500 cursor-not-allowed">
                 <Search size={16} />
               </button>
@@ -1076,6 +1117,10 @@ export default function Dashboard() {
                   if (locked) {
                     e.preventDefault();
                     alert(`Access Restricted: The ${item.label} module requires higher authorization.`);
+                  } else if (item.label === 'Settings') {
+                    e.preventDefault();
+                    setCheckoutStep('details');
+                    setShowSubscriptionDrawer(true);
                   }
                 }}
                 className={`flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl transition-all duration-300 ${
@@ -1095,6 +1140,290 @@ export default function Dashboard() {
       </div>
 
       {/* ACTIVITY LOG DRAWER */}
+      {/* SUBSCRIPTION & BILLING DRAWER */}
+      <AnimatePresence>
+        {showSubscriptionDrawer && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowSubscriptionDrawer(false)}
+              className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50"
+            />
+            {/* Drawer */}
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed top-0 right-0 h-full w-[500px] max-w-full bg-[#08080a] border-l border-white/[0.08] shadow-2xl z-[100] flex flex-col font-sans select-none"
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-white/[0.06] bg-zinc-900/40 backdrop-blur-md flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    <Crown className="text-amber-400" size={22} />
+                    Subscription & Plan
+                  </h2>
+                  <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-1">
+                    Manage your billing status
+                  </p>
+                </div>
+                
+                <button 
+                  onClick={() => setShowSubscriptionDrawer(false)}
+                  className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Drawer Content */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                
+                {/* Active Plan Card */}
+                <div className="bg-white/[0.02] border border-white/[0.04] rounded-2xl p-5 relative overflow-hidden shadow-xl">
+                  <div className="absolute top-0 right-0 w-[150px] h-[150px] bg-indigo-500/5 rounded-full blur-[40px] pointer-events-none" />
+                  
+                  <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest px-2.5 py-1 bg-indigo-500/10 border border-indigo-500/20 rounded-full">
+                    Current Account Status
+                  </span>
+                  
+                  <div className="mt-4 flex justify-between items-center">
+                    <div>
+                      <h3 className="text-2xl font-black text-white tracking-tight">
+                        {isSubscribed ? 'StaySync Pro' : 'Free Trial Period'}
+                      </h3>
+                      <p className="text-xs text-zinc-500 mt-1">
+                        {isSubscribed 
+                          ? 'Thank you for your active partnership!' 
+                          : `Your free trial expires in ${trialDaysLeft} days.`
+                        }
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end">
+                      <span className={`text-[11px] font-black uppercase tracking-wider px-3 py-1 rounded-lg ${
+                        isSubscribed 
+                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                          : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                      }`}>
+                        {isSubscribed ? 'PRO ACTIVE' : 'TRIALING'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {checkoutStep === 'details' && (
+                  <div className="space-y-6">
+                    {/* StaySync Pro Card */}
+                    <div className="bg-gradient-to-br from-indigo-950/40 to-purple-950/40 border border-indigo-500/20 rounded-3xl p-6 relative overflow-hidden">
+                      <div className="absolute top-[-20%] right-[-10%] w-[200px] h-[200px] bg-indigo-500/10 rounded-full blur-[60px]" />
+                      
+                      <div className="flex items-center gap-2 mb-3">
+                        <Sparkles className="text-amber-400" size={18} />
+                        <h4 className="text-sm font-black text-white uppercase tracking-wider">Unleash Full Growth with Pro</h4>
+                      </div>
+                      
+                      <div className="flex items-baseline gap-2 my-4">
+                        <span className="text-3xl font-black text-white">₹4,999</span>
+                        <span className="text-zinc-500 text-xs">/ property / month</span>
+                      </div>
+
+                      <div className="space-y-3 py-3 border-t border-b border-white/[0.04] text-[12px] text-zinc-300">
+                        <div className="flex items-start gap-2.5">
+                          <Check size={14} className="text-emerald-400 mt-0.5" />
+                          <span><strong>Unlimited Operations</strong>: Process infinite check-ins, check-outs & room blocks</span>
+                        </div>
+                        <div className="flex items-start gap-2.5">
+                          <Check size={14} className="text-emerald-400 mt-0.5" />
+                          <span><strong>Advanced Intelligence</strong>: Access financial reconciliations & central cash reports</span>
+                        </div>
+                        <div className="flex items-start gap-2.5">
+                          <Check size={14} className="text-emerald-400 mt-0.5" />
+                          <span><strong>Digital Signature Proofs</strong>: Legally-aligned Sarai Act RegCard compliance</span>
+                        </div>
+                        <div className="flex items-start gap-2.5">
+                          <Check size={14} className="text-emerald-400 mt-0.5" />
+                          <span><strong>Multi-Property Syncing</strong>: Seamlessly switch across unlimited hotel branches</span>
+                        </div>
+                        <div className="flex items-start gap-2.5">
+                          <Check size={14} className="text-emerald-400 mt-0.5" />
+                          <span><strong>24/7 Priority Support</strong>: Direct telephone SLA for prompt front-office help</span>
+                        </div>
+                      </div>
+
+                      {isSubscribed ? (
+                        <div className="p-4 bg-emerald-500/5 border border-emerald-500/15 rounded-2xl text-center text-emerald-400 text-xs font-semibold mt-4">
+                          ✓ Your account has been upgraded to Premium. enjoy StaySync Pro!
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setCheckoutStep('payment')}
+                          className="w-full bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl py-3.5 mt-5 font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-[0_0_30px_rgba(99,102,241,0.2)] active:scale-[0.98]"
+                        >
+                          <CreditCard size={14} /> Buy Subscription Now
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {checkoutStep === 'payment' && (
+                  <div className="space-y-5">
+                    <div className="p-4 bg-white/[0.02] border border-white/[0.04] rounded-2xl flex justify-between items-center text-xs">
+                      <span className="text-zinc-400">Total Subscription Charges:</span>
+                      <span className="font-black text-white">₹4,999.00 / month</span>
+                    </div>
+
+                    <form onSubmit={(e) => {
+                      e.preventDefault();
+                      if (!cardName || !cardNumber || !cardExpiry || !cardCvv) {
+                        setPaymentError('All payment fields are required.');
+                        return;
+                      }
+                      setPaymentError('');
+                      setPaymentLoading(true);
+                      setTimeout(() => {
+                        setPaymentLoading(false);
+                        setCheckoutStep('success');
+                      }, 2500);
+                    }} className="space-y-4">
+                      
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Cardholder Name</label>
+                        <input 
+                          type="text"
+                          required
+                          placeholder="e.g., SATHISH A"
+                          value={cardName}
+                          onChange={(e) => setCardName(e.target.value.toUpperCase())}
+                          className="w-full bg-black/60 border border-white/[0.05] focus:border-indigo-500/40 rounded-xl py-3 px-4 text-white text-xs placeholder:text-zinc-800 focus:outline-none transition-all"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Card Number</label>
+                        <div className="relative">
+                          <input 
+                            type="text"
+                            required
+                            maxLength={19}
+                            placeholder="4111 2222 3333 4444"
+                            value={cardNumber}
+                            onChange={(e) => {
+                              const value = e.target.value.replace(/\D/g, '').replace(/(.{4})/g, '$1 ').trim();
+                              setCardNumber(value);
+                            }}
+                            className="w-full bg-black/60 border border-white/[0.05] focus:border-indigo-500/40 rounded-xl py-3 pl-11 pr-4 text-white text-xs placeholder:text-zinc-800 focus:outline-none transition-all font-mono"
+                          />
+                          <CreditCard className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-600" size={16} />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Expiry Date</label>
+                          <input 
+                            type="text"
+                            required
+                            maxLength={5}
+                            placeholder="MM/YY"
+                            value={cardExpiry}
+                            onChange={(e) => {
+                              const value = e.target.value.replace(/\D/g, '');
+                              if (value.length <= 2) {
+                                setCardExpiry(value);
+                              } else {
+                                setCardExpiry(`${value.slice(0,2)}/${value.slice(2,4)}`);
+                              }
+                            }}
+                            className="w-full bg-black/60 border border-white/[0.05] focus:border-indigo-500/40 rounded-xl py-3 px-4 text-white text-xs placeholder:text-zinc-800 focus:outline-none transition-all font-mono"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">CVV / CVV2</label>
+                          <input 
+                            type="password"
+                            required
+                            maxLength={3}
+                            placeholder="***"
+                            value={cardCvv}
+                            onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, ''))}
+                            className="w-full bg-black/60 border border-white/[0.05] focus:border-indigo-500/40 rounded-xl py-3 px-4 text-white text-xs placeholder:text-zinc-800 focus:outline-none transition-all font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      {paymentError && (
+                        <p className="text-rose-400 text-xs font-semibold pl-1">{paymentError}</p>
+                      )}
+
+                      <div className="flex items-center gap-3 pt-3">
+                        <button
+                          type="button"
+                          onClick={() => setCheckoutStep('details')}
+                          className="flex-1 bg-white/5 hover:bg-white/10 text-white rounded-xl py-3 text-xs font-black uppercase tracking-wider transition-colors"
+                        >
+                          Back
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={paymentLoading}
+                          className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-600/50 text-white rounded-xl py-3 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-[0_0_20px_rgba(99,102,241,0.15)] active:scale-[0.98]"
+                        >
+                          {paymentLoading ? (
+                            <>
+                              <Loader2 size={14} className="animate-spin" /> Authorizing...
+                            </>
+                          ) : (
+                            <>Confirm Payment</>
+                          )}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                )}
+
+                {checkoutStep === 'success' && (
+                  <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-6">
+                    <div className="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shadow-[0_0_30px_rgba(16,185,129,0.15)]">
+                      <Check size={28} className="animate-bounce" />
+                    </div>
+                    
+                    <div>
+                      <h3 className="text-xl font-black text-white">Payment Successful!</h3>
+                      <p className="text-xs text-zinc-500 mt-2 leading-relaxed">
+                        Congratulations! Your PMS profile has been fully upgraded to Pro Plan. Your receipts and tax invoices are saved under your profile folder.
+                      </p>
+                    </div>
+
+                    <div className="bg-white/[0.01] border border-white/[0.03] rounded-2xl p-4 w-full font-mono text-[10px] text-zinc-600 text-left space-y-1">
+                      <p><span className="text-zinc-500 font-bold">RECEIPT REF:</span> SS_REC_2026_{Math.floor(100000 + Math.random() * 900000)}</p>
+                      <p><span className="text-zinc-500 font-bold">AMOUNT PAID:</span> ₹4,999.00</p>
+                      <p><span className="text-zinc-500 font-bold">PRO ACCOUNT:</span> Sathish A. (Owner)</p>
+                      <p><span className="text-zinc-500 font-bold">STATUS:</span> ACTIVE PREMIUM MEMBER</p>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setIsSubscribed(true);
+                        setShowSubscriptionDrawer(false);
+                      }}
+                      className="w-full bg-emerald-500 text-black hover:bg-emerald-400 font-bold rounded-xl py-3.5 text-xs uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(16,185,129,0.1)] active:scale-[0.98]"
+                    >
+                      Enter Pro Dashboard
+                    </button>
+                  </div>
+                )}
+
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {showActivityDrawer && (
           <>
