@@ -41,7 +41,7 @@ export async function registerUserWithoutVerification(email: string, password: s
     if (profileError) {
       console.error('Error inserting profile:', profileError);
       await supabaseAdmin.auth.admin.deleteUser(userId);
-      return { success: false, error: 'Failed to initialize user profile.' };
+      return { success: false, error: `Failed to initialize user profile: ${profileError.message} (Details: ${profileError.details || 'none'})` };
     }
 
     return { success: true };
@@ -95,7 +95,7 @@ export async function registerUserWithVerification(email: string, password: stri
       console.error('Error inserting profile under verification:', profileError);
       // Delete the unconfirmed user to allow retrying signup with same email
       await supabaseAdmin.auth.admin.deleteUser(userId);
-      return { success: false, error: 'Failed to initialize user profile. Please try again.' };
+      return { success: false, error: `Failed to initialize user profile: ${profileError.message} (Details: ${profileError.details || 'none'})` };
     }
 
     return { success: true };
