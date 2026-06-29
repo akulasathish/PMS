@@ -519,15 +519,29 @@ export default function FrontOfficeTerminal() {
         }
         bookingsQuery = bookingsQuery.order('created_at', { ascending: false });
 
-        const [propRes, settingsRes, roomsRes, bookingsRes, incidentalsRes, paymentsRes, expensesRes, cashBalancesRes] = await Promise.all([
+        const [propRes, settingsRes, roomsRes, bookingsRes, expensesRes, cashBalancesRes] = await Promise.all([
           supabase.from('properties').select('*').eq('id', activeId).single(),
           supabase.from('app_settings').select('value').eq('key', 'business_date').single(),
           finalRoomsQuery,
           bookingsQuery,
-          supabase.from('incidental_charges').select('*').eq('property_id', activeId),
-          supabase.from('payments').select('*').eq('property_id', activeId),
           supabase.from('expenses').select('*').eq('property_id', activeId),
           supabase.from('daily_cash_balances').select('*').eq('property_id', activeId)
+        ]);
+
+        const loadedBookings = bookingsRes.data || [];
+        const bookingIds = loadedBookings.map(b => b.id);
+
+        let incidentalsQuery = supabase.from('incidental_charges').select('*').eq('property_id', activeId);
+        let paymentsQuery = supabase.from('payments').select('*').eq('property_id', activeId);
+
+        if (bookingIds.length > 0) {
+          incidentalsQuery = supabase.from('incidental_charges').select('*').or(`property_id.eq.${activeId},booking_id.in.(${bookingIds.join(',')})`);
+          paymentsQuery = supabase.from('payments').select('*').or(`property_id.eq.${activeId},booking_id.in.(${bookingIds.join(',')})`);
+        }
+
+        const [incidentalsRes, paymentsRes] = await Promise.all([
+          incidentalsQuery,
+          paymentsQuery
         ]);
 
         if (propRes.data) {
@@ -4681,10 +4695,20 @@ export default function FrontOfficeTerminal() {
 
                   {!selectedBooking.id_verified ? (
                     <div className="bg-indigo-500/5 border border-indigo-500/10 p-4 rounded-2xl space-y-3 relative">
+                      {/* Separate file input for Camera (forces rear camera on mobile) */}
                       <input 
                         type="file" 
                         accept="image/*" 
-                        id="direct-id-capture-input" 
+                        capture="environment"
+                        id="direct-id-camera-input" 
+                        className="hidden" 
+                        onChange={handleDirectCameraCapture} 
+                      />
+                      {/* Separate file input for Gallery */}
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        id="direct-id-gallery-input" 
                         className="hidden" 
                         onChange={handleDirectCameraCapture} 
                       />
@@ -4695,6 +4719,7 @@ export default function FrontOfficeTerminal() {
                       
                       <div className="relative">
                         <button 
+                          type="button"
                           onClick={() => setIsIdentityMenuOpen(!isIdentityMenuOpen)}
                           className="w-full bg-zinc-900/60 hover:bg-zinc-900 border border-white/10 px-4 py-3 rounded-xl text-[11px] font-black uppercase tracking-wider text-white flex items-center justify-between transition-all"
                         >
@@ -4712,51 +4737,37 @@ export default function FrontOfficeTerminal() {
                             
                             <div className="absolute left-0 right-0 mt-2 bg-zinc-950 border border-white/10 rounded-xl shadow-2xl overflow-hidden z-20 divide-y divide-white/[0.04]">
                               <button 
+                                type="button"
                                 onClick={() => {
                                   setIsIdentityMenuOpen(false);
-                                  document.getElementById('direct-id-capture-input')?.click();
+                                  document.getElementById('direct-id-camera-input')?.click();
                                 }}
                                 className="w-full hover:bg-zinc-900/60 px-4 py-2.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-300 hover:text-white flex items-center gap-2.5 transition-colors"
                               >
                                 <Camera size={14} className="text-emerald-400" />
                                 <div>
-                                  <p>Open Camera / Gallery</p>
-                                  <p className="text-[8.5px] text-zinc-500 font-normal normal-case mt-0.5">Take photo or browse from gallery</p>
+                                  <p>Take Photo (Camera)</p>
+                                  <p className="text-[8.5px] text-zinc-500 font-normal normal-case mt-0.5">Capture ID card directly using device camera</p>
                                 </div>
                               </button>
 
                               <button 
+                                type="button"
                                 onClick={() => {
                                   setIsIdentityMenuOpen(false);
-                                  const url = window.location.origin + "/guest/regcard/" + selectedBooking.id;
-                                  navigator.clipboard.writeText(url);
-                                  alert("Magic Link copied to clipboard! Send this to the guest via WhatsApp/SMS.");
+                                  document.getElementById('direct-id-gallery-input')?.click();
                                 }}
                                 className="w-full hover:bg-zinc-900/60 px-4 py-2.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-300 hover:text-white flex items-center gap-2.5 transition-colors"
                               >
-                                <Link2 size={14} className="text-indigo-400" />
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-400"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.08a2 2 0 0 0-2.828 0L6 21"/></svg>
                                 <div>
-                                  <p>Copy Magic Link</p>
-                                  <p className="text-[8.5px] text-zinc-500 font-normal normal-case mt-0.5">Copy guest link to share on WhatsApp</p>
+                                  <p>Upload from Gallery</p>
+                                  <p className="text-[8.5px] text-zinc-500 font-normal normal-case mt-0.5">Choose an existing photo from photo gallery</p>
                                 </div>
                               </button>
 
                               <button 
-                                onClick={() => {
-                                  setIsIdentityMenuOpen(false);
-                                  const url = window.location.origin + "/guest/regcard/" + selectedBooking.id;
-                                  window.open(url, "_blank");
-                                }}
-                                className="w-full hover:bg-zinc-900/60 px-4 py-2.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-300 hover:text-white flex items-center gap-2.5 transition-colors"
-                              >
-                                <Smartphone size={14} className="text-indigo-400" />
-                                <div>
-                                  <p>Open Self Check-In Terminal</p>
-                                  <p className="text-[8.5px] text-zinc-500 font-normal normal-case mt-0.5">Open guest-facing form in a new tab</p>
-                                </div>
-                              </button>
-
-                              <button 
+                                type="button"
                                 onClick={() => {
                                   setIsIdentityMenuOpen(false);
                                   setShowQrCode(true);
@@ -4766,7 +4777,7 @@ export default function FrontOfficeTerminal() {
                                 <Smartphone size={14} className="text-amber-400" />
                                 <div>
                                   <p>QR Code Scan</p>
-                                  <p className="text-[8.5px] text-zinc-500 font-normal normal-case mt-0.5">Show QR on screen for guest to scan</p>
+                                  <p className="text-[8.5px] text-zinc-500 font-normal normal-case mt-0.5">Show QR on screen for guest to scan with their phone</p>
                                 </div>
                               </button>
                             </div>
@@ -4779,6 +4790,7 @@ export default function FrontOfficeTerminal() {
                       
                       <div className="flex justify-end mb-1">
                         <button 
+                          type="button"
                           onClick={handleRetakeIdentity}
                           disabled={actionLoading}
                           className="text-[9px] font-black text-rose-500 hover:text-rose-400 uppercase flex items-center gap-1 transition-colors px-2 py-1 rounded bg-rose-500/5 hover:bg-rose-500/10"
@@ -4789,11 +4801,10 @@ export default function FrontOfficeTerminal() {
                       <div className="grid grid-cols-2 gap-3">
                         <div className="aspect-[3/2] bg-black/40 border border-white/5 rounded-xl overflow-hidden relative group flex items-center justify-center">
                            {selectedBooking.id_photo_url ? (
-                             <Image 
-                               src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/guest-ids/${selectedBooking.id_photo_url}`} 
+                             <img 
+                               src={supabase.storage.from('guest-ids').getPublicUrl(selectedBooking.id_photo_url).data.publicUrl} 
                                alt="Guest ID Scan" 
-                               fill 
-                               className="object-cover opacity-60 group-hover:opacity-100 transition-opacity" 
+                               className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" 
                              />
                            ) : (
                              <span className="text-[9px] font-black text-zinc-600 uppercase tracking-wider text-center px-2">No Image File</span>
@@ -4803,10 +4814,19 @@ export default function FrontOfficeTerminal() {
                            </div>
                         </div>
                         <div className="aspect-[3/2] bg-white rounded-xl overflow-hidden relative flex items-center justify-center p-2">
-                           {selectedBooking.signature_url && <Image src={selectedBooking.signature_url} alt="Signature" fill className="object-contain" />}
+                           {selectedBooking.signature_url && (
+                             <img 
+                               src={selectedBooking.signature_url.startsWith('http') && !selectedBooking.signature_url.includes('127.0.0.1') && !selectedBooking.signature_url.includes('localhost')
+                                 ? selectedBooking.signature_url 
+                                 : supabase.storage.from('guest-ids').getPublicUrl(`${selectedBooking.id}_sig.png`).data.publicUrl} 
+                               alt="Signature" 
+                               className="w-full h-full object-contain" 
+                             />
+                           )}
                         </div>
                       </div>
                       <button 
+                        type="button"
                         onClick={() => window.open("/guest/print-regcard/" + selectedBooking.id, "_blank")}
                         className="w-full bg-indigo-600/20 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/30 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg"
                       >

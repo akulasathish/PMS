@@ -119,12 +119,10 @@ export default function PrintRegCard() {
            <div className="grid grid-cols-1 gap-6">
               <div className="aspect-[3/2] w-full max-w-[300px] border-2 border-black/10 rounded-lg overflow-hidden flex items-center justify-center bg-zinc-50 relative">
                 {data.id_photo_url ? (
-                  <Image 
-                    src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/guest-ids/${data.id_photo_url}`} 
-                    className="object-cover grayscale contrast-125" 
+                  <img 
+                    src={supabase.storage.from('guest-ids').getPublicUrl(data.id_photo_url).data.publicUrl} 
+                    className="w-full h-full object-cover grayscale contrast-125" 
                     alt="ID Proof" 
-                    fill
-                    sizes="(max-width: 768px) 100vw, 300px"
                   />
                 ) : (
                   <p className="text-[10px] font-black text-zinc-300 uppercase tracking-widest italic">Physical ID Scan Required</p>
@@ -140,7 +138,13 @@ export default function PrintRegCard() {
           <p className="text-[9px] font-black uppercase text-zinc-400 mb-4">Guest Digital Signature</p>
           {data.signature_url ? (
             <div className="bg-zinc-50 border border-black/5 p-2 rounded inline-block relative h-24 w-64">
-              <Image src={data.signature_url} className="object-contain grayscale contrast-125" alt="Signature" fill sizes="256px" />
+              <img 
+                src={data.signature_url.startsWith('http') && !data.signature_url.includes('127.0.0.1') && !data.signature_url.includes('localhost')
+                  ? data.signature_url 
+                  : supabase.storage.from('guest-ids').getPublicUrl(`${data.id}_sig.png`).data.publicUrl} 
+                className="w-full h-full object-contain grayscale contrast-125" 
+                alt="Signature" 
+              />
             </div>
           ) : (
              <div className="h-24 w-64 border-b-2 border-dotted border-black/20 flex items-end pb-2">

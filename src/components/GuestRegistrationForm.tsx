@@ -76,6 +76,10 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  
+  // Custom camera and gallery file input triggers
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -208,23 +212,64 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
             <p className="text-[11px] text-zinc-400 mt-1">Please provide a clear photo of your Aadhar, Passport, or Driver&apos;s License.</p>
           </div>
 
+          {/* Hidden inputs to separate Camera from Gallery selection */}
+          <input 
+            type="file" 
+            accept="image/*" 
+            capture="environment"
+            ref={cameraInputRef}
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          <input 
+            type="file" 
+            accept="image/*" 
+            ref={galleryInputRef}
+            onChange={handleFileChange}
+            className="hidden"
+          />
+
           <div className="relative group">
-            <div className={`aspect-[3/2] rounded-3xl border-2 border-dashed flex flex-col items-center justify-center transition-all overflow-hidden relative ${idPreview ? 'border-emerald-500/50' : 'border-white/10'}`}>
-              {idPreview ? (
-                <Image src={idPreview} alt="ID Preview" fill className="object-cover rounded-[22px]" />
-              ) : (
-                <>
-                  <Camera size={32} className="text-zinc-700 mb-2" />
-                  <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Tap to capture ID</p>
-                </>
-              )}
-            </div>
-            <input 
-              type="file" 
-              accept="image/*" 
-              onChange={handleFileChange}
-              className="absolute inset-0 opacity-0 cursor-pointer"
-            />
+            {idPreview ? (
+              <div className="relative aspect-[3/2] rounded-3xl border-2 border-emerald-500/50 overflow-hidden shadow-2xl">
+                <img src={idPreview} alt="ID Preview" className="w-full h-full object-cover rounded-[22px]" />
+                <button 
+                  onClick={() => {
+                    setIdPhoto(null);
+                    setIdPreview(null);
+                  }}
+                  className="absolute top-3 right-3 bg-rose-600/90 hover:bg-rose-500 backdrop-blur-md text-white text-[9px] font-black uppercase px-3 py-2 rounded-xl transition-all"
+                >
+                  Change Photo
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="aspect-[4/3] rounded-3xl border-2 border-dashed border-white/10 hover:border-emerald-500/50 bg-white/[0.02] hover:bg-emerald-500/[0.02] flex flex-col items-center justify-center p-4 transition-all group"
+                >
+                  <Camera size={28} className="text-zinc-500 group-hover:text-emerald-400 transition-colors mb-2" />
+                  <span className="text-[10px] font-black text-zinc-400 group-hover:text-white uppercase tracking-wider text-center">
+                    Take Photo
+                    <span className="text-[8px] font-normal text-zinc-500 normal-case block mt-0.5">Use Phone Camera</span>
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => galleryInputRef.current?.click()}
+                  className="aspect-[4/3] rounded-3xl border-2 border-dashed border-white/10 hover:border-indigo-500/50 bg-white/[0.02] hover:bg-indigo-500/[0.02] flex flex-col items-center justify-center p-4 transition-all group"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-500 group-hover:text-indigo-400 transition-colors mb-2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.08a2 2 0 0 0-2.828 0L6 21"/></svg>
+                  <span className="text-[10px] font-black text-zinc-400 group-hover:text-white uppercase tracking-wider text-center">
+                    Upload ID
+                    <span className="text-[8px] font-normal text-zinc-500 normal-case block mt-0.5">Choose from Gallery</span>
+                  </span>
+                </button>
+              </div>
+            )}
           </div>
 
           <button 

@@ -197,8 +197,6 @@ export default function NightAuditPage() {
           settingsRes, 
           bookingsRes, 
           roomsRes, 
-          paymentsRes, 
-          incidentalsRes, 
           expensesRes, 
           balancesRes
         ] = await Promise.all([
@@ -206,10 +204,24 @@ export default function NightAuditPage() {
           supabase.from('app_settings').select('value').eq('key', 'business_date').single(),
           supabase.from('bookings').select('*').eq('property_id', activeId),
           supabase.from('rooms').select('*').eq('property_id', activeId),
-          supabase.from('payments').select('*').eq('property_id', activeId),
-          supabase.from('incidental_charges').select('*').eq('property_id', activeId),
           supabase.from('expenses').select('*').eq('property_id', activeId),
           supabase.from('daily_cash_balances').select('*').eq('property_id', activeId)
+        ]);
+
+        const loadedBookings = bookingsRes.data || [];
+        const bookingIds = loadedBookings.map(b => b.id);
+
+        let incidentalsQuery = supabase.from('incidental_charges').select('*').eq('property_id', activeId);
+        let paymentsQuery = supabase.from('payments').select('*').eq('property_id', activeId);
+
+        if (bookingIds.length > 0) {
+          incidentalsQuery = supabase.from('incidental_charges').select('*').or(`property_id.eq.${activeId},booking_id.in.(${bookingIds.join(',')})`);
+          paymentsQuery = supabase.from('payments').select('*').or(`property_id.eq.${activeId},booking_id.in.(${bookingIds.join(',')})`);
+        }
+
+        const [incidentalsRes, paymentsRes] = await Promise.all([
+          incidentalsQuery,
+          paymentsQuery
         ]);
 
         if (propRes.data) setProperty(propRes.data);
