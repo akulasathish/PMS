@@ -1408,8 +1408,8 @@ export default function FrontOfficeTerminal() {
           return checkInDate <= selectedLedgerDate;
         }
         if (b.status === 'Checked Out') {
-          // Historically in-house on selectedLedgerDate
-          return checkInDate <= selectedLedgerDate && checkOutDate >= selectedLedgerDate;
+          // Historically in-house on selectedLedgerDate (excluding checkout date)
+          return checkInDate <= selectedLedgerDate && checkOutDate > selectedLedgerDate;
         }
         return false;
       });
