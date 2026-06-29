@@ -1227,7 +1227,7 @@ export default function Dashboard() {
                       </div>
                       
                       <div className="flex items-baseline gap-2 my-4">
-                        <span className="text-3xl font-black text-white">₹4,999</span>
+                        <span className="text-3xl font-black text-white">₹1,000</span>
                         <span className="text-zinc-500 text-xs">/ property / month</span>
                       </div>
 
@@ -1274,7 +1274,7 @@ export default function Dashboard() {
                   <div className="space-y-5">
                     <div className="p-4 bg-white/[0.02] border border-white/[0.04] rounded-2xl flex justify-between items-center text-xs">
                       <span className="text-zinc-400">Total Subscription Charges:</span>
-                      <span className="font-black text-white">₹4,999.00 / month</span>
+                      <span className="font-black text-white">₹1,000.00 / month</span>
                     </div>
 
                     <form onSubmit={(e) => {
@@ -1401,7 +1401,7 @@ export default function Dashboard() {
 
                     <div className="bg-white/[0.01] border border-white/[0.03] rounded-2xl p-4 w-full font-mono text-[10px] text-zinc-600 text-left space-y-1">
                       <p><span className="text-zinc-500 font-bold">RECEIPT REF:</span> SS_REC_2026_{Math.floor(100000 + Math.random() * 900000)}</p>
-                      <p><span className="text-zinc-500 font-bold">AMOUNT PAID:</span> ₹4,999.00</p>
+                      <p><span className="text-zinc-500 font-bold">AMOUNT PAID:</span> ₹1,000.00</p>
                       <p><span className="text-zinc-500 font-bold">PRO ACCOUNT:</span> Sathish A. (Owner)</p>
                       <p><span className="text-zinc-500 font-bold">STATUS:</span> ACTIVE PREMIUM MEMBER</p>
                     </div>

@@ -30,14 +30,14 @@ export default function HomePage() {
     },
     {
       name: "1 Month",
-      price: "₹3,000",
+      price: "₹1,000",
       description: "Perfect for short-term needs or seasonal properties.",
       features: ["Full Platform Access", "Unlimited Properties", "Advanced Analytics", "Email Support"],
       color: "indigo"
     },
     {
       name: "3 Months",
-      price: "₹6,000",
+      price: "₹2,000",
       description: "Cost-effective for ongoing property management.",
       features: ["Full Platform Access", "Unlimited Properties", "Advanced Analytics", "Email & Chat Support"],
       color: "violet",
@@ -45,14 +45,14 @@ export default function HomePage() {
     },
     {
       name: "6 Months",
-      price: "₹9,000",
+      price: "₹3,000",
       description: "Increased savings for long-term commitment.",
       features: ["Full Platform Access", "Unlimited Properties", "Advanced Analytics", "Priority Support"],
       color: "orange"
     },
     {
       name: "1 Year",
-      price: "₹12,000",
+      price: "₹4,000",
       description: "Best value for a full year of seamless operations.",
       features: ["Full Platform Access", "Unlimited Properties", "Advanced Analytics", "24/7 Priority Support", "Dedicated Account Manager"],
       color: "rose"
