@@ -19,9 +19,10 @@ export async function processGuestRegistration(formData: FormData) {
       return { error: 'Missing required fields for registration' };
     }
 
+    const timestamp = Date.now();
     const idExt = idPhoto.type === 'image/jpeg' ? 'jpg' : (idPhoto.name.split('.').pop()?.toLowerCase() || 'jpg');
-    const idFileName = `${bookingId}_id.${idExt}`;
-    const sigFileName = `${bookingId}_sig.png`;
+    const idFileName = `${bookingId}_id_${timestamp}.${idExt}`;
+    const sigFileName = `${bookingId}_sig_${timestamp}.png`;
 
     // 1. Upload ID Photo (explicitly passing content type ensures browser displays it rather than downloading)
     const { error: idUploadError } = await supabaseAdmin.storage

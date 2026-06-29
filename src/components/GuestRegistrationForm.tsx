@@ -76,6 +76,7 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [hasSigned, setHasSigned] = useState(false);
   
   // Custom camera and gallery file input triggers
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -94,6 +95,9 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if ('touches' in e) {
+      e.preventDefault();
+    }
     setIsDrawing(true);
     draw(e);
   };
@@ -108,6 +112,9 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if ('touches' in e) {
+      e.preventDefault();
+    }
     if (!isDrawing || !canvasRef.current) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
@@ -125,6 +132,7 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
     ctx.stroke();
     ctx.beginPath();
     ctx.moveTo(x, y);
+    setHasSigned(true);
   };
 
   const clearSignature = () => {
@@ -132,11 +140,16 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
     if (canvas) {
       const ctx = canvas.getContext('2d');
       ctx?.clearRect(0, 0, canvas.width, canvas.height);
+      setHasSigned(false);
     }
   };
 
   const handleSubmit = async () => {
     if (!idPhoto || !canvasRef.current) return;
+    if (!hasSigned) {
+      alert("Digital signature is required. Please sign the registration card before submitting.");
+      return;
+    }
     setIsSubmitting(true);
     
     try {

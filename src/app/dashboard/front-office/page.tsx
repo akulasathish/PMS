@@ -345,7 +345,7 @@ export default function FrontOfficeTerminal() {
           const file = new File([blob], "webcam_capture.jpg", { type: 'image/jpeg' });
           const compressedBlob = await compressImage(file);
           const idExt = 'jpg';
-          const idFileName = `${selectedBooking.id}_id.${idExt}`;
+          const idFileName = `${selectedBooking.id}_id_${Date.now()}.${idExt}`;
 
           console.log("Webcam Capture: Uploading compressed file to Supabase Storage");
           const { error: uploadError } = await supabase.storage
@@ -419,7 +419,7 @@ export default function FrontOfficeTerminal() {
       console.log("Direct Capture: Starting image compression for", file.name);
       const compressedBlob = await compressImage(file);
       const idExt = file.type === 'image/jpeg' ? 'jpg' : (file.name.split('.').pop()?.toLowerCase() || 'jpg');
-      const idFileName = `${selectedBooking.id}_id.${idExt}`;
+      const idFileName = `${selectedBooking.id}_id_${Date.now()}.${idExt}`;
 
       console.log("Direct Capture: Uploading compressed file to Supabase Storage as", idFileName);
       // Upload to storage with explicit contentType: 'image/jpeg'
