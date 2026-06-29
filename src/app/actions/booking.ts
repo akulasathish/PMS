@@ -158,7 +158,8 @@ export async function checkInGuest(
     amount: number;
     method: string;
     transactionId?: string;
-  }
+  },
+  addonCharges?: { description: string; amount: number }[]
 ) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -196,15 +197,16 @@ export async function checkInGuest(
     }
   }
 
+  // Get active business date from settings
+  const { data: settings } = await supabaseAdmin
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'business_date')
+    .single();
+  const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+
   // Insert split payments if details are provided
   if (paymentDetails && paymentDetails.amount > 0) {
-    const { data: settings } = await supabaseAdmin
-      .from('app_settings')
-      .select('value')
-      .eq('key', 'business_date')
-      .single();
-    const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
-
     const splitAmount = paymentDetails.amount / bookingsToProcess.length;
     const paymentRecords = bookingsToProcess.map(b => ({
       booking_id: b.id,
@@ -223,6 +225,27 @@ export async function checkInGuest(
     if (paymentError) {
       console.error("Check-in Payment Error:", paymentError);
       return { error: `Failed to record check-in payment: ${paymentError.message}` };
+    }
+  }
+
+  // Insert incidental charges if provided
+  if (addonCharges && addonCharges.length > 0) {
+    const incidentalRecords = addonCharges.map(charge => ({
+      booking_id: bookingId,
+      property_id: booking.property_id,
+      amount: charge.amount,
+      description: charge.description,
+      created_by: user.id,
+      business_date: businessDate
+    }));
+
+    const { error: incidentalError } = await supabaseAdmin
+      .from('incidental_charges')
+      .insert(incidentalRecords);
+
+    if (incidentalError) {
+      console.error("Check-in Addon Charges Error:", incidentalError);
+      return { error: `Failed to record check-in addon charges: ${incidentalError.message}` };
     }
   }
 
@@ -261,7 +284,8 @@ export async function checkInGuest(
       processedCount: bookingsToProcess.length,
       paymentRecorded: !!paymentDetails,
       paymentAmount: paymentDetails?.amount,
-      paymentMethod: paymentDetails?.method
+      paymentMethod: paymentDetails?.method,
+      addonCharges
     },
     userId: user.id
   });
