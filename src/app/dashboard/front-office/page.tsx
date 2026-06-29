@@ -4802,7 +4802,7 @@ export default function FrontOfficeTerminal() {
                         <div className="aspect-[3/2] bg-black/40 border border-white/5 rounded-xl overflow-hidden relative group flex items-center justify-center">
                            {selectedBooking.id_photo_url ? (
                              <img 
-                               src={supabase.storage.from('guest-ids').getPublicUrl(selectedBooking.id_photo_url).data.publicUrl} 
+                               src={`${supabase.storage.from('guest-ids').getPublicUrl(selectedBooking.id_photo_url).data.publicUrl}?t=${Date.now()}`} 
                                alt="Guest ID Scan" 
                                className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" 
                              />
@@ -4816,9 +4816,9 @@ export default function FrontOfficeTerminal() {
                         <div className="aspect-[3/2] bg-white rounded-xl overflow-hidden relative flex items-center justify-center p-2">
                            {selectedBooking.signature_url && (
                              <img 
-                               src={selectedBooking.signature_url.startsWith('http') && !selectedBooking.signature_url.includes('127.0.0.1') && !selectedBooking.signature_url.includes('localhost')
-                                 ? selectedBooking.signature_url 
-                                 : supabase.storage.from('guest-ids').getPublicUrl(`${selectedBooking.id}_sig.png`).data.publicUrl} 
+                               src={selectedBooking.signature_url.startsWith('http')
+                                 ? `${selectedBooking.signature_url}${selectedBooking.signature_url.includes('?') ? '&' : '?'}t=${Date.now()}`
+                                 : `${supabase.storage.from('guest-ids').getPublicUrl(selectedBooking.signature_url).data.publicUrl}?t=${Date.now()}`} 
                                alt="Signature" 
                                className="w-full h-full object-contain" 
                              />
