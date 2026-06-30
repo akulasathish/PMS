@@ -57,6 +57,8 @@ export async function registerUserWithoutVerification(email: string, password: s
  */
 export async function registerUserWithVerification(email: string, password: string, redirectToUrl?: string) {
   try {
+    console.log('DEBUG: registerUserWithVerification NEXT_PUBLIC_SUPABASE_URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+    console.log('DEBUG: registerUserWithVerification NEXT_PUBLIC_SUPABASE_ANON_KEY:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
     const supabase = await createClient();
 
     // 1. Sign up the user using regular Supabase client
