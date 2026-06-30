@@ -386,7 +386,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                   <Printer size={16} /> Print / Download Bill
                 </button>
 
-                {folio?.bookingStatus === 'Checked Out' ? (
+                {folio?.bookingStatus === 'Checked Out' && (
                   <button
                     onClick={handleUndoCheckout}
                     disabled={actionLoading}
@@ -394,7 +394,9 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                   >
                     {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <><X size={16} /> Revert Checkout</>}
                   </button>
-                ) : (
+                )}
+
+                {folio?.bookingStatus === 'Checked In' && (
                   <button
                     onClick={handleFinalCheckout}
                     disabled={Math.abs(folio?.balanceDue || 0) > 0.01 || actionLoading}
@@ -402,6 +404,12 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                   >
                     {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <><ShieldCheck size={16} /> Checkout Guest</>}
                   </button>
+                )}
+
+                {folio?.bookingStatus === 'Confirmed' && (
+                  <div className="w-full py-2.5 px-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 font-bold text-[10px] uppercase tracking-wider text-center flex items-center justify-center gap-1.5">
+                    <AlertCircle size={12} /> Upcoming Booking / Pre-Arrival
+                  </div>
                 )}
               </div>
             </div>

@@ -4370,8 +4370,8 @@ export default function FrontOfficeTerminal() {
                   </div>
                 )}
 
-                {/* 0. BILLING & FOLIO LEDGER (For Checked In and Checked Out guests) */}
-                {(selectedBooking.status === 'Checked In' || selectedBooking.status === 'Checked Out') && (
+                {/* 0. BILLING & FOLIO LEDGER (For Checked In, Checked Out, and Confirmed guests) */}
+                {(selectedBooking.status === 'Checked In' || selectedBooking.status === 'Checked Out' || selectedBooking.status === 'Confirmed') && (
                   <div className="space-y-3 pb-6 border-b border-white/[0.04]">
                     <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-2">
                       <DollarSign size={14} /> Billing & Folio Ledger
