@@ -34,6 +34,7 @@ interface FolioPDFData {
     amount: number;
     method: string;
     created_at: string;
+    business_date?: string;
     transaction_id?: string;
   }>;
   totalCharges: number;
@@ -244,7 +245,7 @@ export async function generateGuestBillPDF(folio: FolioPDFData) {
     : folio.payments.map((p, index) => [
         (index + 1).toString(),
         p.method + (p.transaction_id ? ` (Txn: ${p.transaction_id})` : ''),
-        formatDate(p.created_at),
+        formatDate(p.business_date || p.created_at),
         `-Rs. ${Number(p.amount).toFixed(2)}`
       ]);
 

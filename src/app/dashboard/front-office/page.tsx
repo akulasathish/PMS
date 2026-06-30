@@ -1175,6 +1175,59 @@ export default function FrontOfficeTerminal() {
     }
   };
 
+  const getMonthlyPaymentAllocations = (allPayments: any[], allBookings: any[]) => {
+    const allocations: { [paymentId: string]: { rent: number; deposit: number } } = {};
+    
+    const paymentsByBooking: { [bookingId: string]: any[] } = {};
+    allPayments.forEach(p => {
+      if (!p.is_void) {
+        if (!paymentsByBooking[p.booking_id]) {
+          paymentsByBooking[p.booking_id] = [];
+        }
+        paymentsByBooking[p.booking_id].push(p);
+      }
+    });
+
+    allBookings.forEach(b => {
+      if (!b.is_monthly) return;
+      const bPayments = paymentsByBooking[b.id] || [];
+      
+      const sorted = [...bPayments].sort((a, b) => {
+        const dateA = getPaymentDateStr(a);
+        const dateB = getPaymentDateStr(b);
+        if (dateA !== dateB) return dateA.localeCompare(dateB);
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      });
+
+      let depositNeeded = Number(b.amount || 0);
+      let rentNeeded = Number(b.monthly_rate || 0);
+
+      sorted.forEach(p => {
+        const amt = Number(p.amount);
+        let depositAlloc = 0;
+        let rentAlloc = 0;
+
+        if (depositNeeded > 0) {
+          const alloc = Math.min(amt, depositNeeded);
+          depositAlloc = alloc;
+          depositNeeded -= alloc;
+          const remaining = amt - alloc;
+          if (remaining > 0) {
+            rentAlloc = remaining;
+            rentNeeded = Math.max(0, rentNeeded - remaining);
+          }
+        } else {
+          rentAlloc = amt;
+          rentNeeded = Math.max(0, rentNeeded - amt);
+        }
+
+        allocations[p.id] = { rent: rentAlloc, deposit: depositAlloc };
+      });
+    });
+
+    return allocations;
+  };
+
   const getOpeningCashForDate = (dateStr: string): number => {
     const record = dailyCashBalances.find(b => b.date === dateStr);
     if (record) {
@@ -2190,6 +2243,8 @@ export default function FrontOfficeTerminal() {
       let totalDeposit = 0;
       let totalGrand = 0;
 
+      const allocations = getMonthlyPaymentAllocations(payments, bookings);
+
       const rows = monthlyPayments.map((p, idx) => {
         const b = bookings.find(bk => bk.id === p.booking_id);
         const guestName = b ? b.guest_name : 'Monthly Guest';
@@ -2200,26 +2255,18 @@ export default function FrontOfficeTerminal() {
         // Classification
         let classification = "Monthly Rent";
         if (b) {
-          const depositAmt = Number(b.amount || 0);
-          const rentAmt = Number(b.monthly_rate || 0);
-          if (amt === depositAmt) {
-            classification = "Security Deposit";
-            totalDeposit += amt;
-          } else if (amt === rentAmt) {
-            classification = "Monthly Rent";
-            totalRent += amt;
-          } else if (depositAmt > 0 && Math.abs(amt - depositAmt) < 0.01) {
-            classification = "Security Deposit / Advance";
-            totalDeposit += amt;
-          } else if (amt < depositAmt && amt > 0) {
-            classification = "Partial Deposit / Advance";
-            totalDeposit += amt;
-          } else if (amt < rentAmt && amt > 0) {
-            classification = "Partial Monthly Rent";
-            totalRent += amt;
+          const alloc = allocations[p.id] || { rent: 0, deposit: 0 };
+          totalRent += alloc.rent;
+          totalDeposit += alloc.deposit;
+
+          if (alloc.deposit > 0 && alloc.rent > 0) {
+            classification = "Rent & Deposit";
+          } else if (alloc.deposit > 0) {
+            const depositAmt = Number(b.amount || 0);
+            classification = alloc.deposit === depositAmt ? "Security Deposit" : "Partial Deposit / Advance";
           } else {
-            classification = "Rent / Advance Payment";
-            totalRent += amt;
+            const rentAmt = Number(b.monthly_rate || 0);
+            classification = alloc.rent === rentAmt ? "Monthly Rent" : "Partial Monthly Rent";
           }
         } else {
           totalRent += amt;
@@ -2347,6 +2394,8 @@ export default function FrontOfficeTerminal() {
       let totalMonthlyDeposit = 0;
       let totalMonthlyTotal = 0;
 
+      const allocations = getMonthlyPaymentAllocations(payments, bookings);
+
       // Group payments into Transient and Monthly
       const transientPayments: any[] = [];
       const monthlyPayments: any[] = [];
@@ -2357,21 +2406,9 @@ export default function FrontOfficeTerminal() {
         const amt = Number(p.amount);
 
         if (isMonthly && b) {
-          const depositAmt = Number(b.amount || 0);
-          const rentAmt = Number(b.monthly_rate || 0);
-          if (amt === depositAmt) {
-            totalMonthlyDeposit += amt;
-          } else if (amt === rentAmt) {
-            totalMonthlyRent += amt;
-          } else if (depositAmt > 0 && Math.abs(amt - depositAmt) < 0.01) {
-            totalMonthlyDeposit += amt;
-          } else if (amt < depositAmt && amt > 0) {
-            totalMonthlyDeposit += amt;
-          } else if (amt < rentAmt && amt > 0) {
-            totalMonthlyRent += amt;
-          } else {
-            totalMonthlyRent += amt;
-          }
+          const alloc = allocations[p.id] || { rent: 0, deposit: 0 };
+          totalMonthlyRent += alloc.rent;
+          totalMonthlyDeposit += alloc.deposit;
           totalMonthlyTotal += amt;
           monthlyPayments.push(p);
         } else {
@@ -2508,20 +2545,15 @@ export default function FrontOfficeTerminal() {
 
         let classification = "Monthly Rent";
         if (b) {
-          const depositAmt = Number(b.amount || 0);
-          const rentAmt = Number(b.monthly_rate || 0);
-          if (amt === depositAmt) {
-            classification = "Security Deposit";
-          } else if (amt === rentAmt) {
-            classification = "Monthly Rent";
-          } else if (depositAmt > 0 && Math.abs(amt - depositAmt) < 0.01) {
-            classification = "Security Deposit / Advance";
-          } else if (amt < depositAmt && amt > 0) {
-            classification = "Partial Deposit / Advance";
-          } else if (amt < rentAmt && amt > 0) {
-            classification = "Partial Monthly Rent";
+          const alloc = allocations[p.id] || { rent: 0, deposit: 0 };
+          if (alloc.deposit > 0 && alloc.rent > 0) {
+            classification = "Rent & Deposit";
+          } else if (alloc.deposit > 0) {
+            const depositAmt = Number(b.amount || 0);
+            classification = alloc.deposit === depositAmt ? "Security Deposit" : "Partial Deposit / Advance";
           } else {
-            classification = "Rent / Advance Payment";
+            const rentAmt = Number(b.monthly_rate || 0);
+            classification = alloc.rent === rentAmt ? "Monthly Rent" : "Partial Monthly Rent";
           }
         }
 
