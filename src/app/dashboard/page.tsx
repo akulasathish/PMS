@@ -46,8 +46,11 @@ import {
   Sparkles,
   Check,
   CreditCard,
-  Crown
+  Crown,
+  Mail,
+  ShieldCheck
 } from 'lucide-react';
+
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Overview", href: "/dashboard", active: true, module: 'analytics' },
@@ -161,6 +164,10 @@ export default function Dashboard() {
   const [showPropertyDropdown, setShowPropertyDropdown] = useState(false);
   const [staffList, setStaffList] = useState<UserProfile[]>([]);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [authUser, setAuthUser] = useState<any>(null);
+  const [verificationSending, setVerificationSending] = useState(false);
+  const [verificationSuccess, setVerificationSuccess] = useState(false);
+  const [verificationError, setVerificationError] = useState('');
   const [revenueData, setRevenueData] = useState<{date: string, revenue: number}[]>([]);
   
   // --- AUDIT LOGS STATES ---
@@ -284,6 +291,8 @@ export default function Dashboard() {
           setIsLoading(false);
           return;
         }
+
+        setAuthUser(user);
 
         // Check for forced password reset
         if (user.user_metadata?.requires_password_change === true) {
@@ -422,6 +431,31 @@ export default function Dashboard() {
     
     // Quick reload strategy
     window.location.reload();
+  };
+
+  const handleSendVerification = async () => {
+    if (!authUser?.email) return;
+    setVerificationSending(true);
+    setVerificationSuccess(false);
+    setVerificationError('');
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: authUser.email,
+        options: {
+          emailRedirectTo: window.location.origin + '/dashboard',
+        }
+      });
+      if (error) {
+        setVerificationError(error.message);
+      } else {
+        setVerificationSuccess(true);
+      }
+    } catch (err: any) {
+      setVerificationError(err.message || 'Failed to send verification link.');
+    } finally {
+      setVerificationSending(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -1212,7 +1246,55 @@ export default function Dashboard() {
                         {isSubscribed ? 'PRO ACTIVE' : 'TRIALING'}
                       </span>
                     </div>
+                </div>
+
+                {/* Email Verification Status Card */}
+                <div className="bg-white/[0.02] border border-white/[0.04] rounded-2xl p-5 space-y-4 relative overflow-hidden shadow-xl">
+                  <div className="absolute top-0 right-0 w-[120px] h-[120px] bg-indigo-500/5 rounded-full blur-[30px] pointer-events-none" />
+                  
+                  <div className="flex justify-between items-center">
+                    <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest px-2.5 py-1 bg-indigo-500/10 border border-indigo-500/20 rounded-full">
+                      Security & Account
+                    </span>
+                    
+                    {(authUser?.email_confirmed_at || authUser?.confirmed_at) ? (
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-lg flex items-center gap-1">
+                        <ShieldCheck size={12} /> Verified
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-lg flex items-center gap-1">
+                        ✗ Unverified
+                      </span>
+                    )}
                   </div>
+                  
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                      <Mail size={16} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-[12px] font-bold text-zinc-400 uppercase tracking-wider">Login Email</h4>
+                      <p className="text-sm font-black text-white truncate mt-0.5">{authUser?.email || userProfile?.email || 'Loading...'}</p>
+                    </div>
+                  </div>
+
+                  {!(authUser?.email_confirmed_at || authUser?.confirmed_at) && authUser?.email && (
+                    <div className="pt-1">
+                      <button
+                        onClick={handleSendVerification}
+                        disabled={verificationSending}
+                        className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl py-2.5 font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all shadow-[0_0_20px_rgba(99,102,241,0.15)] active:scale-[0.98]"
+                      >
+                        {verificationSending ? 'Sending Verification Link...' : 'Resend Verification Email'}
+                      </button>
+                      {verificationSuccess && (
+                        <p className="text-[11px] text-emerald-400 mt-2 font-semibold">✓ Verification link sent! Please check your inbox.</p>
+                      )}
+                      {verificationError && (
+                        <p className="text-[11px] text-rose-400 mt-2 font-semibold">✗ {verificationError}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {checkoutStep === 'details' && (
