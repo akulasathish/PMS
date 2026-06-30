@@ -1246,6 +1246,7 @@ export default function Dashboard() {
                         {isSubscribed ? 'PRO ACTIVE' : 'TRIALING'}
                       </span>
                     </div>
+                  </div>
                 </div>
 
                 {/* Email Verification Status Card */}
