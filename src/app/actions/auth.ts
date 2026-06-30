@@ -78,6 +78,11 @@ export async function registerUserWithVerification(email: string, password: stri
       return { success: false, error: authError?.message || 'Failed to register account.' };
     }
 
+    // Check if user already exists (Supabase email enumeration protection returns empty identities array)
+    if (authData.user.identities && authData.user.identities.length === 0) {
+      return { success: false, error: 'This email is already registered. Please log in instead.' };
+    }
+
     const userId = authData.user.id;
 
     // 2. Initialize the standard user profile using the Admin Client
