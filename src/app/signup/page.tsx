@@ -268,12 +268,13 @@ function SignupForm() {
               <form onSubmit={handleSignUp} className={`space-y-4 ${bypassVerification ? 'pt-6' : ''}`}>
                 
                 <div className="space-y-1">
-                  <label className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest ml-1">Email Address</label>
+                  <label htmlFor="email" className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest ml-1">Email Address</label>
                   <div className="relative group">
                     <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-emerald-400 transition-colors">
                       <Mail size={14} />
                     </div>
                     <input 
+                      id="email"
                       type="email"
                       required
                       placeholder="you@example.com"
@@ -285,12 +286,13 @@ function SignupForm() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest ml-1">Password</label>
+                  <label htmlFor="password" className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest ml-1">Password</label>
                   <div className="relative group">
                     <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-emerald-400 transition-colors">
                       <Lock size={14} />
                     </div>
                     <input 
+                      id="password"
                       type="password"
                       required
                       placeholder="••••••••"
@@ -302,12 +304,13 @@ function SignupForm() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest ml-1">Confirm Password</label>
+                  <label htmlFor="confirmPassword" className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest ml-1">Confirm Password</label>
                   <div className="relative group">
                     <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-600 group-focus-within:text-emerald-400 transition-colors">
                       <Lock size={14} />
                     </div>
                     <input 
+                      id="confirmPassword"
                       type="password"
                       required
                       placeholder="••••••••"
