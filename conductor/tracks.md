@@ -81,6 +81,7 @@ This file tracks all major development tracks for the project, updated to reflec
   3. Automatic propagation of ID and signature compliance validation to all rooms during group check-ins.
   4. Search input search bar enablement on the Co-Living / Monthly view to allow room number filtering.
   5. Virtual security deposit deletion server actions and UI triggers inside the Folio Modal.
+  6. Complete redesign of the Monthly Co-Living Hub into a high-density, card-based bed-slot grid with occupancy filters ('All', 'With Vacancy', 'Fully Booked', 'Has Dues').
 
 ---
 

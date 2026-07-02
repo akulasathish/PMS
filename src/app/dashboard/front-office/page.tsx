@@ -258,6 +258,7 @@ export default function FrontOfficeTerminal() {
   const [activeCheckoutBooking, setActiveCheckoutBooking] = useState<{bookingId: string, roomId: string, guestName: string, amount: number} | null>(null);
   const [activeBlockRoom, setActiveBlockRoom] = useState<Room | null>(null);
   const [selectedBeds, setSelectedBeds] = useState<{ [roomId: string]: number }>({});
+  const [monthlyFilter, setMonthlyFilter] = useState<'all' | 'vacancy' | 'occupied' | 'dues'>('all');
 
   // Cash Handover and Close Counter states
   const [isCloseCashModalOpen, setIsCloseCashModalOpen] = useState(false);
@@ -3092,6 +3093,33 @@ export default function FrontOfficeTerminal() {
         })
       : monthlyRooms;
 
+    // Apply monthly filter
+    let filteredRooms = filteredMonthlyRooms;
+    if (monthlyFilter === 'vacancy') {
+      filteredRooms = filteredMonthlyRooms.filter(r => {
+        const activeCount = bookings.filter(b => b.room_id === r.id && b.is_monthly === true && b.status !== 'Cancelled' && b.status !== 'Checked Out').length;
+        const cap = getRoomCapacity(r);
+        return activeCount < cap;
+      });
+    } else if (monthlyFilter === 'occupied') {
+      filteredRooms = filteredMonthlyRooms.filter(r => {
+        const activeCount = bookings.filter(b => b.room_id === r.id && b.is_monthly === true && b.status !== 'Cancelled' && b.status !== 'Checked Out').length;
+        const cap = getRoomCapacity(r);
+        return activeCount === cap;
+      });
+    } else if (monthlyFilter === 'dues') {
+      filteredRooms = filteredMonthlyRooms.filter(r => {
+        const activeRoomBookings = bookings.filter(b => b.room_id === r.id && b.is_monthly === true && b.status !== 'Cancelled' && b.status !== 'Checked Out');
+        return activeRoomBookings.some(booking => {
+          const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
+          const guestPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
+          const totalCharged = Number(booking.monthly_rate || 0) + Number(booking.amount) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
+          const totalPaid = guestPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+          return (totalCharged - totalPaid) > 0.01;
+        });
+      });
+    }
+
     // Calculate quick stats
     let totalBeds = 0;
     let occupiedBeds = 0;
@@ -3112,7 +3140,7 @@ export default function FrontOfficeTerminal() {
       activeRoomBookings.forEach(booking => {
         const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
         const guestPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
-         const totalCharged = Number(booking.monthly_rate || 0) + Number(booking.amount) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
+        const totalCharged = Number(booking.monthly_rate || 0) + Number(booking.amount) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
         const totalPaid = guestPayments.reduce((sum, p) => sum + Number(p.amount), 0);
         const due = totalCharged - totalPaid;
         if (due > 0) {
@@ -3126,77 +3154,110 @@ export default function FrontOfficeTerminal() {
     return (
       <div className="space-y-6">
         {/* STATS OVERVIEW CARDS */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-zinc-900/30 border border-white/[0.05] p-5 rounded-2xl flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-indigo-600/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
-              <Building2 size={22} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {/* Card 1 */}
+          <div className="relative overflow-hidden bg-zinc-900/40 border border-white/[0.06] p-6 rounded-[2rem] hover:border-indigo-500/30 transition-all duration-300 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.15)]">
+              <Building2 size={20} />
             </div>
             <div>
-              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Co-Living Rooms</p>
-              <h3 className="text-xl font-bold text-white mt-1">{monthlyRooms.length}</h3>
+              <p className="text-[9px] font-black text-zinc-555 uppercase tracking-widest">Co-Living Rooms</p>
+              <h3 className="text-2xl font-black text-white mt-0.5">{monthlyRooms.length}</h3>
             </div>
+            <div className="absolute right-[-10px] bottom-[-10px] text-[70px] font-black text-white/[0.01] pointer-events-none select-none font-sans italic">ROOMS</div>
           </div>
 
-          <div className="bg-zinc-900/30 border border-white/[0.05] p-5 rounded-2xl flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-emerald-600/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-              <UserCheck size={22} />
+          {/* Card 2 */}
+          <div className="relative overflow-hidden bg-zinc-900/40 border border-white/[0.06] p-6 rounded-[2rem] hover:border-emerald-500/30 transition-all duration-300 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.15)]">
+              <UserCheck size={20} />
             </div>
             <div>
-              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Occupied Beds</p>
-              <h3 className="text-xl font-bold text-white mt-1">{occupiedBeds} <span className="text-xs text-zinc-500 font-normal">of {totalBeds}</span></h3>
+              <p className="text-[9px] font-black text-zinc-555 uppercase tracking-widest">Occupied Beds</p>
+              <h3 className="text-2xl font-black text-white mt-0.5">{occupiedBeds} <span className="text-xs text-zinc-500 font-medium">of {totalBeds}</span></h3>
             </div>
+            <div className="absolute right-[-10px] bottom-[-10px] text-[70px] font-black text-white/[0.01] pointer-events-none select-none font-sans italic">BEDS</div>
           </div>
 
-          <div className="bg-zinc-900/30 border border-white/[0.05] p-5 rounded-2xl flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-amber-600/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-              <Bed size={22} />
+          {/* Card 3 */}
+          <div className="relative overflow-hidden bg-zinc-900/40 border border-white/[0.06] p-6 rounded-[2rem] hover:border-amber-500/30 transition-all duration-300 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.15)]">
+              <Bed size={20} />
             </div>
             <div>
-              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Vacant Beds</p>
-              <h3 className="text-xl font-bold text-white mt-1">{vacantBeds} <span className="text-xs text-zinc-500 font-normal">available</span></h3>
+              <p className="text-[9px] font-black text-zinc-555 uppercase tracking-widest">Vacant Beds</p>
+              <h3 className="text-2xl font-black text-white mt-0.5">{vacantBeds} <span className="text-xs text-zinc-500 font-medium">available</span></h3>
             </div>
+            <div className="absolute right-[-10px] bottom-[-10px] text-[70px] font-black text-white/[0.01] pointer-events-none select-none font-sans italic">FREE</div>
           </div>
 
-          <div className="bg-zinc-900/30 border border-white/[0.05] p-5 rounded-2xl flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-rose-600/10 border border-rose-500/20 flex items-center justify-center text-rose-400 font-black text-base select-none">
+          {/* Card 4 */}
+          <div className="relative overflow-hidden bg-zinc-900/40 border border-white/[0.06] p-6 rounded-[2rem] hover:border-rose-500/30 transition-all duration-300 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.15)] font-black text-md">
               ₹
             </div>
             <div>
-              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Total Monthly Dues</p>
-              <h3 className="text-xl font-bold text-white mt-1">₹{totalMonthlyDues.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+              <p className="text-[9px] font-black text-zinc-555 uppercase tracking-widest">Total Monthly Dues</p>
+              <h3 className="text-xl font-black text-white mt-0.5">₹{totalMonthlyDues.toLocaleString(`en-IN`, { maximumFractionDigits: 0 })}</h3>
             </div>
+            <div className="absolute right-[-10px] bottom-[-10px] text-[70px] font-black text-white/[0.01] pointer-events-none select-none font-sans italic">DUES</div>
           </div>
         </div>
 
         {/* SECTION HEADER & CONTROL */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-zinc-900/40 border border-white/[0.06] p-4 rounded-2xl">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-zinc-900/40 border border-white/[0.06] p-5 rounded-3xl">
           <div>
             <h2 className="text-md font-bold text-white">Monthly Co-Living Hub</h2>
             <p className="text-xs text-zinc-400 mt-1">Manage long-term, multi-sharing residents and billing cycles.</p>
           </div>
-          <button
-            onClick={() => {
-              setSelectedCoLivingRoomId(undefined);
-              setShowCoLivingModal(true);
-            }}
-            className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs active:scale-95 shadow-lg shadow-indigo-500/10"
-          >
-            <UserPlus size={15} />
-            Add Co-Living Guest
-          </button>
+          
+          <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
+            {/* Filter segments */}
+            <div className="flex items-center bg-black/40 border border-white/10 rounded-xl p-1 text-[10px] font-bold">
+              {[
+                { id: 'all', label: 'All Rooms' },
+                { id: 'vacancy', label: 'With Vacancy' },
+                { id: 'occupied', label: 'Fully Booked' },
+                { id: 'dues', label: 'Has Dues' },
+              ].map(segment => (
+                <button
+                  key={segment.id}
+                  onClick={() => setMonthlyFilter(segment.id as any)}
+                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                    monthlyFilter === segment.id 
+                      ? 'bg-zinc-800 text-white shadow-md' 
+                      : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  {segment.label}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => {
+                setSelectedCoLivingRoomId(undefined);
+                setShowCoLivingModal(true);
+              }}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs active:scale-95 shadow-lg shadow-indigo-500/10 shrink-0 ml-auto md:ml-0"
+            >
+              <UserPlus size={15} />
+              Add Co-Living Guest
+            </button>
+          </div>
         </div>
 
-        {filteredMonthlyRooms.length === 0 ? (
+        {filteredRooms.length === 0 ? (
           <div className="py-24 text-center border border-dashed border-white/5 rounded-3xl bg-white/[0.01]">
             <Home size={40} className="text-zinc-500/40 mx-auto mb-4" />
             <h3 className="text-white font-bold text-sm">No Co-Living Rooms Found</h3>
             <p className="text-xs text-zinc-500 mt-1 max-w-md mx-auto leading-relaxed">
-              Ensure you designate rooms as <span className="text-indigo-400 font-bold">Monthly Only</span> or <span className="text-indigo-400 font-bold">Both (Daily/Monthly)</span> in the Room Inventory panel to see them listed here.
+              No rooms match your filter criteria or search query. Designate rooms as <span className="text-indigo-400 font-bold">Monthly Only</span> or <span className="text-indigo-400 font-bold">Both (Daily/Monthly)</span> in Room Inventory to see them here.
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-            {filteredMonthlyRooms.map(room => {
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {filteredRooms.map(room => {
               const capacity = getRoomCapacity(room);
               const activeRoomBookings = bookings.filter(b => 
                 b.room_id === room.id && 
@@ -3206,65 +3267,55 @@ export default function FrontOfficeTerminal() {
               );
 
               return (
-                <div key={room.id} className="bg-[#121215] border border-white/[0.08] hover:border-white/[0.15] rounded-3xl overflow-hidden transition-all shadow-xl flex flex-col">
+                <div key={room.id} className="relative group bg-[#121215]/60 backdrop-blur-md border border-white/[0.06] hover:border-indigo-500/30 rounded-3xl overflow-hidden transition-all duration-300 hover:shadow-2xl hover:shadow-indigo-500/5 flex flex-col">
+                  {/* Top Color strip bar */}
+                  <div className={`absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r ${
+                    activeRoomBookings.length === 0
+                      ? 'from-emerald-500 to-teal-600'
+                      : activeRoomBookings.length === capacity
+                      ? 'from-indigo-500 to-violet-600'
+                      : 'from-amber-500 to-orange-500'
+                  }`} />
+
                   {/* Room Card Title Header */}
-                  <div className="p-5 border-b border-white/[0.05] bg-black/20 flex justify-between items-center">
+                  <div className="p-5 pb-4 border-b border-white/[0.04] bg-black/10 flex justify-between items-center">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-indigo-600/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 font-black text-sm">
+                      <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 font-black text-sm">
                         {room.room_number}
                       </div>
                       <div>
-                        <h4 className="text-sm font-bold text-white">Room {room.room_number}</h4>
-                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">{room.type} Class</p>
+                        <h4 className="text-sm font-bold text-white flex items-center gap-1.5">
+                          Room {room.room_number}
+                        </h4>
+                        <p className="text-[10px] text-zinc-550 font-bold uppercase tracking-wider">{room.type} Class</p>
                       </div>
                     </div>
-                    <div className="flex flex-col items-end">
-                      <span className="text-[10px] bg-white/5 border border-white/10 px-2.5 py-1 rounded-full text-zinc-400 font-bold uppercase tracking-wider">
+                    <div className="text-right">
+                      <span className="text-[9px] bg-zinc-800 text-zinc-400 border border-white/5 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
                         {capacity}-Sharing
                       </span>
-                      <p className="text-[9px] text-zinc-500 mt-1 uppercase font-bold tracking-widest">
-                        {activeRoomBookings.length} of {capacity} Occupied
+                      <p className="text-[10px] text-zinc-400 mt-1.5 font-bold">
+                        {activeRoomBookings.length}/{capacity} Occupied
                       </p>
                     </div>
                   </div>
 
-                  {/* Bed selector tabs bar */}
-                  <div className="px-5 pt-4 flex gap-1.5 border-b border-white/[0.03] bg-zinc-900/10">
+                  {/* Occupancy Progress Bar */}
+                  <div className="w-full bg-zinc-950 h-1">
+                    <div className={`h-full transition-all duration-500 ${
+                      activeRoomBookings.length === 0
+                        ? 'bg-emerald-500'
+                        : activeRoomBookings.length === capacity
+                        ? 'bg-indigo-500'
+                        : 'bg-amber-500'
+                    }`} style={{ width: `${(activeRoomBookings.length / capacity) * 100}%` }} />
+                  </div>
+
+                  {/* Bed grid slots list */}
+                  <div className="p-4 flex-1 space-y-3 bg-zinc-900/10">
                     {Array.from({ length: capacity }).map((_, index) => {
                       const bedLetter = String.fromCharCode(65 + index);
                       const booking = activeRoomBookings[index];
-                      const isBedOccupied = !!booking;
-                      const isSelected = (selectedBeds[room.id] ?? 0) === index;
-                      
-                      return (
-                        <button
-                          key={index}
-                          onClick={() => setSelectedBeds(prev => ({ ...prev, [room.id]: index }))}
-                          className={`flex-1 pb-3 pt-1 text-center border-b-2 font-bold uppercase text-[10px] tracking-wider transition-all ${
-                            isSelected 
-                              ? 'border-indigo-500 text-white' 
-                              : 'border-transparent text-zinc-500 hover:text-zinc-300'
-                          }`}
-                        >
-                          Bed {bedLetter} 
-                          <span className={`ml-1 px-1.5 py-0.5 rounded text-[8px] ${
-                            isBedOccupied 
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                              : 'bg-zinc-800 text-zinc-650'
-                          }`}>
-                            {isBedOccupied ? 'Occupied' : 'Vacant'}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Active Bed Content Panel */}
-                  <div className="p-5 flex-1 flex flex-col justify-between min-h-[320px]">
-                    {(() => {
-                      const activeIndex = selectedBeds[room.id] ?? 0;
-                      const booking = activeRoomBookings[activeIndex];
-                      const bedLetter = String.fromCharCode(65 + activeIndex);
 
                       if (booking) {
                         const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
@@ -3275,136 +3326,94 @@ export default function FrontOfficeTerminal() {
                         const balanceDue = totalCharged - totalPaid;
 
                         return (
-                          <div className="space-y-4 flex-1 flex flex-col justify-between">
-                            <div className="space-y-4">
-                              <div className="flex justify-between items-center">
-                                <span className="bg-emerald-500/10 text-emerald-400 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border border-emerald-500/20">
-                                  Bed {bedLetter} &bull; Occupied
-                                </span>
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          <div key={index} className="group/bed relative flex flex-col p-3 rounded-2xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.04] hover:border-white/[0.08] transition-all duration-200">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                {/* Bed avatar */}
+                                <div className="w-7 h-7 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 font-bold text-xs shrink-0">
+                                  {bedLetter}
+                                </div>
+                                <div className="min-w-0">
+                                  <h5 className="text-xs font-bold text-white truncate">{booking.guest_name}</h5>
+                                  <p className="text-[9px] text-zinc-550 font-medium truncate">{booking.guest_phone || 'No phone'}</p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
                                   balanceDue > 0.01 
                                     ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' 
                                     : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                                 }`}>
-                                  {balanceDue > 0.01 ? `₹${balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2 })} Due` : 'No Dues'}
+                                  {balanceDue > 0.01 ? `₹${balanceDue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : 'Paid'}
                                 </span>
-                              </div>
-
-                              {/* Resident Info Details */}
-                              <div className="space-y-1 bg-zinc-900/30 border border-white/[0.03] p-3 rounded-2xl">
-                                <h5 className="text-sm font-bold text-white flex items-center gap-2">
-                                  <User size={14} className="text-indigo-400" />
-                                  {booking.guest_name}
-                                </h5>
-                                <div className="text-xs text-zinc-400 space-y-1 pl-5">
-                                  {booking.guest_phone && <p className="flex items-center gap-1.5"><Phone size={11} className="text-zinc-555" /> {booking.guest_phone}</p>}
-                                  {booking.guest_email && <p className="flex items-center gap-1.5 text-zinc-500 truncate"><Mail size={11} /> <span className="text-zinc-400">{booking.guest_email}</span></p>}
-                                  <p className="flex items-center gap-1.5"><Calendar size={11} className="text-zinc-555" /> Joined: {new Date(booking.check_in).toLocaleDateString('en-IN')}</p>
+                                
+                                <div className="flex items-center border border-white/5 rounded-lg overflow-hidden bg-black/30">
+                                  <button
+                                    onClick={() => {
+                                      setActiveCheckoutBooking({
+                                        bookingId: booking.id,
+                                        roomId: booking.room_id,
+                                        guestName: booking.guest_name,
+                                        amount: booking.amount
+                                      });
+                                    }}
+                                    className="p-1.5 hover:bg-indigo-600 hover:text-white text-zinc-400 transition-colors"
+                                    title="Collect Payment"
+                                  >
+                                    <Banknote size={12} />
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setSelectedBooking(booking);
+                                    }}
+                                    className="p-1.5 hover:bg-white/10 text-zinc-400 hover:text-white border-l border-white/5 transition-colors"
+                                    title="Booking Options"
+                                  >
+                                    <Settings size={12} />
+                                  </button>
                                 </div>
-                              </div>
-
-                              {/* Rent/Cycle/Advance Info Grid */}
-                              <div className="grid grid-cols-2 gap-2 bg-black/40 border border-white/[0.04] p-3 rounded-2xl text-[10px] text-zinc-400 font-bold">
-                                <div>
-                                  <span className="text-zinc-500 font-normal">Monthly Rent:</span>
-                                  <p className="text-white font-mono mt-0.5">₹{(booking.monthly_rate || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
-                                </div>
-                                <div>
-                                  <span className="text-zinc-500 font-normal">Cycle Day:</span>
-                                  <p className="text-white font-mono mt-0.5">{booking.billing_cycle_date || 'N/A'}th / Month</p>
-                                </div>
-                                <div className="mt-1.5">
-                                  <span className="text-zinc-500 font-normal">Security Deposit:</span>
-                                  <p className="text-white font-mono mt-0.5">₹{Number(booking.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
-                                </div>
-                                <div className="mt-1.5">
-                                  <span className="text-zinc-500 font-normal">Total Paid:</span>
-                                  <p className="text-white font-mono mt-0.5 text-emerald-400">₹{totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
-                                </div>
-                              </div>
-
-                              {/* Guest Payments List */}
-                              <div className="space-y-1">
-                                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider pl-1">Payment Ledger History</span>
-                                {guestPayments.length === 0 ? (
-                                  <p className="text-[10px] text-zinc-650 pl-1 italic">No payments recorded yet.</p>
-                                ) : (
-                                  <div className="space-y-1 max-h-16 overflow-y-auto no-scrollbar bg-black/10 rounded-lg p-1.5 border border-white/[0.02]">
-                                    {guestPayments.map((p, idx) => (
-                                      <div key={p.id || idx} className="flex justify-between items-center text-[9px] text-zinc-400 bg-white/[0.01] px-1.5 py-1 rounded">
-                                        <span>{new Date(p.business_date || p.created_at || Date.now()).toLocaleDateString('en-IN')} ({p.method})</span>
-                                        <span className="font-mono text-emerald-400 font-bold">₹{Number(p.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
                               </div>
                             </div>
-
-                            {/* Collect Rent / Ledger action */}
-                            <div className="flex items-center gap-2 pt-3 border-t border-white/[0.03]">
-                              <button
-                                onClick={() => {
-                                  setActiveCheckoutBooking({
-                                    bookingId: booking.id,
-                                    roomId: booking.room_id,
-                                    guestName: booking.guest_name,
-                                    amount: booking.amount
-                                  });
-                                }}
-                                className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all text-center flex items-center justify-center gap-1 active:scale-95 shadow-md shadow-indigo-600/10"
-                              >
-                                <Banknote size={11} />
-                                Collect Payment
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setSelectedBooking(booking);
-                                }}
-                                className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/5 text-zinc-400 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all active:scale-95"
-                              >
-                                Options
-                              </button>
+                            
+                            <div className="mt-2 pt-2 border-t border-white/[0.02] flex items-center justify-between text-[9px] text-zinc-500 font-medium">
+                              <span>Rent: ₹{Number(booking.monthly_rate || 0).toLocaleString('en-IN')} (Cycle: {booking.billing_cycle_date || 'N/A'})</span>
+                              <span>Joined: {new Date(booking.check_in).toLocaleDateString('en-IN')}</span>
                             </div>
                           </div>
                         );
                       } else {
                         return (
-                          <div className="flex-1 flex flex-col justify-between min-h-[320px]">
-                            <div className="flex-1 flex flex-col items-center justify-center py-10 border border-dashed border-white/10 bg-white/[0.01] rounded-2xl gap-3">
-                              <div className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center text-zinc-400">
-                                <Bed size={18} />
+                          <div key={index} className="flex items-center justify-between p-3 rounded-2xl border border-dashed border-white/5 hover:border-emerald-500/20 bg-white/[0.01] hover:bg-emerald-500/[0.02] transition-all duration-200">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-7 h-7 rounded-lg bg-zinc-800 border border-white/5 flex items-center justify-center text-zinc-500 font-bold text-xs">
+                                  {bedLetter}
                               </div>
-                              <div className="text-center">
-                                <span className="bg-zinc-800 text-zinc-550 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded border border-white/5">
-                                  Bed {bedLetter} &bull; Vacant
-                                </span>
-                                <h5 className="text-xs font-bold text-zinc-400 mt-1.5">Vacant Space Available</h5>
-                              </div>
+                              <span className="text-[10px] text-zinc-555 font-bold uppercase tracking-wider">Vacant Bed</span>
                             </div>
                             <button
                               onClick={() => {
                                 setSelectedCoLivingRoomId(room.id);
                                 setShowCoLivingModal(true);
                               }}
-                              className="w-full py-2.5 bg-emerald-500/15 hover:bg-emerald-500 text-emerald-400 hover:text-black border border-emerald-500/20 hover:border-transparent rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 active:scale-95 mt-4"
+                              className="px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-black border border-emerald-500/20 hover:border-transparent rounded-lg text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1"
                             >
-                              <Plus size={12} />
-                              Allocate Bed
+                              <Plus size={10} /> Allocate
                             </button>
                           </div>
                         );
                       }
-                    })()}
+                    })}
                   </div>
                 </div>
               );
             })}
           </div>
-        )}
-      </div>
-    );  };
-
+        )
+      }
+    </div>
+  );
+};
   const renderBalancesView = () => {
     // Filter bookings based on selected balancesFilter (In-House Only or All Active)
     let filteredBookings = bookings.filter(b => !b.is_monthly);

@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Released] - 2026-07-02
 
 ### Added
-- **Front Office Co-living Support:** Redesigned room cards for monthly co-living setups, introducing a tabbed bed selector to optimize screen real estate and improve visual clarity.
+- **Redesigned Monthly Co-Living Hub:** Replaced the tabbed bed selector with an elegant, high-density bed-slot grid that visualizes all occupants, rent cycles, and payment dues simultaneously. Added segment filters ('All', 'With Vacancy', 'Fully Booked', 'Has Dues') and glowing status strips.
 - **Folio & Ledger Upgrades:** Enabled full folio ledgers and payment posting directly for bookings in 'Confirmed' status.
 - **Settings Drawer Enhancement:** Added a premium email verification card in the Settings drawer, prompting users to verify their email.
 - **Onboarding Flow Enhancements:** Added graceful handling and user-facing notifications for existing email addresses in the signup form.
