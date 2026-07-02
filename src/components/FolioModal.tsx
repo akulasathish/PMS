@@ -4,10 +4,10 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, Plus, CreditCard, Banknote, Smartphone, Building2, 
-  ArrowRight, ShieldCheck, Loader2, AlertCircle, Printer, Trash2, Percent
+  ArrowRight, ShieldCheck, Loader2, AlertCircle, Printer, Trash2, Percent, Sparkles
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { getFolioSummary, postIncidentalCharge, postPayment, postProposedTimeCharge, waiveProposedTimeCharge, voidPayment, deleteIncidentalCharge, deleteSecurityDeposit } from '@/app/actions/folio';
+import { getFolioSummary, postIncidentalCharge, postPayment, postProposedTimeCharge, waiveProposedTimeCharge, voidPayment, deleteIncidentalCharge, deleteSecurityDeposit, forceSettleFolio } from '@/app/actions/folio';
 import { checkOutGuest, undoCheckOutGuest, applyBookingDiscount } from '@/app/actions/booking';
 import { generateGuestBillPDF } from '@/utils/folio-pdf';
 
@@ -317,6 +317,26 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
     }
   };
 
+  const handleForceSettle = async () => {
+    const formattedBalance = Math.abs(folio?.balanceDue || 0).toFixed(2);
+    const actionText = (folio?.balanceDue || 0) > 0 ? "post a write-off adjustment payment" : "post a settlement adjustment charge";
+    
+    if (!confirm(`Are you sure you want to force settle the folio balance of ₹${(folio?.balanceDue || 0).toFixed(2)} to ₹0.00? This will ${actionText} to balance the ledger. This cannot be undone.`)) return;
+
+    if (actionLoading) return;
+    setActionLoading(true);
+    setError('');
+
+    const res = await forceSettleFolio(bookingId, propertyId);
+    if (res.error) {
+      setError(res.error);
+      setActionLoading(false);
+    } else {
+      await loadFolio();
+      setActionLoading(false);
+    }
+  };
+
   const handleUndoCheckout = async () => {
     if (actionLoading) return;
     setActionLoading(true);
@@ -427,6 +447,16 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                     className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-zinc-800 disabled:text-zinc-500 text-black font-bold uppercase tracking-wider text-xs transition-colors flex items-center justify-center gap-2"
                   >
                     {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <><ShieldCheck size={16} /> Checkout Guest</>}
+                  </button>
+                )}
+
+                {folio?.bookingStatus === 'Checked In' && Math.abs(folio?.balanceDue || 0) > 0.01 && (
+                  <button
+                    onClick={handleForceSettle}
+                    disabled={actionLoading}
+                    className="w-full py-3 px-4 rounded-xl bg-red-600/90 hover:bg-red-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-bold uppercase tracking-wider text-xs transition-colors flex items-center justify-center gap-2 mt-2"
+                  >
+                    {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <><Sparkles size={16} /> Force Settle Folio</>}
                   </button>
                 )}
 

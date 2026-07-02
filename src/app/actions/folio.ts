@@ -556,4 +556,99 @@ export async function deleteSecurityDeposit(bookingId: string, propertyId: strin
   return { success: true };
 }
 
+/**
+ * Force settle the folio to exactly ₹0.00 balance by posting an adjustment payment (if positive)
+ * or an adjustment charge (if negative).
+ */
+export async function forceSettleFolio(bookingId: string, propertyId: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) return { error: 'Unauthorized.' };
+
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // Fetch the folio summary first
+  const summaryRes = await getFolioSummary(bookingId);
+  if ('error' in summaryRes || !summaryRes.success) {
+    return { error: summaryRes.error || 'Failed to fetch folio summary.' };
+  }
+
+  const { balanceDue } = summaryRes.data;
+
+  if (Math.abs(balanceDue) <= 0.01) {
+    return { success: true, message: 'Folio is already settled.' };
+  }
+
+  // Fetch current business_date from app_settings
+  const { data: settings } = await supabaseAdmin
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'business_date')
+    .single();
+  const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+
+  if (balanceDue > 0) {
+    // Guest owes money. Post an adjustment payment to bring the balance to 0.
+    const { error: payError } = await supabaseAdmin
+      .from('payments')
+      .insert([{
+        booking_id: bookingId,
+        property_id: propertyId,
+        amount: balanceDue,
+        method: 'Adjustment / Write-off',
+        transaction_id: 'SYSTEM-FORCE-SETTLE',
+        created_by: user.id,
+        business_date: businessDate
+      }]);
+
+    if (payError) {
+      console.error("Force Settle Payment Error:", payError.message);
+      return { error: `Failed to post adjustment payment: ${payError.message}` };
+    }
+
+    // Log in Audit Trail
+    await logAction({
+      propertyId,
+      action: 'PAYMENT_RECEIVED',
+      details: { bookingId, amount: balanceDue, method: 'Adjustment / Write-off', transactionId: 'SYSTEM-FORCE-SETTLE', businessDate },
+      userId: user.id
+    });
+
+  } else {
+    // Guest overpaid / refund settled offline. Post an incidental charge to bring the balance to 0.
+    const adjustmentAmount = Math.abs(balanceDue);
+    const { error: chargeError } = await supabaseAdmin
+      .from('incidental_charges')
+      .insert([{
+        booking_id: bookingId,
+        property_id: propertyId,
+        amount: adjustmentAmount,
+        description: 'Folio Settlement Adjustment (Refunded/Settled Offline)',
+        created_by: user.id,
+        is_automated: true,
+        business_date: businessDate
+      }]);
+
+    if (chargeError) {
+      console.error("Force Settle Incidental Error:", chargeError.message);
+      return { error: `Failed to post adjustment charge: ${chargeError.message}` };
+    }
+
+    // Log in Audit Trail
+    await logAction({
+      propertyId,
+      action: 'INCIDENTAL_CHARGE_POSTED',
+      details: { bookingId, amount: adjustmentAmount, description: 'Folio Settlement Adjustment (Refunded/Settled Offline)' },
+      userId: user.id
+    });
+  }
+
+  revalidatePath('/dashboard/front-office');
+  revalidatePath('/dashboard/front-office', 'page');
+  
+  return { success: true };
+}
+
+
 
