@@ -93,4 +93,37 @@ describe('checkOutGuest (Zero-Balance Blockade)', () => {
     expect(result.success).toBe(true);
     expect(result.error).toBeUndefined();
   });
+
+  it('should SUCCEED in checking out if the guest has overpaid (Balance < 0)', async () => {
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'bookings') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          update: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) }),
+          eq: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({ data: { amount: 100 }, error: null })
+          })
+        };
+      } else if (table === 'rooms') {
+        return {
+          update: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) })
+        };
+      } else if (table === 'incidental_charges') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockResolvedValue({ data: [{ amount: 0 }], error: null })
+        };
+      } else if (table === 'payments') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockResolvedValue({ data: [{ amount: 120 }], error: null })
+        };
+      }
+    });
+
+    const result = await checkOutGuest('booking-789', 'room-789');
+    
+    expect(result.success).toBe(true);
+    expect(result.error).toBeUndefined();
+  });
 })

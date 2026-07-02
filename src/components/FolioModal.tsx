@@ -299,7 +299,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
   };
 
   const handleFinalCheckout = async () => {
-    if (Math.abs(folio?.balanceDue || 0) > 0.01) {
+    if ((folio?.balanceDue || 0) > 0.01) {
       setError('Cannot checkout with a non-zero balance. Please settle the folio first.');
       return;
     }
@@ -423,7 +423,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                 {folio?.bookingStatus === 'Checked In' && (
                   <button
                     onClick={handleFinalCheckout}
-                    disabled={Math.abs(folio?.balanceDue || 0) > 0.01 || actionLoading}
+                    disabled={(folio?.balanceDue || 0) > 0.01 || actionLoading}
                     className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-zinc-800 disabled:text-zinc-500 text-black font-bold uppercase tracking-wider text-xs transition-colors flex items-center justify-center gap-2"
                   >
                     {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <><ShieldCheck size={16} /> Checkout Guest</>}

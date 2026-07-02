@@ -546,8 +546,8 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
   const totalCharges = roomAmount + totalIncidentals;
   const balanceDue = totalCharges - totalPayments;
 
-  // 2. ENFORCE ZERO BALANCE
-  if (Math.abs(balanceDue) > 0.01) {
+  // 2. ENFORCE ZERO BALANCE (Allow checkout if balance due is zero or negative/overpaid)
+  if (balanceDue > 0.01) {
     return { 
       error: `Folio has a non-zero balance. Settle the ₹${balanceDue.toFixed(2)} balance before departure.` 
     };
