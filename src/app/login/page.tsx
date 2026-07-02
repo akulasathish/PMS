@@ -55,10 +55,10 @@ function LoginForm() {
     }
 
     // Successfully authenticated, route to dashboard
-
+    const redirectTo = searchParams.get('redirect_to') || '/dashboard';
 
     router.refresh(); // Crucial for middleware to see the new session
-    router.push('/dashboard');
+    router.push(redirectTo);
   };
 
   return (

@@ -174,7 +174,7 @@ export async function checkInGuest(
   // Fetch the booking to get the roomId, propertyId, and group_id
   const { data: booking, error: fetchError } = await supabaseAdmin
     .from('bookings')
-    .select('room_id, property_id, guest_name, group_id')
+    .select('room_id, property_id, guest_name, group_id, id_verified, id_photo_url, signature_url')
     .eq('id', bookingId)
     .single();
 
@@ -258,7 +258,10 @@ export async function checkInGuest(
       .from('bookings')
       .update({ 
         status: 'Checked In',
-        check_in_time: new Date().toISOString()
+        check_in_time: new Date().toISOString(),
+        id_verified: booking.id_verified || false,
+        id_photo_url: booking.id_photo_url || null,
+        signature_url: booking.signature_url || null
       })
       .in('id', bookingIds),
     supabaseAdmin

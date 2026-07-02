@@ -7,7 +7,7 @@ import {
   ArrowRight, ShieldCheck, Loader2, AlertCircle, Printer, Trash2, Percent
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { getFolioSummary, postIncidentalCharge, postPayment, postProposedTimeCharge, waiveProposedTimeCharge, voidPayment, deleteIncidentalCharge } from '@/app/actions/folio';
+import { getFolioSummary, postIncidentalCharge, postPayment, postProposedTimeCharge, waiveProposedTimeCharge, voidPayment, deleteIncidentalCharge, deleteSecurityDeposit } from '@/app/actions/folio';
 import { checkOutGuest, undoCheckOutGuest, applyBookingDiscount } from '@/app/actions/booking';
 import { generateGuestBillPDF } from '@/utils/folio-pdf';
 
@@ -117,6 +117,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
 
   const handlePostCharge = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (actionLoading) return;
     setActionLoading(true);
     setError('');
     
@@ -174,6 +175,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
 
   const handlePostPayment = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (actionLoading) return;
     setActionLoading(true);
     setError('');
     
@@ -206,6 +208,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
   };
 
   const handleVoidPayment = async (paymentId: string) => {
+    if (actionLoading) return;
     const reason = prompt("Enter reason for voiding this payment:");
     if (reason === null) return; // user cancelled
     if (!reason.trim()) {
@@ -227,6 +230,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
   };
 
   const handleDeleteIncidental = async (chargeId: string) => {
+    if (actionLoading) return;
     if (!confirm("Are you sure you want to delete this incidental charge entry? This action cannot be undone.")) return;
 
     setActionLoading(true);
@@ -242,8 +246,26 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
     }
   };
 
+  const handleDeleteSecurityDeposit = async () => {
+    if (actionLoading) return;
+    if (!confirm("Are you sure you want to delete the security deposit / advance payment for this booking? This will set the security deposit to ₹0.00 and cannot be undone.")) return;
+
+    setActionLoading(true);
+    setError('');
+
+    const res = await deleteSecurityDeposit(bookingId, propertyId);
+    if (res.error) {
+      setError(res.error);
+      setActionLoading(false);
+    } else {
+      await loadFolio();
+      setActionLoading(false);
+    }
+  };
+
   const handleApplyDiscount = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (actionLoading) return;
     if (!discountVal || isNaN(Number(discountVal))) {
       setError("Please enter a valid numeric discount amount.");
       return;
@@ -282,6 +304,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
       return;
     }
     
+    if (actionLoading) return;
     setActionLoading(true);
     setError('');
     
@@ -295,6 +318,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
   };
 
   const handleUndoCheckout = async () => {
+    if (actionLoading) return;
     setActionLoading(true);
     setError('');
     
@@ -535,7 +559,16 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                               </div>
                               <div className="flex items-center gap-3">
                                 <div className="font-mono text-sm text-white">₹{Number(item.amount).toFixed(2)}</div>
-                                {item.id !== 'security-deposit-charge' && (
+                                {item.id === 'security-deposit-charge' ? (
+                                  <button 
+                                    onClick={handleDeleteSecurityDeposit}
+                                    className="p-1 rounded text-red-400/70 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                                    title="Delete Security Deposit"
+                                    disabled={actionLoading}
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                ) : (
                                   <button 
                                     onClick={() => handleDeleteIncidental(item.id)}
                                     className="p-1 rounded text-red-400/70 hover:text-red-400 hover:bg-red-500/10 transition-colors"

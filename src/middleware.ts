@@ -74,7 +74,9 @@ export async function middleware(request: NextRequest) {
     // If not authenticated, redirect to login
     if (!user) {
       console.log('-> Redirecting unauthenticated user to login.');
-      return NextResponse.redirect(new URL('/login', request.url));
+      const loginUrl = new URL('/login', request.url);
+      loginUrl.searchParams.set('redirect_to', pathname);
+      return NextResponse.redirect(loginUrl);
     }
 
     // Fetch user profile
@@ -105,7 +107,9 @@ export async function middleware(request: NextRequest) {
   // For any other authenticated paths that might be introduced later, redirect if not authenticated
   if (!user && !publicPaths.includes(pathname)) {
     console.log('-> Redirecting unauthenticated user from protected path to login.');
-    return NextResponse.redirect(new URL('/login', request.url));
+    const loginUrl = new URL('/login', request.url);
+    loginUrl.searchParams.set('redirect_to', pathname);
+    return NextResponse.redirect(loginUrl);
   }
   
   return response

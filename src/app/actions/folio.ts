@@ -522,4 +522,38 @@ export async function deleteIncidentalCharge(chargeId: string, propertyId: strin
   return { success: true };
 }
 
+/**
+ * Server action to delete/clear the security deposit (advance payment amount) on the booking
+ */
+export async function deleteSecurityDeposit(bookingId: string, propertyId: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) return { error: 'Unauthorized.' };
+
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // Set booking amount to 0 (Security Deposit / Advance is stored in bookings.amount for monthly bookings)
+  const { error } = await supabaseAdmin
+    .from('bookings')
+    .update({ amount: 0 })
+    .eq('id', bookingId);
+
+  if (error) {
+    console.error("Delete Security Deposit Error:", error.message);
+    return { error: `Failed to delete security deposit: ${error.message}` };
+  }
+
+  // Audit the deletion
+  await logAction({
+    propertyId,
+    action: 'SECURITY_DEPOSIT_DELETED',
+    details: { bookingId },
+    userId: user.id
+  });
+
+  revalidatePath('/dashboard/front-office');
+  return { success: true };
+}
+
 

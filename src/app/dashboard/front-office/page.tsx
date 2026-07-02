@@ -885,6 +885,7 @@ export default function FrontOfficeTerminal() {
 
   const handleSafeCheckIn = async (e: React.MouseEvent, bookingId: string) => {
     e.stopPropagation();
+    if (actionLoading) return;
     setActionLoading(true);
     
     let paymentDetails = undefined;
@@ -3956,7 +3957,7 @@ export default function FrontOfficeTerminal() {
             )}
 
             {/* UNIFIED SEARCH CONTROL FOR LIST TABS */}
-            {(activeTab === 'arrivals' || activeTab === 'departures' || activeTab === 'house' || activeTab === 'balances') && (
+            {(activeTab === 'arrivals' || activeTab === 'departures' || activeTab === 'house' || activeTab === 'balances' || activeTab === 'monthly') && (
               <div className="flex items-center justify-end gap-3 flex-wrap">
                 <div className="relative w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" size={14} />
@@ -4486,12 +4487,17 @@ export default function FrontOfficeTerminal() {
                   </div>
                 )}
 
-                {/* 0. CHECK-IN REQUIREMENTS (Only for Confirmed guests) */}
                 {selectedBooking.status === 'Confirmed' && (
                   <div className="space-y-3 pb-6 border-b border-white/[0.04]">
                     <h3 className="text-xs font-bold text-amber-400 uppercase tracking-widest flex items-center gap-2">
                       <ClipboardCheck size={14} /> Check-In Requirements
                     </h3>
+                    {selectedBooking.group_id && (
+                      <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-bold flex items-center gap-2">
+                        <Users size={14} />
+                        Group Booking: Checking in will check in all confirmed rooms in this group.
+                      </div>
+                    )}
                     <div className="space-y-2 bg-black/40 p-4 rounded-xl border border-white/[0.04]">
                       <label className="flex items-center gap-3 cursor-pointer group">
                         <input type="checkbox" className="w-4 h-4 rounded bg-black border-white/20 accent-amber-500" checked={checkIdVerified} onChange={e => setCheckIdVerified(e.target.checked)} />
