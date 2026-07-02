@@ -30,6 +30,10 @@ export async function createBooking(formData: FormData) {
   const billingCycleDate = formData.get('billingCycleDate') ? parseInt(formData.get('billingCycleDate') as string, 10) : null;
   const monthlyRate = formData.get('monthlyRate') ? parseFloat(formData.get('monthlyRate') as string) : null;
 
+  const prepaidAmount = formData.get('prepaidAmount') ? parseFloat(formData.get('prepaidAmount') as string) : 0;
+  const prepaidMethod = formData.get('prepaidMethod') as string | null;
+  const prepaidDate = formData.get('prepaidDate') as string | null;
+
   // Support both group booking (roomIds) and single room (roomId)
   const roomIds = formData.getAll('roomIds').filter(Boolean) as string[];
   if (roomIds.length === 0) {
@@ -124,6 +128,38 @@ export async function createBooking(formData: FormData) {
   if (bookingError) {
     console.error("Failed to create booking:", bookingError);
     return { error: `Failed to create booking: ${bookingError.message}` };
+  }
+
+  // 1b. If a prepaid advance payment was provided, record it in the payments table
+  if (bookingData && bookingData.length > 0 && !isNaN(prepaidAmount) && prepaidAmount > 0) {
+    const prepaidPerRoom = prepaidAmount / bookingData.length;
+    const paymentsToInsert = bookingData.map(b => ({
+      booking_id: b.id,
+      property_id: propertyId,
+      amount: prepaidPerRoom,
+      method: prepaidMethod || 'Cash',
+      transaction_id: 'PREPAID-AT-CREATION',
+      created_by: user.id,
+      business_date: prepaidDate || checkIn // Use selected prepaid date, or default to check-in date
+    }));
+
+    const { error: paymentInsertError } = await supabaseAdmin
+      .from('payments')
+      .insert(paymentsToInsert);
+
+    if (paymentInsertError) {
+      console.error("Failed to insert prepaid payment at booking creation:", paymentInsertError.message);
+    } else {
+      // Log the payment in Audit Trail
+      for (const pay of paymentsToInsert) {
+        await logAction({
+          propertyId,
+          action: 'PAYMENT_RECEIVED',
+          details: { bookingId: pay.booking_id, amount: pay.amount, method: pay.method, transactionId: pay.transaction_id, businessDate: pay.business_date },
+          userId: user.id
+        });
+      }
+    }
   }
 
   // Audit Log

@@ -43,6 +43,7 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
   const [selectedCheckIn, setSelectedCheckIn] = useState(todayStr);
   const [selectedCheckOut, setSelectedCheckOut] = useState(tomorrowStr);
   const [searchQuery, setSearchQuery] = useState('');
+  const [recordPrepaid, setRecordPrepaid] = useState(false);
 
   // Calculate truly available rooms based on physical state AND date overlap
   const availableRooms = rooms.filter(room => {
@@ -270,10 +271,10 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Total Amount ($)</label>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Total Amount (₹)</label>
                 <div className="relative">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
-                    <DollarSign size={16} />
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-mono text-xs">
+                    ₹
                   </div>
                   <input 
                     type="number" 
@@ -281,10 +282,63 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
                     min="0"
                     step="0.01"
                     required
-                    placeholder="250.00"
-                    className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-azure-500/50"
+                    placeholder="2500.00"
+                    className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-8 pr-4 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-azure-500/50"
                   />
                 </div>
+              </div>
+
+              {/* Prepaid/Advance Payment Section */}
+              <div className="border border-white/5 bg-white/[0.02] p-4 rounded-xl space-y-3">
+                <label className="flex items-center gap-2 text-xs font-bold text-zinc-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={recordPrepaid}
+                    onChange={(e) => setRecordPrepaid(e.target.checked)}
+                    className="w-4 h-4 rounded border-zinc-700 bg-zinc-800 text-azure-600 focus:ring-azure-500 cursor-pointer"
+                  />
+                  <span>Record Advance / Prepaid Payment</span>
+                </label>
+
+                {recordPrepaid && (
+                  <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-white/5">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider pl-0.5">Amount (₹)</label>
+                      <input
+                        type="number"
+                        name="prepaidAmount"
+                        required
+                        min="0.01"
+                        step="0.01"
+                        placeholder="10000"
+                        className="w-full bg-black/50 border border-white/10 rounded-lg py-1.5 px-2 text-white text-xs placeholder:text-zinc-600 focus:outline-none focus:border-azure-500/50"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider pl-0.5">Method</label>
+                      <select
+                        name="prepaidMethod"
+                        required
+                        className="w-full bg-black/50 border border-white/10 rounded-lg py-1.5 px-2 text-white text-xs focus:outline-none focus:border-azure-500/50 cursor-pointer"
+                      >
+                        <option value="UPI">UPI</option>
+                        <option value="Cash">Cash</option>
+                        <option value="Card">Card</option>
+                        <option value="Bank Transfer">Bank Transfer</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider pl-0.5">Date</label>
+                      <input
+                        type="date"
+                        name="prepaidDate"
+                        required
+                        defaultValue={todayStr}
+                        className="w-full bg-black/50 border border-white/10 rounded-lg py-1.5 px-2 text-white text-xs focus:outline-none focus:border-azure-500/50"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {error && (
