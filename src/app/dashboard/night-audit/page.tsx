@@ -80,6 +80,7 @@ interface PaymentLog {
   amount: number;
   method: string;
   created_at: string;
+  is_void?: boolean;
 }
 
 interface IncidentalCharge {
