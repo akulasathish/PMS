@@ -476,7 +476,7 @@ export default function NightAuditPage() {
 
   // Step 3: Reconciliation calculation matrix
   const getReconciliationData = () => {
-    const dayPayments = payments.filter(p => getPaymentDateStr(p) === businessDate);
+    const dayPayments = payments.filter(p => !p.is_void && getPaymentDateStr(p) === businessDate);
 
     let roomCash = 0, roomUPI = 0, roomSwipe = 0, roomOthers = 0;
     let foodCash = 0, foodUPI = 0, foodSwipe = 0, foodOthers = 0;
@@ -488,7 +488,7 @@ export default function NightAuditPage() {
       
       // Find all incidentals and payments for this booking
       const bookingIncidentals = incidentals.filter(inc => inc.booking_id === bkId);
-      const bookingPayments = payments.filter(pm => pm.booking_id === bkId);
+      const bookingPayments = payments.filter(pm => !pm.is_void && pm.booking_id === bkId);
 
       // Sum food & water charges
       const foodChargesTotal = bookingIncidentals

@@ -240,9 +240,10 @@ export async function generateGuestBillPDF(folio: FolioPDFData) {
   doc.setTextColor(30, 30, 30);
   doc.text("2. PAYMENT & TRANSACTION HISTORY", margin, currentY);
 
-  const paymentsRows = folio.payments.length === 0 
+  const activePayments = folio.payments.filter(p => !(p as any).is_void);
+  const paymentsRows = activePayments.length === 0 
     ? [['-', 'No payments recorded on ledger', '-', '-']]
-    : folio.payments.map((p, index) => [
+    : activePayments.map((p, index) => [
         (index + 1).toString(),
         p.method + (p.transaction_id ? ` (Txn: ${p.transaction_id})` : ''),
         formatDate(p.business_date || p.created_at),
