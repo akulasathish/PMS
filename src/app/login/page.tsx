@@ -78,8 +78,8 @@ function LoginForm() {
       >
         {/* Compact Logo Area */}
         <div className="flex flex-col items-center mb-6">
-          <div className="w-16 h-16 rounded-2xl bg-white border border-white/10 flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(255,255,255,0.05)] overflow-hidden">
-            <img src="/logo.png" alt="StaySync Logo" className="w-full h-full object-cover scale-[1.3]" />
+          <div className="w-16 h-16 rounded-2xl bg-transparent border border-white/10 flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(255,255,255,0.05)] overflow-hidden">
+            <img src="/logo.png" alt="StaySync Logo" className="w-full h-full object-contain" />
           </div>
           <h1 className="text-xl font-bold text-white tracking-tight">Owner Portal</h1>
           <p className="text-zinc-600 text-[9px] uppercase tracking-[0.2em] mt-1 font-bold">Secure Verification</p>

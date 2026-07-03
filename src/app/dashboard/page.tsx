@@ -576,8 +576,8 @@ export default function Dashboard() {
             className="w-full flex items-center justify-between gap-3 p-2 -ml-2 rounded-xl hover:bg-white/5 transition-colors group"
           >
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center overflow-hidden shadow-[0_0_20px_rgba(99,102,241,0.15)]">
-                <img src="/logo.png" alt="StaySync Logo" className="w-full h-full object-cover scale-[1.3]" />
+              <div className="w-9 h-9 rounded-xl bg-transparent flex items-center justify-center overflow-hidden">
+                <img src="/logo.png" alt="StaySync Logo" className="w-full h-full object-contain" />
               </div>
               <div className="text-left">
                 <h1 className="text-[13px] font-bold text-white tracking-tight truncate max-w-[130px]">{property?.name || 'Loading...'}</h1>
