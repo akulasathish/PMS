@@ -244,10 +244,8 @@ function SignupForm() {
           >
             {/* Logo Area */}
             <div className="flex flex-col items-center mb-6 text-center">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-emerald-500 to-indigo-500 p-[1px] mb-3 shadow-[0_0_25px_rgba(16,185,129,0.15)]">
-                <div className="w-full h-full bg-[#060608] rounded-[11px] flex items-center justify-center text-emerald-400">
-                  <User size={22} />
-                </div>
+              <div className="w-16 h-16 rounded-2xl bg-white border border-white/10 flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(255,255,255,0.05)] overflow-hidden">
+                <img src="/logo.png" alt="StaySync Logo" className="w-full h-full object-cover scale-[1.3]" />
               </div>
               <h1 className="text-2xl font-black text-white tracking-tight">Create Your StaySync Account</h1>
               <p className="text-zinc-500 text-xs mt-2 font-medium">Configure your premium operational workspace</p>
