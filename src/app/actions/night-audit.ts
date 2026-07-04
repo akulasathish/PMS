@@ -133,6 +133,11 @@ export async function postDailyRoomCharges(
     for (const bk of bookingsToCharge) {
       const description = `Daily Room Charge - ${businessDate}`;
       
+      // Skip room charges with amount <= 0 to avoid violating check constraint on incidental_charges
+      if (bk.amount <= 0) {
+        continue;
+      }
+
       // Check if charge already exists for this booking and date
       const { data: existing } = await supabaseAdmin
         .from('incidental_charges')
