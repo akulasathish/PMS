@@ -76,7 +76,7 @@ export default function HomePage() {
       <nav className="fixed top-0 left-0 w-full z-50 bg-[#08080a]/80 backdrop-blur-xl border-b border-white/[0.05]">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/logo.png" alt="StaySync Logo" className="w-8 h-8 object-contain rounded-lg shadow-lg shadow-indigo-500/10" />
+            <img src="/logo.png" alt="StaySync Logo" className="w-[42px] h-[42px] object-contain rounded-lg shadow-lg shadow-indigo-500/10" />
             <span className="text-white font-bold text-xl tracking-tight">StaySync</span>
           </div>
           
@@ -359,10 +359,10 @@ export default function HomePage() {
 
         {/* Expanded Footer */}
         <footer className="border-t border-white/[0.05] pt-20 pb-10">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-10 mb-16">
-            <div className="col-span-2 md:col-span-1">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-16">
+            <div>
               <div className="flex items-center gap-2 mb-6">
-                <img src="/logo.png" alt="StaySync Logo" className="w-6 h-6 object-contain rounded-md" />
+                <img src="/logo.png" alt="StaySync Logo" className="w-[31px] h-[31px] object-contain rounded-md" />
                 <span className="text-white font-bold text-lg tracking-tight">StaySync</span>
               </div>
               <p className="text-zinc-500 text-sm leading-relaxed">
@@ -379,22 +379,11 @@ export default function HomePage() {
                 <li><a href="#pricing" className="hover:text-indigo-400 transition-colors">Pricing</a></li>
               </ul>
             </div>
-
-            <div>
-              <h4 className="text-white font-bold mb-6">Resources</h4>
-              <ul className="space-y-4 text-sm text-zinc-500">
-                <li><a href="#" className="hover:text-indigo-400 transition-colors">Documentation</a></li>
-                <li><a href="#" className="hover:text-indigo-400 transition-colors">API Reference</a></li>
-                <li><a href="#" className="hover:text-indigo-400 transition-colors">Help Center</a></li>
-                <li><a href="#" className="hover:text-indigo-400 transition-colors">System Status</a></li>
-              </ul>
-            </div>
-
+ 
             <div>
               <h4 className="text-white font-bold mb-6">Company</h4>
               <ul className="space-y-4 text-sm text-zinc-500">
                 <li><a href="#about" className="hover:text-indigo-400 transition-colors">About Us</a></li>
-                <li><a href="#" className="hover:text-indigo-400 transition-colors">Careers</a></li>
                 <li><a href="mailto:sales@staysync.online" className="hover:text-indigo-400 transition-colors">Contact Sales</a></li>
                 <li><Link href="/legal" className="hover:text-indigo-400 transition-colors">Legal & Privacy</Link></li>
               </ul>

@@ -13,7 +13,7 @@ export default function FolioPage() {
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link href="/">
-              <img src="/logo.png" alt="StaySync Logo" className="w-8 h-8 object-contain rounded-lg shadow-lg shadow-indigo-500/10 hover:scale-105 transition-transform" />
+              <img src="/logo.png" alt="StaySync Logo" className="w-[42px] h-[42px] object-contain rounded-lg shadow-lg shadow-indigo-500/10 hover:scale-105 transition-transform" />
             </Link>
             <span className="text-white font-bold text-xl tracking-tight">StaySync Product Suite</span>
           </div>
