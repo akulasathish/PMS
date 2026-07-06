@@ -342,23 +342,7 @@ function SignupForm() {
                 </button>
               </form>
 
-              {/* Developer Toggle Option */}
-              <div className="mt-6 pt-5 border-t border-white/[0.05] flex items-center justify-between">
-                <span className="text-[10px] text-zinc-500 font-bold tracking-wider uppercase">Local Testing Mode</span>
-                <button
-                  type="button"
-                  onClick={() => setBypassVerification(!bypassVerification)}
-                  className={`relative w-8 h-5 rounded-full transition-colors duration-200 focus:outline-none ${
-                    bypassVerification ? 'bg-amber-500' : 'bg-zinc-800'
-                  }`}
-                >
-                  <span
-                    className={`absolute left-0.5 top-0.5 bg-black w-4 h-4 rounded-full transition-transform duration-200 ${
-                      bypassVerification ? 'translate-x-3' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-              </div>
+
 
               <p className="text-center text-zinc-500 text-xs mt-6">
                 Already have an account? {' '}
