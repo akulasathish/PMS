@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import RegisterSW from "@/components/RegisterSW";
+import NightAuditReminder from "@/components/NightAuditReminder";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -41,6 +42,7 @@ export default function RootLayout({
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} dark`} suppressHydrationWarning>
       <body className="bg-[#09090b] text-zinc-300 antialiased selection:bg-indigo-500/30">
         <RegisterSW />
+        <NightAuditReminder />
         {children}
       </body>
     </html>
