@@ -531,7 +531,7 @@ export default function FrontOfficeTerminal() {
         ]);
 
         const loadedBookings = bookingsRes.data || [];
-        const bookingIds = loadedBookings.map(b => b.id);
+        const bookingIds = loadedBookings.map((b: any) => b.id);
 
         let incidentalsQuery = supabase.from('incidental_charges').select('*').eq('property_id', activeId);
         let paymentsQuery = supabase.from('payments').select('*').eq('property_id', activeId);
@@ -611,7 +611,7 @@ export default function FrontOfficeTerminal() {
           table: 'rooms',
           filter: 'property_id=eq.' + property.id
         },
-        (payload) => {
+        (payload: any) => {
           console.log("Realtime Room Update:", payload.new);
           setRooms((prevRooms) => 
             prevRooms.map((r) => r.id === payload.new.id ? { ...r, status: payload.new.status as Room['status'] } : r)
@@ -962,7 +962,7 @@ export default function FrontOfficeTerminal() {
           table: 'bookings',
           filter: "id=eq." + selectedBooking.id
         },
-        (payload) => {
+        (payload: any) => {
           if (payload.new.id_verified) {
             setSelectedBooking(payload.new as Booking);
             setCheckIdVerified(true);

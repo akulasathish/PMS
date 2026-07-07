@@ -90,7 +90,7 @@ export default function Inventory() {
         let parsedPropsList: { id: string, name: string }[] = [];
 
         if (accessibleProperties && accessibleProperties.length > 0) {
-          parsedPropsList = accessibleProperties.map((p) => p.properties as unknown as { id: string, name: string });
+          parsedPropsList = accessibleProperties.map((p: any) => p.properties as unknown as { id: string, name: string });
           setAccessiblePropsList(parsedPropsList);
 
           const savedId = localStorage.getItem('pms_active_property');
@@ -166,7 +166,7 @@ export default function Inventory() {
           table: 'rooms',
           filter: 'property_id=eq.' + propertyId
         },
-        (payload) => {
+        (payload: any) => {
           if (payload.eventType === 'UPDATE') {
             setRooms((prevRooms) =>
               prevRooms.map((r) => r.id === (payload.new as Room).id ? { ...r, ...(payload.new as Room) } : r)

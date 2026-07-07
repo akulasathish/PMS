@@ -256,10 +256,10 @@ export default function Dashboard() {
       if (bookingsRes.error) throw bookingsRes.error;
       if (paymentsResult.error) throw paymentsResult.error;
 
-      const filteredBookings = (bookingsRes.data || []).filter(b => b.status !== 'Cancelled');
+      const filteredBookings = (bookingsRes.data || []).filter((b: any) => b.status !== 'Cancelled');
       const roomsSold = filteredBookings.length;
-      const bookingRevenue = filteredBookings.reduce((sum, b) => sum + Number(b.amount || 0), 0);
-      const cashCollected = (paymentsResult.data || []).reduce((sum, p) => sum + Number(p.amount || 0), 0);
+      const bookingRevenue = filteredBookings.reduce((sum: number, b: any) => sum + Number(b.amount || 0), 0);
+      const cashCollected = (paymentsResult.data || []).reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
 
       setAuditResults({
         ran: true,

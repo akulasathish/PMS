@@ -136,7 +136,7 @@ describe('createBooking (Prepaid/Advance Support)', () => {
   it('should create booking and insert prepaid payment with the correct business date if provided', async () => {
     const mockInsert = vi.fn().mockImplementation((data) => {
       return {
-        select: vi.fn().mockResolvedValue({ data: data.map((d, index) => ({ id: `booking-id-${index}`, ...d })), error: null })
+        select: vi.fn().mockResolvedValue({ data: data.map((d: any, index: number) => ({ id: `booking-id-${index}`, ...d })), error: null })
       };
     });
 

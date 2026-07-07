@@ -141,7 +141,7 @@ export default function HousekeepingTerminal() {
           table: 'rooms',
           filter: 'property_id=eq.' + property.id
         },
-        (payload) => {
+        (payload: any) => {
           console.log("Housekeeping Realtime Sync:", payload.eventType, payload.new);
           
           if (payload.eventType === 'UPDATE') {

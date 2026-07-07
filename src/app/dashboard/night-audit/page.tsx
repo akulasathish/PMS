@@ -210,7 +210,7 @@ export default function NightAuditPage() {
         ]);
 
         const loadedBookings = bookingsRes.data || [];
-        const bookingIds = loadedBookings.map(b => b.id);
+        const bookingIds = loadedBookings.map((b: any) => b.id);
 
         let incidentalsQuery = supabase.from('incidental_charges').select('*').eq('property_id', activeId);
         let paymentsQuery = supabase.from('payments').select('*').eq('property_id', activeId);
@@ -240,7 +240,7 @@ export default function NightAuditPage() {
         // Pre-populate custom rates state with average daily rates
         const ratesMap: { [id: string]: string } = {};
         if (bookingsRes.data) {
-          bookingsRes.data.forEach(bk => {
+          bookingsRes.data.forEach((bk: any) => {
             if (bk.status === 'Checked In') {
               const start = new Date(bk.check_in);
               const end = new Date(bk.check_out);
