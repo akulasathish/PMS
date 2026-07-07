@@ -4,11 +4,12 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, Plus, CreditCard, Banknote, Smartphone, Building2, 
-  ArrowRight, ShieldCheck, Loader2, AlertCircle, Printer, Trash2, Percent, Sparkles
+  ArrowRight, ShieldCheck, Loader2, AlertCircle, Printer, Trash2, Percent, Sparkles, CalendarDays
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { getFolioSummary, postIncidentalCharge, postPayment, postProposedTimeCharge, waiveProposedTimeCharge, voidPayment, deleteIncidentalCharge, deleteSecurityDeposit, forceSettleFolio } from '@/app/actions/folio';
 import { checkOutGuest, undoCheckOutGuest, applyBookingDiscount } from '@/app/actions/booking';
+import { extendBookingStay } from '@/app/actions/night-audit';
 import { generateGuestBillPDF } from '@/utils/folio-pdf';
 
 interface FolioModalProps {
@@ -61,6 +62,10 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
   // Discount states
   const [discountVal, setDiscountVal] = useState('');
   const [discountReasonText, setDiscountReasonText] = useState('');
+
+  // Extend stay states
+  const [showExtensionInput, setShowExtensionInput] = useState(false);
+  const [extensionDate, setExtensionDate] = useState('');
 
   const loadFolio = async () => {
     setLoading(true);
@@ -351,6 +356,24 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
     }
   };
 
+  const handleExtendStay = async () => {
+    if (!extensionDate) return;
+    if (actionLoading) return;
+    setActionLoading(true);
+    setError('');
+
+    const res = await extendBookingStay(bookingId, extensionDate);
+    if (res.error) {
+      setError(res.error);
+      setActionLoading(false);
+    } else {
+      setShowExtensionInput(false);
+      await loadFolio();
+      setActionLoading(false);
+      if (onSuccess) onSuccess();
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
@@ -463,6 +486,47 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                 {folio?.bookingStatus === 'Confirmed' && (
                   <div className="w-full py-2.5 px-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 font-bold text-[10px] uppercase tracking-wider text-center flex items-center justify-center gap-1.5">
                     <AlertCircle size={12} /> Upcoming Booking / Pre-Arrival
+                  </div>
+                )}
+
+                {(folio?.bookingStatus === 'Checked In' || folio?.bookingStatus === 'Confirmed') && !showExtensionInput && (
+                  <button
+                    onClick={() => {
+                      setExtensionDate(folio?.checkOut?.split('T')[0] || '');
+                      setShowExtensionInput(true);
+                    }}
+                    disabled={actionLoading}
+                    className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-bold uppercase tracking-wider text-xs transition-colors flex items-center justify-center gap-2 mt-2"
+                  >
+                    <CalendarDays size={16} /> Extend Stay
+                  </button>
+                )}
+
+                {showExtensionInput && (
+                  <div className="p-3 bg-white/5 border border-white/10 rounded-xl mt-2 flex flex-col gap-2">
+                    <label className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">New Checkout Date</label>
+                    <input
+                      type="date"
+                      value={extensionDate}
+                      min={folio?.checkOut ? folio.checkOut.split('T')[0] : undefined}
+                      onChange={(e) => setExtensionDate(e.target.value)}
+                      className="bg-zinc-950 border border-white/10 rounded-lg p-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setShowExtensionInput(false)}
+                        className="flex-1 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleExtendStay}
+                        disabled={actionLoading || !extensionDate || extensionDate === folio?.checkOut?.split('T')[0]}
+                        className="flex-1 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 disabled:bg-zinc-800 disabled:text-zinc-500 transition-colors flex items-center justify-center gap-1"
+                      >
+                        {actionLoading ? <Loader2 size={12} className="animate-spin" /> : 'Confirm'}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
