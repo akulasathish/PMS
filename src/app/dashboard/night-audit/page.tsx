@@ -279,6 +279,15 @@ export default function NightAuditPage() {
     return p.created_at.substring(0, 10);
   };
 
+  const getLocalDateStr = () => {
+    const now = new Date();
+    const localYear = now.getFullYear();
+    const localMonth = String(now.getMonth() + 1).padStart(2, '0');
+    const localDay = String(now.getDate()).padStart(2, '0');
+    return `${localYear}-${localMonth}-${localDay}`;
+  };
+  const isAlreadyRolledOver = businessDate ? businessDate >= getLocalDateStr() : false;
+
   // Filter lists based on business date (Only Departures are critical operational items for Step 1)
   const pendingDepartures = bookings.filter(b => 
     b.check_out === businessDate && b.status === 'Checked In'
@@ -735,6 +744,14 @@ export default function NightAuditPage() {
   // Step 3 Action: Finalize Rollover
   const handleExecuteRollover = async () => {
     if (!property) return;
+    
+    // Safety check to prevent running multiple rollovers on the same day
+    const localDateStr = getLocalDateStr();
+    if (businessDate >= localDateStr) {
+      alert(`Safety Block: The Night Audit has already been executed for today. The operational business date (${businessDate}) is already up-to-date with your actual calendar date (${localDateStr}). Running another rollover is blocked to prevent skipping dates.`);
+      return;
+    }
+
     setActionLoading('rollover');
     
     // First save daily cash snapshot inside daily_cash_balances
@@ -1523,6 +1540,15 @@ export default function NightAuditPage() {
 
                   </div>
 
+                  {isAlreadyRolledOver && (
+                    <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-medium flex items-start gap-2.5 mb-2 shadow-lg">
+                      <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                      <div>
+                        <strong>Safety Warning:</strong> The system business date ({businessDate}) is already equal to or ahead of your local calendar date ({getLocalDateStr()}). Running another Night Audit rollover is blocked to prevent skipping dates or double-charging.
+                      </div>
+                    </div>
+                  )}
+
                   {/* BOTTOM ACTION CTA */}
                   <div className="flex justify-between items-center pt-6 border-t border-white/[0.04]">
                     <button
@@ -1534,9 +1560,9 @@ export default function NightAuditPage() {
                     </button>
 
                     <button
-                      disabled={actionLoading === 'rollover'}
+                      disabled={actionLoading === 'rollover' || isAlreadyRolledOver}
                       onClick={handleExecuteRollover}
-                      className="bg-indigo-600 hover:bg-indigo-500 text-white px-7 py-3 rounded-xl font-bold text-xs flex items-center gap-2 transition-all active:scale-[0.98] shadow-lg shadow-indigo-500/10"
+                      className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none text-white px-7 py-3 rounded-xl font-bold text-xs flex items-center gap-2 transition-all active:scale-[0.98] shadow-lg shadow-indigo-500/10"
                     >
                       {actionLoading === 'rollover' ? <Loader2 size={14} className="animate-spin" /> : <Sun size={14} />}
                       Run Day Rollover Now
