@@ -12,7 +12,7 @@ import { UserProfile } from '@/lib/types';
 
 import {
   TrendingUp,
-  DollarSign,
+  IndianRupee,
   Users,
   BedDouble,
   ArrowUpRight,
@@ -727,11 +727,11 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
             <StatCard
               title="Total Revenue" subtitle="Current historical total"
-              icon={Wallet} color="emerald" value={`$${totalRevenue.toLocaleString()}`} trend="12.5%" trendUp={true}
+              icon={Wallet} color="emerald" value={`₹${totalRevenue.toLocaleString()}`} trend="12.5%" trendUp={true}
             />
             <StatCard
               title="Avg Booking Value" subtitle="Per reservation"
-              icon={DollarSign} color="indigo" value={`$${avgDailyRate}`} trend="3.2%" trendUp={true}
+              icon={IndianRupee} color="indigo" value={`₹${avgDailyRate}`} trend="3.2%" trendUp={true}
             />
             <StatCard
               title="Occupancy Rate" subtitle={`${occupiedRooms} of ${totalRoomsCount} rooms occupied`}
@@ -780,7 +780,7 @@ export default function Dashboard() {
                       <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
                         {[4, 3, 2, 1, 0].map((i) => (
                           <div key={i} className="w-full border-t border-white/[0.02] h-0 relative">
-                            <span className="absolute -top-2.5 -left-8 text-[9px] text-zinc-600">${Math.round((Math.max(...revenueData.map(d => d.revenue)) * (i/4)) / 100) * 100}</span>
+                            <span className="absolute -top-2.5 -left-8 text-[9px] text-zinc-600">₹{Math.round((Math.max(...revenueData.map(d => d.revenue)) * (i/4)) / 100) * 100}</span>
                           </div>
                         ))}
                       </div>
@@ -800,7 +800,7 @@ export default function Dashboard() {
                               />
                               {/* Tooltip */}
                               <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-800 text-white text-[10px] py-1 px-2 rounded pointer-events-none whitespace-nowrap z-20 shadow-xl border border-white/10">
-                                ${day.revenue} <br/>
+                                ₹{day.revenue} <br/>
                                 <span className="text-zinc-400 text-[8px] uppercase">{new Date(day.date).toLocaleDateString(undefined, {month:'short', day:'numeric'})}</span>
                               </div>
                             </div>
@@ -876,7 +876,7 @@ export default function Dashboard() {
                         <span className="text-[12px] text-zinc-500">Live</span>
                       </div>
                       <div className="col-span-2 text-right">
-                        <span className="text-[13px] font-bold text-white">${bk.amount}</span>
+                        <span className="text-[13px] font-bold text-white">₹{bk.amount}</span>
                       </div>
                     </motion.div>
                   ))}
@@ -938,13 +938,13 @@ export default function Dashboard() {
                       {/* Booked Revenue */}
                       <div className="bg-white/[0.02] border border-white/[0.04] rounded-xl p-3 text-center">
                         <span className="text-[9px] font-bold text-zinc-500 uppercase block mb-1">Booked Rev</span>
-                        <span className="text-base font-black text-indigo-400 font-mono">${auditResults.bookingRevenue}</span>
+                        <span className="text-base font-black text-indigo-400 font-mono">₹{auditResults.bookingRevenue}</span>
                       </div>
 
                       {/* Cash Collected */}
                       <div className="bg-white/[0.02] border border-white/[0.04] rounded-xl p-3 text-center">
                         <span className="text-[9px] font-bold text-zinc-500 uppercase block mb-1">Cash Coll</span>
-                        <span className="text-base font-black text-violet-400 font-mono">${auditResults.cashCollected}</span>
+                        <span className="text-base font-black text-violet-400 font-mono">₹{auditResults.cashCollected}</span>
                       </div>
                     </div>
 
@@ -960,7 +960,7 @@ export default function Dashboard() {
                               <span className="text-zinc-300 font-semibold block truncate">{b.guest_name}</span>
                               <span className="text-[8px] text-zinc-600 uppercase font-bold">Room Booked</span>
                             </div>
-                            <span className="font-mono text-indigo-400 font-bold">${b.amount}</span>
+                            <span className="font-mono text-indigo-400 font-bold">₹{b.amount}</span>
                           </div>
                         ))}
 
@@ -971,7 +971,7 @@ export default function Dashboard() {
                               <span className="text-zinc-300 font-semibold block truncate">Payment Logged</span>
                               <span className="text-[8px] text-violet-500 uppercase font-bold">{p.payment_method || 'Unknown'}</span>
                             </div>
-                            <span className="font-mono text-violet-400 font-bold">+${p.amount}</span>
+                            <span className="font-mono text-violet-400 font-bold">+₹{p.amount}</span>
                           </div>
                         ))}
                       </div>

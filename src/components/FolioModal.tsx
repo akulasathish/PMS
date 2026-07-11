@@ -4,13 +4,14 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, Plus, CreditCard, Banknote, Smartphone, Building2, 
-  ArrowRight, ShieldCheck, Loader2, AlertCircle, Printer, Trash2, Percent, Sparkles, CalendarDays
+  ArrowRight, ShieldCheck, Loader2, AlertCircle, Printer, Trash2, Percent, Sparkles, CalendarDays,
+  FileText
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { getFolioSummary, postIncidentalCharge, postPayment, postProposedTimeCharge, waiveProposedTimeCharge, voidPayment, deleteIncidentalCharge, deleteSecurityDeposit, forceSettleFolio } from '@/app/actions/folio';
 import { checkOutGuest, undoCheckOutGuest, applyBookingDiscount } from '@/app/actions/booking';
 import { extendBookingStay } from '@/app/actions/night-audit';
-import { generateGuestBillPDF } from '@/utils/folio-pdf';
+import { generateGuestBillPDF, generateDailyItemizedLedgerPDF } from '@/utils/folio-pdf';
 
 interface FolioModalProps {
   bookingId: string;
@@ -453,6 +454,17 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                   <Printer size={16} /> Print / Download Bill
                 </button>
 
+                <button
+                  onClick={async () => {
+                    if (!folio) return;
+                    await generateDailyItemizedLedgerPDF(folio);
+                  }}
+                  disabled={actionLoading || !folio}
+                  className="w-full py-3 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-bold uppercase tracking-wider text-xs transition-colors flex items-center justify-center gap-2 shadow-lg"
+                >
+                  <FileText size={16} /> Print Daily Ledger
+                </button>
+
                 {folio?.bookingStatus === 'Checked Out' && (
                   <button
                     onClick={handleUndoCheckout}
@@ -705,7 +717,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                                     {item.method} {item.is_void && "(Voided)"}
                                   </div>
                                   <div className="text-[10px] text-zinc-500">
-                                    {new Date(item.created_at).toLocaleDateString()}
+                                    {item.business_date ? new Date(item.business_date).toLocaleDateString() : new Date(item.created_at).toLocaleDateString()}
                                     {item.is_void && ` • Reason: ${item.void_reason}`}
                                   </div>
                                 </div>

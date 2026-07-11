@@ -18,7 +18,7 @@ import {
   Sun,
   CheckCircle2,
   AlertTriangle,
-  DollarSign,
+  IndianRupee,
   Clock,
   ArrowRight,
   Loader2,
@@ -1128,7 +1128,7 @@ export default function NightAuditPage() {
                   
                   <div>
                     <h3 className="text-md font-bold text-white flex items-center gap-2">
-                      <DollarSign size={18} className="text-emerald-400" />
+                      <IndianRupee size={18} className="text-emerald-400" />
                       Auto-Posting Daily Folio Room Charges (Adjustable Dynamic Rates)
                     </h3>
                     <p className="text-xs text-zinc-500 mt-1 leading-relaxed">
@@ -1216,7 +1216,7 @@ export default function NightAuditPage() {
                       onClick={handlePostCharges}
                       className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-600/40 text-white px-6 py-3 rounded-xl font-bold text-xs flex items-center gap-2 transition-all active:scale-[0.98] shadow-lg shadow-emerald-950/20"
                     >
-                      {actionLoading === 'post-charges' ? <Loader2 size={14} className="animate-spin" /> : <DollarSign size={14} />}
+                      {actionLoading === 'post-charges' ? <Loader2 size={14} className="animate-spin" /> : <IndianRupee size={14} />}
                       Post Charges & Advance to Reconciliation
                     </button>
                   </div>

@@ -10,7 +10,7 @@ import {
   Plus, Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, LogOut,
   ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck, RefreshCw, RotateCcw, Printer, XCircle, Link2, Camera, X, ShieldCheck, AlertCircle, Phone, Mail, Eye,
-  Trash2, DollarSign, Moon, Banknote, Smartphone, CreditCard, Clock, TrendingDown, Download, Wallet, FileText,
+  Trash2, IndianRupee, Moon, Banknote, Smartphone, CreditCard, Clock, TrendingDown, Download, Wallet, FileText,
   Home, UserPlus, User
 } from 'lucide-react';
 import Link from 'next/link';
@@ -3035,7 +3035,7 @@ export default function FrontOfficeTerminal() {
           <div className="bg-zinc-900/20 border border-white/[0.04] p-6 rounded-3xl space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Income Collections</span>
-              <DollarSign className="text-indigo-400" size={16} />
+              <IndianRupee className="text-indigo-400" size={16} />
             </div>
             <div>
               <p className="text-2xl font-black text-white">₹{totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
@@ -4184,7 +4184,7 @@ export default function FrontOfficeTerminal() {
                 { id: 'arrivals', label: 'Arrivals Today', icon: UserCheck },
                 { id: 'departures', label: 'Departures Today', icon: LogOut },
                 { id: 'house', label: 'In-House', icon: Bed },
-                { id: 'balances', label: 'Pending Payments', icon: DollarSign },
+                { id: 'balances', label: 'Pending Payments', icon: IndianRupee },
                 { id: 'expenses', label: 'Expenses & Cash', icon: TrendingDown },
                 { id: 'all', label: 'Reservations', icon: Search },
                 { id: 'monthly', label: 'Monthly Co-Living', icon: Home },
@@ -4720,7 +4720,7 @@ export default function FrontOfficeTerminal() {
                 {(selectedBooking.status === 'Checked In' || selectedBooking.status === 'Checked Out' || selectedBooking.status === 'Confirmed') && (
                   <div className="space-y-3 pb-6 border-b border-white/[0.04]">
                     <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-2">
-                      <DollarSign size={14} /> Billing & Folio Ledger
+                      <IndianRupee size={14} /> Billing & Folio Ledger
                     </h3>
                     <div className="bg-black/40 border border-white/[0.04] rounded-2xl p-4 space-y-4">
                       <p className="text-[11px] text-zinc-500 leading-relaxed">

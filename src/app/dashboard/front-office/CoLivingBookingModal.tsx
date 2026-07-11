@@ -308,75 +308,69 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Security Deposit / Advance (₹)</label>
-                <div className="relative">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-mono text-xs select-none">
-                    ₹
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Security Deposit (₹)</label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-mono text-xs select-none">
+                      ₹
+                    </div>
+                    <input 
+                      type="number" 
+                      name="amount"
+                      min="0"
+                      step="0.01"
+                      required
+                      placeholder="10000.00"
+                      className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-8 pr-4 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/50"
+                    />
                   </div>
-                  <input 
-                    type="number" 
-                    name="amount"
-                    min="0"
-                    step="0.01"
-                    required
-                    placeholder="10000.00"
-                    className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-8 pr-4 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/50"
-                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Advance Payment (₹)</label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-mono text-xs select-none">
+                      ₹
+                    </div>
+                    <input 
+                      type="number" 
+                      name="prepaidAmount"
+                      min="0"
+                      step="0.01"
+                      placeholder="0.00"
+                      className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-8 pr-4 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/50"
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Prepaid/Advance Payment Section */}
-              <div className="border border-white/5 bg-white/[0.02] p-4 rounded-xl space-y-3">
-                <label className="flex items-center gap-2 text-xs font-bold text-zinc-300 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={recordPrepaid}
-                    onChange={(e) => setRecordPrepaid(e.target.checked)}
-                    className="w-4 h-4 rounded border-zinc-700 bg-zinc-800 text-azure-600 focus:ring-azure-500 cursor-pointer"
-                  />
-                  <span>Record Advance / Prepaid Payment</span>
-                </label>
+              {/* Advance Payment Details (Method & Date) */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Advance Pay Method</label>
+                  <select
+                    name="prepaidMethod"
+                    required
+                    className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500/50 cursor-pointer"
+                  >
+                    <option value="UPI">UPI / PhonePe</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Card">Card</option>
+                    <option value="Bank Transfer">Bank Transfer</option>
+                  </select>
+                </div>
 
-                {recordPrepaid && (
-                  <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-white/5">
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider pl-0.5">Amount (₹)</label>
-                      <input
-                        type="number"
-                        name="prepaidAmount"
-                        required
-                        min="0.01"
-                        step="0.01"
-                        placeholder="10000"
-                        className="w-full bg-black/50 border border-white/10 rounded-lg py-1.5 px-2 text-white text-xs placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/50"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider pl-0.5">Method</label>
-                      <select
-                        name="prepaidMethod"
-                        required
-                        className="w-full bg-black/50 border border-white/10 rounded-lg py-1.5 px-2 text-white text-xs focus:outline-none focus:border-indigo-500/50 cursor-pointer"
-                      >
-                        <option value="UPI">UPI</option>
-                        <option value="Cash">Cash</option>
-                        <option value="Card">Card</option>
-                        <option value="Bank Transfer">Bank Transfer</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider pl-0.5">Date</label>
-                      <input
-                        type="date"
-                        name="prepaidDate"
-                        required
-                        defaultValue={todayStr}
-                        className="w-full bg-black/50 border border-white/10 rounded-lg py-1.5 px-2 text-white text-xs focus:outline-none focus:border-indigo-500/50"
-                      />
-                    </div>
-                  </div>
-                )}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Advance Pay Date</label>
+                  <input
+                    type="date"
+                    name="prepaidDate"
+                    required
+                    defaultValue={todayStr}
+                    className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500/50"
+                  />
+                </div>
               </div>
 
               {error && (
