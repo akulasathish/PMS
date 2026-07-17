@@ -22,6 +22,10 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
+  const [step, setStep] = useState(1);
+  const [guestName, setGuestName] = useState('');
+  const [guestPhone, setGuestPhone] = useState('');
+
   const getLocalYYYYMMDD = (d: Date) => {
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -48,6 +52,10 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
   React.useEffect(() => {
     if (isOpen) {
       setSelectedRoomId(defaultRoomId || '');
+      setStep(1);
+      setGuestName('');
+      setGuestPhone('');
+      setError('');
     }
   }, [isOpen, defaultRoomId]);
 
@@ -149,32 +157,32 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
           ) : (
             <form action={handleSubmit} className="space-y-4">
               
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Room Selection</label>
-                <select
-                  required
-                  value={selectedRoomId}
-                  onChange={(e) => setSelectedRoomId(e.target.value)}
-                  className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500/50 cursor-pointer"
-                >
-                  <option value="" className="bg-[#0c0c0e]">Select shared monthly room...</option>
-                  {monthlyRooms.map(room => {
-                    const info = getRoomOccupancyInfo(room);
-                    return (
-                      <option 
-                        key={room.id} 
-                        value={room.id}
-                        disabled={info.isFull}
-                        className="bg-[#0c0c0e] text-white disabled:text-zinc-600"
-                      >
-                        Room {room.room_number} ({room.type}) &mdash; Bed {info.currentCount + 1} of {info.capacity} ({info.isFull ? 'FULL' : 'VACANT'})
-                      </option>
-                    );
-                  })}
-                </select>
+              {/* Stepper progress headers */}
+              <div className="flex items-center justify-between pb-4 border-b border-white/5 mb-4 text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
+                <div className="flex items-center gap-1.5">
+                  <span className={`w-5 h-5 rounded-full flex items-center justify-center border text-[9px] font-black ${
+                    step >= 1 ? 'bg-indigo-600 border-indigo-500 text-white' : 'border-zinc-700 text-zinc-550'
+                  }`}>1</span>
+                  <span className={step === 1 ? 'text-white' : 'text-zinc-500'}>Resident</span>
+                </div>
+                <div className="w-8 h-px bg-zinc-800" />
+                <div className="flex items-center gap-1.5">
+                  <span className={`w-5 h-5 rounded-full flex items-center justify-center border text-[9px] font-black ${
+                    step >= 2 ? 'bg-indigo-600 border-indigo-500 text-white' : 'border-zinc-700 text-zinc-550'
+                  }`}>2</span>
+                  <span className={step === 2 ? 'text-white' : 'text-zinc-500'}>Stay Info</span>
+                </div>
+                <div className="w-8 h-px bg-zinc-800" />
+                <div className="flex items-center gap-1.5">
+                  <span className={`w-5 h-5 rounded-full flex items-center justify-center border text-[9px] font-black ${
+                    step >= 3 ? 'bg-indigo-600 border-indigo-500 text-white' : 'border-zinc-700 text-zinc-550'
+                  }`}>3</span>
+                  <span className={step === 3 ? 'text-white' : 'text-zinc-500'}>Billing</span>
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              {/* STEP 1: RESIDENT DETAILS */}
+              <div className={step === 1 ? "space-y-4" : "hidden"}>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Guest Name</label>
                   <div className="relative">
@@ -184,9 +192,11 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
                     <input 
                       type="text" 
                       name="guestName"
-                      required
-                      placeholder="Rahul"
-                      className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/50"
+                      required={step === 1}
+                      value={guestName}
+                      onChange={(e) => setGuestName(e.target.value)}
+                      placeholder="e.g. Harsha or Saikumar"
+                      className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white text-sm placeholder:text-zinc-700 focus:outline-none focus:border-indigo-500/50"
                     />
                   </div>
                 </div>
@@ -200,176 +210,264 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
                     <input 
                       type="tel" 
                       name="guestPhone"
-                      required
-                      placeholder="+91 98765 43210"
-                      className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/50"
+                      required={step === 1}
+                      value={guestPhone}
+                      onChange={(e) => setGuestPhone(e.target.value)}
+                      placeholder="e.g. +91 98765 43210"
+                      className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white text-sm placeholder:text-zinc-700 focus:outline-none focus:border-indigo-500/50"
                     />
                   </div>
                 </div>
-              </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Guest Email (optional)</label>
-                <div className="relative">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
-                    <Mail size={16} />
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Guest Email (optional)</label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
+                      <Mail size={16} />
+                    </div>
+                    <input 
+                      type="email" 
+                      name="guestEmail"
+                      placeholder="rahul@example.com"
+                      className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white text-sm placeholder:text-zinc-700 focus:outline-none focus:border-indigo-500/50"
+                    />
                   </div>
-                  <input 
-                    type="email" 
-                    name="guestEmail"
-                    placeholder="rahul@example.com"
-                    className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/50"
-                  />
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!guestName.trim() || !guestPhone.trim()) {
+                      setError("Please fill out guest name and phone number.");
+                      return;
+                    }
+                    setError("");
+                    setStep(2);
+                  }}
+                  className="w-full mt-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl py-2.5 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all"
+                >
+                  Continue: Room & Dates
+                </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              {/* STEP 2: STAY DETAILS */}
+              <div className={step === 2 ? "space-y-4" : "hidden"}>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Join Date</label>
-                  <input 
-                    type="date" 
-                    name="checkIn"
-                    required
-                    value={selectedCheckIn}
-                    onChange={(e) => {
-                      const newIn = e.target.value;
-                      setSelectedCheckIn(newIn);
-                      
-                      if (newIn) {
-                        const parts = newIn.split('-');
-                        const inDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-                        const outParts = selectedCheckOut.split('-');
-                        const outDate = new Date(Number(outParts[0]), Number(outParts[1]) - 1, Number(outParts[2]));
-                        
-                        if (outDate <= inDate) {
-                          const nextYear = new Date(inDate);
-                          nextYear.setFullYear(nextYear.getFullYear() + 1);
-                          setSelectedCheckOut(getLocalYYYYMMDD(nextYear));
-                        }
-                      }
-                    }}
-                    className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500/50"
-                  />
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Room Selection</label>
+                  <select
+                    value={selectedRoomId}
+                    onChange={(e) => setSelectedRoomId(e.target.value)}
+                    className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500/50 cursor-pointer"
+                  >
+                    <option value="" className="bg-[#0c0c0e]">Select shared monthly room...</option>
+                    {monthlyRooms.map(room => {
+                      const info = getRoomOccupancyInfo(room);
+                      return (
+                        <option 
+                          key={room.id} 
+                          value={room.id}
+                          disabled={info.isFull}
+                          className="bg-[#0c0c0e] text-white disabled:text-zinc-600"
+                        >
+                          Room {room.room_number} ({room.type}) &mdash; Bed {info.currentCount + 1} of {info.capacity} ({info.isFull ? 'FULL' : 'VACANT'})
+                        </option>
+                      );
+                    })}
+                  </select>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Contract End</label>
-                  <input 
-                    type="date" 
-                    name="checkOut"
-                    required
-                    value={selectedCheckOut}
-                    min={selectedCheckIn ? (() => {
-                      const parts = selectedCheckIn.split('-');
-                      const inDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-                      const nextDay = new Date(inDate);
-                      nextDay.setDate(nextDay.getDate() + 1);
-                      return getLocalYYYYMMDD(nextDay);
-                    })() : undefined}
-                    onChange={(e) => setSelectedCheckOut(e.target.value)}
-                    className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500/50"
-                  />
-                </div>
-              </div>
-
-              <div className="p-3 bg-white/5 border border-white/10 rounded-xl space-y-3">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider pl-1">Monthly Charges (₹)</label>
-                    <div className="relative">
-                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-mono text-xs select-none">
-                        ₹
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Join Date</label>
+                    <input 
+                      type="date" 
+                      name="checkIn"
+                      required={step === 2}
+                      value={selectedCheckIn}
+                      onChange={(e) => {
+                        const newIn = e.target.value;
+                        setSelectedCheckIn(newIn);
+                        
+                        if (newIn) {
+                          const parts = newIn.split('-');
+                          const inDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+                          const outParts = selectedCheckOut.split('-');
+                          const outDate = new Date(Number(outParts[0]), Number(outParts[1]) - 1, Number(outParts[2]));
+                          
+                          if (outDate <= inDate) {
+                            const nextYear = new Date(inDate);
+                            nextYear.setFullYear(nextYear.getFullYear() + 1);
+                            setSelectedCheckOut(getLocalYYYYMMDD(nextYear));
+                          }
+                        }
+                      }}
+                      className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500/50"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Contract End</label>
+                    <input 
+                      type="date" 
+                      name="checkOut"
+                      required={step === 2}
+                      value={selectedCheckOut}
+                      min={selectedCheckIn ? (() => {
+                        const parts = selectedCheckIn.split('-');
+                        const inDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+                        const nextDay = new Date(inDate);
+                        nextDay.setDate(nextDay.getDate() + 1);
+                        return getLocalYYYYMMDD(nextDay);
+                      })() : undefined}
+                      onChange={(e) => setSelectedCheckOut(e.target.value)}
+                      className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500/50"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 mt-4">
+                  <button
+                    type="button"
+                    onClick={() => setStep(1)}
+                    className="flex-1 bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-400 hover:text-white rounded-xl py-2.5 text-xs font-bold uppercase tracking-wider transition-all"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!selectedRoomId) {
+                        setError("Please select a room for co-living.");
+                        return;
+                      }
+                      setError("");
+                      setStep(3);
+                    }}
+                    className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl py-2.5 text-xs font-bold uppercase tracking-wider transition-all"
+                  >
+                    Continue: Billing
+                  </button>
+                </div>
+              </div>
+
+              {/* STEP 3: FINANCIALS */}
+              <div className={step === 3 ? "space-y-4" : "hidden"}>
+                <div className="p-3 bg-white/5 border border-white/10 rounded-xl space-y-3">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider pl-1">Monthly Charges (₹)</label>
+                      <div className="relative">
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-550 font-mono text-xs select-none">
+                          ₹
+                        </div>
+                        <input
+                          type="number"
+                          name="monthlyRate"
+                          required={step === 3}
+                          min="0"
+                          step="0.01"
+                          placeholder="13500.00"
+                          className="w-full bg-black/50 border border-white/10 rounded-xl py-2 pl-8 pr-4 text-white text-sm placeholder:text-zinc-700 focus:outline-none focus:border-indigo-500/50"
+                        />
                       </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider pl-1">Billing Day (1-31)</label>
                       <input
                         type="number"
-                        name="monthlyRate"
-                        required
+                        name="billingCycleDate"
+                        required={step === 3}
+                        min="1"
+                        max="31"
+                        placeholder="27"
+                        defaultValue={new Date(selectedCheckIn).getDate()}
+                        className="w-full bg-black/50 border border-white/10 rounded-xl py-2 px-3 text-white text-sm placeholder:text-zinc-700 focus:outline-none focus:border-indigo-500/50"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Security Deposit (₹)</label>
+                    <div className="relative">
+                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-550 font-mono text-xs select-none">
+                        ₹
+                      </div>
+                      <input 
+                        type="number" 
+                        name="amount"
                         min="0"
                         step="0.01"
-                        placeholder="13500.00"
-                        className="w-full bg-black/50 border border-white/10 rounded-xl py-2 px-8 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/50 pl-8 pr-4"
+                        required={step === 3}
+                        placeholder="10000.00"
+                        className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-8 pr-4 text-white text-sm placeholder:text-zinc-700 focus:outline-none focus:border-indigo-500/50"
                       />
                     </div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider pl-1">Billing Day (1-31)</label>
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Advance Payment (₹)</label>
+                    <div className="relative">
+                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-550 font-mono text-xs select-none">
+                        ₹
+                      </div>
+                      <input 
+                        type="number" 
+                        name="prepaidAmount"
+                        min="0"
+                        step="0.01"
+                        placeholder="0.00"
+                        className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-8 pr-4 text-white text-sm placeholder:text-zinc-700 focus:outline-none focus:border-indigo-500/50"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Advance Payment Details (Method & Date) */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Advance Pay Method</label>
+                    <select
+                      name="prepaidMethod"
+                      required={step === 3}
+                      className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500/50 cursor-pointer"
+                    >
+                      <option value="UPI">UPI / PhonePe</option>
+                      <option value="Cash">Cash</option>
+                      <option value="Card">Card</option>
+                      <option value="Bank Transfer">Bank Transfer</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Advance Pay Date</label>
                     <input
-                      type="number"
-                      name="billingCycleDate"
-                      required
-                      min="1"
-                      max="31"
-                      placeholder="27"
-                      defaultValue={new Date(selectedCheckIn).getDate()}
-                      className="w-full bg-black/50 border border-white/10 rounded-xl py-2 px-3 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/50"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Security Deposit (₹)</label>
-                  <div className="relative">
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-mono text-xs select-none">
-                      ₹
-                    </div>
-                    <input 
-                      type="number" 
-                      name="amount"
-                      min="0"
-                      step="0.01"
-                      required
-                      placeholder="10000.00"
-                      className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-8 pr-4 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/50"
+                      type="date"
+                      name="prepaidDate"
+                      required={step === 3}
+                      defaultValue={todayStr}
+                      className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500/50"
                     />
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Advance Payment (₹)</label>
-                  <div className="relative">
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-mono text-xs select-none">
-                      ₹
-                    </div>
-                    <input 
-                      type="number" 
-                      name="prepaidAmount"
-                      min="0"
-                      step="0.01"
-                      placeholder="0.00"
-                      className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-8 pr-4 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/50"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Advance Payment Details (Method & Date) */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Advance Pay Method</label>
-                  <select
-                    name="prepaidMethod"
-                    required
-                    className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500/50 cursor-pointer"
+                <div className="flex items-center gap-3 mt-4">
+                  <button
+                    type="button"
+                    onClick={() => setStep(2)}
+                    className="flex-1 bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-400 hover:text-white rounded-xl py-2.5 text-xs font-bold uppercase tracking-wider transition-all"
                   >
-                    <option value="UPI">UPI / PhonePe</option>
-                    <option value="Cash">Cash</option>
-                    <option value="Card">Card</option>
-                    <option value="Bank Transfer">Bank Transfer</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Advance Pay Date</label>
-                  <input
-                    type="date"
-                    name="prepaidDate"
-                    required
-                    defaultValue={todayStr}
-                    className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500/50"
-                  />
+                    Back
+                  </button>
+                  <button 
+                    type="submit"
+                    disabled={isLoading}
+                    className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-600/50 text-white rounded-xl py-2.5 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-[0_0_15px_rgba(99,102,241,0.2)]"
+                  >
+                    {isLoading ? <Loader2 size={14} className="animate-spin" /> : 'Confirm Check-In'}
+                  </button>
                 </div>
               </div>
 
@@ -379,14 +477,6 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
                   {error}
                 </div>
               )}
-
-              <button 
-                type="submit"
-                disabled={isLoading}
-                className="w-full mt-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-600/50 text-white rounded-xl py-3 text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-[0_0_15px_rgba(99,102,241,0.2)]"
-              >
-                {isLoading ? <Loader2 size={16} className="animate-spin" /> : 'Confirm Co-Living Check-In'}
-              </button>
             </form>
           )}
         </div>
