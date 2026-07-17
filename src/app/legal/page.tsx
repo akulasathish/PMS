@@ -60,7 +60,7 @@ export default function LegalPage() {
             }`}
           >
             <FileText size={16} />
-            Refund Policy
+            Pricing Policy
           </button>
         </div>
 
@@ -121,19 +121,19 @@ export default function LegalPage() {
 
           {activeTab === 'refunds' && (
             <div className="space-y-6">
-              <h2 className="text-2xl font-bold text-white">1. Subscription Pricing</h2>
+              <h2 className="text-2xl font-bold text-white">1. Free Access Plan</h2>
               <p className="text-zinc-400 leading-relaxed text-sm">
-                StaySync offers subscriptions on a monthly, quarterly, semi-annual, or annual cycle. Details of active pricing rates are fully described on the StaySync homepage.
+                StaySync is a completely free software platform. We do not require credit card information, charge setup costs, or enforce subscription payments for core property operations.
               </p>
 
-              <h2 className="text-2xl font-bold text-white">2. Refund & Cancellation Terms</h2>
+              <h2 className="text-2xl font-bold text-white">2. Operational Policies</h2>
               <p className="text-zinc-400 leading-relaxed text-sm">
-                Subscriptions can be canceled at any time from your account settings page. Since our platform offers a fully-featured 3-month Free Trial to evaluate compatibility before making payments:
+                Because StaySync is provided free of charge:
               </p>
               <ul className="list-disc pl-6 text-zinc-400 space-y-2 text-sm">
-                <li>Cancellation stops future automatic renewals.</li>
-                <li>We do not issue partial refunds for unused portions of active billing cycles (quarterly, semi-annual, or annual).</li>
-                <li>If a billing error occurs, please contact our support team within 14 days of the charge for resolution.</li>
+                <li>No payment transactions are handled within the core SaaS system.</li>
+                <li>Email integrations and trigger workflows are handled free of charge up to local quota capacities.</li>
+                <li>Support inquiries can be directed to our community email address without charge.</li>
               </ul>
             </div>
           )}

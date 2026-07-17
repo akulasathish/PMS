@@ -73,7 +73,7 @@ export default function FolioPage() {
             Audit-ready incidental logs, automated invoices, and zero-balance enforcement. Try StaySync free.
           </p>
           <Link href="/signup" className="inline-block px-8 py-4 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-2xl shadow-lg shadow-violet-500/20 transition-all">
-            Start Your Free Trial
+            Get Started Free
           </Link>
         </div>
 

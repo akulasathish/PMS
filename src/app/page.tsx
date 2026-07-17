@@ -20,55 +20,6 @@ import {
 import Link from 'next/link';
 
 export default function HomePage() {
-  const pricingPlans = [
-    {
-      name: "Free Trial",
-      price: "₹0",
-      period: "3 months",
-      effective: "Free access to test the platform",
-      description: "Explore all features for 3 months. No credit card required.",
-      features: ["Full Platform Access", "Up to 1 Property", "Basic Analytics", "Community Support"],
-      color: "emerald"
-    },
-    {
-      name: "1 Month",
-      price: "₹1,500",
-      period: "month",
-      effective: "₹1,500 / month",
-      description: "Standard month-to-month access. Perfect for seasonal properties.",
-      features: ["Full Platform Access", "Unlimited Properties", "Advanced Analytics", "Email Support"],
-      color: "indigo"
-    },
-    {
-      name: "3 Months",
-      price: "₹3,000",
-      period: "3 months",
-      effective: "₹1,000 / month (billed quarterly)",
-      description: "Quarterly plan. Cost-effective for ongoing property management.",
-      features: ["Full Platform Access", "Unlimited Properties", "Advanced Analytics", "Email & Chat Support"],
-      color: "violet",
-      popular: true
-    },
-    {
-      name: "6 Months",
-      price: "₹4,800",
-      period: "6 months",
-      effective: "₹800 / month (billed semi-annually)",
-      description: "Semi-annual plan. Save more with a 6-month commitment.",
-      features: ["Full Platform Access", "Unlimited Properties", "Advanced Analytics", "Priority Support"],
-      color: "orange"
-    },
-    {
-      name: "1 Year",
-      price: "₹6,000",
-      period: "year",
-      effective: "₹500 / month (billed annually)",
-      description: "Best value for a full year of seamless operations.",
-      features: ["Full Platform Access", "Unlimited Properties", "Advanced Analytics", "24/7 Priority Support", "Dedicated Account Manager"],
-      color: "rose"
-    }
-  ];
-
   return (
     <div className="min-h-screen bg-[#08080a] text-zinc-300 selection:bg-indigo-500/30 overflow-hidden">
       
@@ -82,7 +33,6 @@ export default function HomePage() {
           
           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-zinc-400">
             <a href="#platform" className="hover:text-white transition-colors">Platform</a>
-            <a href="#pricing" className="hover:text-white transition-colors">Pricing</a>
             <a href="#about" className="hover:text-white transition-colors">About Us</a>
             <a href="#benefits" className="hover:text-white transition-colors">Benefits</a>
             <a href="#contact" className="hover:text-white transition-colors">Contact</a>
@@ -92,8 +42,8 @@ export default function HomePage() {
             <Link href="/login" className="text-sm font-bold text-zinc-300 hover:text-white transition-colors hidden sm:block">
               Log In
             </Link>
-            <Link href="/signup" className="px-5 py-2.5 bg-white text-black text-sm font-bold rounded-xl hover:bg-zinc-200 transition-all shadow-lg shadow-white/10">
-              Get Started Free
+            <Link href="/signup" className="px-5 py-2.5 bg-indigo-600 text-white hover:bg-indigo-500 text-sm font-bold rounded-xl transition-all shadow-lg shadow-indigo-500/25">
+              Start Free Setup
             </Link>
           </div>
         </div>
@@ -115,8 +65,8 @@ export default function HomePage() {
             transition={{ duration: 0.8 }}
             className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.03] border border-white/[0.08] mb-6"
           >
-            <span className="w-2 h-2 rounded-full bg-indigo-500 animate-ping" />
-            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em]">Unified Property Intelligence</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-[0.2em]">100% Free Forever &bull; Enterprise-Grade PMS</span>
           </motion.div>
           
           <motion.h1 
@@ -125,9 +75,9 @@ export default function HomePage() {
             transition={{ duration: 0.8, delay: 0.1 }}
             className="text-5xl md:text-7xl font-bold text-white tracking-tighter mb-8 leading-[1.1]"
           >
-            The New Standard <br />
+            The One & Only Completely Free <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-violet-400 to-fuchsia-400">
-              In Property Management
+              Property Management System in India
             </span>
           </motion.h1>
 
@@ -137,8 +87,7 @@ export default function HomePage() {
             transition={{ duration: 0.8, delay: 0.2 }}
             className="max-w-2xl mx-auto text-lg text-zinc-400 leading-relaxed mb-12"
           >
-            A cohesive intelligence layer for seamless operations. 
-            Scale your hospitality empire with precision using the StaySync platform.
+            StaySync is India's premier, fully-featured hospitality operations terminal. Experience automated billing, compliance, live tape charts, and housekeeping management. No credit cards, no subscription contracts, and no trial limits.
           </motion.p>
         </div>
 
@@ -228,66 +177,6 @@ export default function HomePage() {
           </motion.div>
         </div>
 
-
-        {/* Pricing Section */}
-        <section id="pricing" className="mb-32">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-5xl font-bold text-white tracking-tight mb-4">Our Flexible Pricing</h2>
-            <p className="text-zinc-500">Choose the plan that best fits your property management needs.</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            {pricingPlans.map((plan, idx) => (
-              <motion.div
-                key={plan.name}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: idx * 0.1 }}
-                className={`relative p-8 rounded-[2.5rem] border ${
-                  plan.popular ? 'bg-indigo-500/5 border-indigo-500/30' : 'bg-white/[0.02] border-white/[0.05]'
-                }`}
-              >
-                {plan.popular && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 bg-indigo-500 rounded-full text-[10px] font-black uppercase tracking-widest text-white">
-                    Most Popular
-                  </div>
-                )}
-                <div className="mb-8">
-                  <h4 className="text-lg font-bold text-white mb-2">{plan.name}</h4>
-                  <div className="flex flex-col gap-1">
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-4xl font-bold text-white">{plan.price}</span>
-                      <span className="text-zinc-500 text-sm">/ {plan.period}</span>
-                    </div>
-                    <span className="text-zinc-500 text-xs font-semibold">{plan.effective}</span>
-                  </div>
-                  <p className="mt-4 text-sm text-zinc-500 leading-relaxed">{plan.description}</p>
-                </div>
-                
-                <div className="space-y-4 mb-8">
-                  {plan.features.map(feature => (
-                    <div key={feature} className="flex items-center gap-3">
-                      <CheckCircle2 size={16} className="text-emerald-500" />
-                      <span className="text-sm text-zinc-400">{feature}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <Link 
-                  href={plan.name === "Free Trial" ? "/signup" : `/signup?plan=${plan.name.replace(/\s/g, '').toLowerCase()}`}
-                  className={`block w-full py-4 rounded-2xl text-xs font-black uppercase tracking-widest text-center transition-all ${
-                    plan.popular ? 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-xl shadow-indigo-500/20' : 'bg-white/5 text-white hover:bg-white/10'
-                  }`}
-                >
-                  {plan.name === "Free Trial" ? "Start Free Trial" : `Select ${plan.name}`}
-                </Link>
-              </motion.div>
-            ))}
-          </div>
-        </section>
-
-        {/* About Us Section */}
         <section id="about" className="mb-32">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-5xl font-bold text-white tracking-tight mb-4">About StaySync</h2>
@@ -320,13 +209,12 @@ export default function HomePage() {
           <div className="relative bg-zinc-900/40 backdrop-blur-xl border border-white/[0.06] rounded-[3rem] p-12 md:p-20 text-center overflow-hidden">
             <div className="absolute -top-24 -right-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-[100px] pointer-events-none" />
             <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-emerald-500/10 rounded-full blur-[100px] pointer-events-none" />
-            
             <div className="relative z-10">
               <h2 className="text-4xl md:text-5xl font-bold text-white tracking-tight mb-6">
-                Ready to upgrade your property fleet?
+                Empower Your Property Operations Today
               </h2>
               <p className="text-lg text-zinc-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-                Join modern hoteliers who have automated their operations, secured their data, and scaled their portfolios with StaySync.
+                Join modern hoteliers and co-living hosts who have automated check-ins, digitised compliance, and simplified billing with StaySync.
               </p>
               
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
@@ -334,13 +222,13 @@ export default function HomePage() {
                   href="/signup" 
                   className="w-full sm:w-auto px-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-2xl transition-all shadow-xl shadow-indigo-500/20"
                 >
-                  Start Your Free Trial
+                  Get Started Instantly
                 </Link>
                 <a 
-                  href="mailto:sales@staysync.online" 
+                  href="mailto:support@staysync.online" 
                   className="w-full sm:w-auto px-8 py-4 bg-white/5 hover:bg-white/10 text-white font-bold rounded-2xl transition-all border border-white/10"
                 >
-                  Contact Sales Team
+                  Contact Support Team
                 </a>
               </div>
 

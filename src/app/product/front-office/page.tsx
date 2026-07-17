@@ -70,10 +70,10 @@ export default function FrontOfficePage() {
         <div className="bg-indigo-500/5 border border-indigo-500/20 rounded-[2.5rem] p-10 text-center">
           <h4 className="text-2xl font-bold text-white mb-4">Want to see the Front Office in action?</h4>
           <p className="text-zinc-500 text-sm mb-6 max-w-xl mx-auto">
-            Sign up for our 3-month free trial to experience the live tape chart, check-in checklists, and real-time room assignments.
+            Get instant access to experience the live tape chart, check-in checklists, and real-time room assignments completely free.
           </p>
           <Link href="/signup" className="inline-block px-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-2xl shadow-lg shadow-indigo-500/20 transition-all">
-            Start Your Free Trial
+            Get Started Free
           </Link>
         </div>
 

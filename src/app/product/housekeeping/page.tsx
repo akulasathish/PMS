@@ -73,7 +73,7 @@ export default function HousekeepingPage() {
             Experience our high-priority scheduling and supervisor inspection workflows. Try StaySync free.
           </p>
           <Link href="/signup" className="inline-block px-8 py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-2xl shadow-lg shadow-emerald-500/20 transition-all">
-            Start Your Free Trial
+            Get Started Free
           </Link>
         </div>
 
