@@ -241,7 +241,7 @@ export default function NightAuditPage() {
         const ratesMap: { [id: string]: string } = {};
         if (bookingsRes.data) {
           bookingsRes.data.forEach((bk: any) => {
-            if (bk.status === 'Checked In') {
+            if (bk.status === 'Checked In' && !bk.is_monthly) {
               const start = new Date(bk.check_in);
               const end = new Date(bk.check_out);
               const nights = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
@@ -352,7 +352,7 @@ export default function NightAuditPage() {
     
     // Prepare list of bookings to charge with user's precise customized rate
     const chargesList = checkedInBookings
-      .filter(b => b.check_out !== businessDate && (b.check_out ? b.check_out.substring(0, 10) : '') !== nextBusinessDate)
+      .filter(b => !b.is_monthly && b.check_out !== businessDate && (b.check_out ? b.check_out.substring(0, 10) : '') !== nextBusinessDate)
       .map(b => {
         const amtStr = customRates[b.id] || "0.00";
         return {
@@ -791,7 +791,7 @@ export default function NightAuditPage() {
         closedDate: businessDate,
         openedDate: res.nextBusinessDate,
         roomsMarkedDirty: res.roomsMarkedDirty,
-        bookingsChargedCount: checkedInBookings.length,
+        bookingsChargedCount: checkedInBookings.filter(b => !b.is_monthly && b.check_out !== businessDate && (b.check_out ? b.check_out.substring(0, 10) : '') !== nextBusinessDate).length,
         propertyName: property.name
       });
       setIsRolloverComplete(true);
@@ -1146,14 +1146,14 @@ export default function NightAuditPage() {
                       <div className="col-span-2 text-right">Daily Post Rate (Editable)</div>
                     </div>
 
-                    {checkedInBookings.filter(b => b.check_out !== businessDate && (b.check_out ? b.check_out.substring(0, 10) : '') !== nextBusinessDate).length === 0 ? (
+                    {checkedInBookings.filter(b => !b.is_monthly && b.check_out !== businessDate && (b.check_out ? b.check_out.substring(0, 10) : '') !== nextBusinessDate).length === 0 ? (
                       <div className="py-14 text-center text-zinc-600 text-xs italic">
                         No active stayovers remaining today. You can proceed directly to rollover.
                       </div>
                     ) : (
                       <div className="divide-y divide-white/[0.03]">
                         {checkedInBookings
-                          .filter(b => b.check_out !== businessDate && (b.check_out ? b.check_out.substring(0, 10) : '') !== nextBusinessDate)
+                          .filter(b => !b.is_monthly && b.check_out !== businessDate && (b.check_out ? b.check_out.substring(0, 10) : '') !== nextBusinessDate)
                           .map((bk) => {
                             return (
                                <div key={bk.id} className="flex flex-col md:grid md:grid-cols-12 gap-2 md:gap-4 p-4 text-xs">
