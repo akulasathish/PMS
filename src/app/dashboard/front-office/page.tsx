@@ -11,7 +11,7 @@ import {
   DoorOpen, Activity, Users, Settings, LogOut,
   ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck, RefreshCw, RotateCcw, Printer, XCircle, Link2, Camera, X, ShieldCheck, AlertCircle, Phone, Mail, Eye,
   Trash2, IndianRupee, Moon, Banknote, Smartphone, CreditCard, Clock, TrendingDown, Download, Wallet, FileText,
-  Home, UserPlus, User
+  Home, UserPlus, User, LayoutGrid, List
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -259,6 +259,7 @@ export default function FrontOfficeTerminal() {
   const [activeBlockRoom, setActiveBlockRoom] = useState<Room | null>(null);
   const [selectedBeds, setSelectedBeds] = useState<{ [roomId: string]: number }>({});
   const [monthlyFilter, setMonthlyFilter] = useState<'all' | 'vacancy' | 'occupied' | 'dues'>('all');
+  const [coLivingViewMode, setCoLivingViewMode] = useState<'grid' | 'list'>('grid');
   const [expandedRoomIds, setExpandedRoomIds] = useState<Record<string, boolean>>({});
   const [selectedReportType, setSelectedReportType] = useState<'checkins' | 'inhouse' | 'checkouts' | 'pending' | null>(null);
 
@@ -3397,7 +3398,33 @@ export default function FrontOfficeTerminal() {
             <p className="text-xs text-zinc-400 mt-1">Manage long-term, multi-sharing residents and billing cycles.</p>
           </div>
           
-          <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
+          <div className="flex items-center gap-2.5 flex-wrap w-full md:w-auto">
+            {/* View Mode Toggle: Grid vs List */}
+            <div className="flex items-center bg-black/40 border border-white/10 rounded-xl p-1 text-[10px] font-bold mr-1">
+              <button
+                onClick={() => setCoLivingViewMode('grid')}
+                className={`p-1.5 rounded-lg transition-all ${
+                  coLivingViewMode === 'grid' 
+                    ? 'bg-zinc-800 text-white shadow-md' 
+                    : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+                title="Grid View"
+              >
+                <LayoutGrid size={14} />
+              </button>
+              <button
+                onClick={() => setCoLivingViewMode('list')}
+                className={`p-1.5 rounded-lg transition-all ${
+                  coLivingViewMode === 'list' 
+                    ? 'bg-zinc-800 text-white shadow-md' 
+                    : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+                title="List View"
+              >
+                <List size={14} />
+              </button>
+            </div>
+
             {/* Filter segments */}
             <div className="flex items-center bg-black/40 border border-white/10 rounded-xl p-1 text-[10px] font-bold">
               {[
@@ -3441,6 +3468,223 @@ export default function FrontOfficeTerminal() {
               No rooms match your filter criteria or search query. Designate rooms as <span className="text-indigo-400 font-bold">Monthly Only</span> or <span className="text-indigo-400 font-bold">Both (Daily/Monthly)</span> in Room Inventory to see them here.
             </p>
           </div>
+        ) : coLivingViewMode === 'list' ? (
+          <div className="bg-[#121215]/60 backdrop-blur-md border border-white/[0.06] rounded-3xl overflow-hidden shadow-2xl">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-white/[0.04] bg-black/20 text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
+                    <th className="py-4 px-5">Room</th>
+                    <th className="py-4 px-5">Sharing / Class</th>
+                    <th className="py-4 px-5">Occupancy</th>
+                    <th className="py-4 px-5">Beds & Residents</th>
+                    <th className="py-4 px-5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/[0.02]">
+                  {filteredRooms.map(room => {
+                    const capacity = getRoomCapacity(room);
+                    const activeRoomBookings = bookings.filter(b => 
+                      b.room_id === room.id && 
+                      b.is_monthly === true &&
+                      b.status !== 'Cancelled' && 
+                      b.status !== 'Checked Out'
+                    );
+                    const isExpanded = expandedRoomIds[room.id] ?? false;
+
+                    return (
+                      <React.Fragment key={room.id}>
+                        <tr className="hover:bg-white/[0.01] transition-colors group">
+                          <td className="py-4 px-5">
+                            <div className="flex items-center gap-3">
+                              <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 font-black text-xs">
+                                {room.room_number}
+                              </div>
+                              <span className="text-xs font-bold text-white">Room {room.room_number}</span>
+                            </div>
+                          </td>
+                          <td className="py-4 px-5">
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-xs font-medium text-zinc-400">{room.type} Class</span>
+                              <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">{capacity}-Sharing</span>
+                            </div>
+                          </td>
+                          <td className="py-4 px-5">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-semibold text-white w-8">{activeRoomBookings.length} / {capacity}</span>
+                              <div className="w-16 bg-zinc-950 h-1.5 rounded-full overflow-hidden shrink-0">
+                                <div className={`h-full transition-all duration-300 ${
+                                  activeRoomBookings.length === 0 
+                                    ? 'bg-emerald-500' 
+                                    : activeRoomBookings.length === capacity 
+                                    ? 'bg-indigo-500' 
+                                    : 'bg-amber-500'
+                                }`} style={{ width: `${(activeRoomBookings.length / capacity) * 100}%` }} />
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-4 px-5">
+                            <div className="flex flex-wrap gap-2">
+                              {Array.from({ length: capacity }).map((_, index) => {
+                                const bedLetter = String.fromCharCode(65 + index);
+                                const booking = activeRoomBookings[index];
+                                if (booking) {
+                                  const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
+                                  const guestPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
+                                  const totalCharged = Number(booking.monthly_rate || 0) + Number(booking.amount) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
+                                  const totalPaid = guestPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+                                  const balanceDue = totalCharged - totalPaid;
+
+                                  return (
+                                    <div 
+                                      key={index}
+                                      onClick={() => {
+                                        setExpandedRoomIds(prev => ({ ...prev, [room.id]: true }));
+                                      }}
+                                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[10px] font-bold cursor-pointer transition-all hover:bg-white/[0.02] ${
+                                        balanceDue > 0.01 
+                                          ? 'bg-rose-500/5 text-rose-450 border-rose-500/10' 
+                                          : 'bg-indigo-500/5 text-indigo-400 border-indigo-500/10'
+                                      }`}
+                                      title={`${booking.guest_name} - Rent: ₹${booking.monthly_rate} - Due: ₹${balanceDue}`}
+                                    >
+                                      <span className={`w-3.5 h-3.5 rounded flex items-center justify-center text-[8px] font-black shrink-0 ${
+                                        balanceDue > 0.01 ? 'bg-rose-500/10' : 'bg-indigo-500/10'
+                                      }`}>{bedLetter}</span>
+                                      <span className="max-w-[70px] truncate">{booking.guest_name.split(' ')[0]}</span>
+                                      {balanceDue > 0.01 && <span className="w-1 h-1 rounded-full bg-rose-500 animate-pulse shrink-0" />}
+                                    </div>
+                                  );
+                                } else {
+                                  return (
+                                    <div key={index} className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-dashed border-white/5 bg-white/[0.01] text-zinc-650 text-[10px] font-bold">
+                                      <span className="w-3.5 h-3.5 rounded bg-zinc-800 border border-white/5 flex items-center justify-center text-[8px] font-black text-zinc-550 shrink-0">{bedLetter}</span>
+                                      <span>Vacant</span>
+                                    </div>
+                                  );
+                                }
+                              })}
+                            </div>
+                          </td>
+                          <td className="py-4 px-5 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              {activeRoomBookings.length < capacity && (
+                                <button
+                                  onClick={() => {
+                                    setSelectedCoLivingRoomId(room.id);
+                                    setShowCoLivingModal(true);
+                                  }}
+                                  className="px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-black border border-emerald-500/20 hover:border-transparent rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1"
+                                >
+                                  <Plus size={10} /> Allocate
+                                </button>
+                              )}
+                              <button
+                                onClick={() => {
+                                  setExpandedRoomIds(prev => ({ ...prev, [room.id]: !isExpanded }));
+                                }}
+                                className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-zinc-300 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all"
+                              >
+                                {isExpanded ? 'Collapse' : 'Details'}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr className="bg-black/10">
+                            <td colSpan={5} className="py-4 px-5 border-b border-white/[0.04]">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                                {Array.from({ length: capacity }).map((_, index) => {
+                                  const bedLetter = String.fromCharCode(65 + index);
+                                  const booking = activeRoomBookings[index];
+
+                                  if (booking) {
+                                    const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
+                                    const guestPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
+                                    const totalCharged = Number(booking.monthly_rate || 0) + Number(booking.amount) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
+                                    const totalPaid = guestPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+                                    const balanceDue = totalCharged - totalPaid;
+
+                                    return (
+                                      <div key={index} className="flex flex-col justify-between p-3 rounded-2xl bg-zinc-900/60 border border-white/[0.04] gap-2">
+                                        <div className="flex items-center justify-between gap-2 min-w-0">
+                                          <div className="flex items-center gap-2 min-w-0">
+                                            <div className="w-7 h-7 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 font-bold text-xs shrink-0">{bedLetter}</div>
+                                            <div className="min-w-0">
+                                              <h5 className="text-xs font-bold text-white truncate">{booking.guest_name}</h5>
+                                              <p className="text-[9px] text-zinc-500 font-medium truncate">{booking.guest_phone || 'No phone'}</p>
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center gap-2 shrink-0">
+                                            <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
+                                              balanceDue > 0.01 ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                            }`}>
+                                              {balanceDue > 0.01 ? `₹${balanceDue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : 'Paid'}
+                                            </span>
+                                            <div className="flex items-center border border-white/5 rounded-lg overflow-hidden bg-black/30">
+                                              <button
+                                                onClick={() => {
+                                                  setActiveCheckoutBooking({
+                                                    bookingId: booking.id,
+                                                    roomId: booking.room_id,
+                                                    guestName: booking.guest_name,
+                                                    amount: booking.amount
+                                                  });
+                                                }}
+                                                className="p-1.5 hover:bg-indigo-600 hover:text-white text-zinc-450 transition-colors"
+                                                title="Collect Payment"
+                                              >
+                                                <Banknote size={12} />
+                                              </button>
+                                              <button
+                                                onClick={() => {
+                                                  setSelectedBooking(booking);
+                                                }}
+                                                className="p-1.5 hover:bg-white/10 text-zinc-450 hover:text-white border-l border-white/5 transition-colors"
+                                                title="Booking Options"
+                                              >
+                                                <Settings size={12} />
+                                              </button>
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <div className="pt-2 border-t border-white/[0.02] flex items-center justify-between text-[9px] text-zinc-550 font-medium">
+                                          <span>Rent: ₹{Number(booking.monthly_rate || 0).toLocaleString('en-IN')} (Cycle: {booking.billing_cycle_date || 'N/A'})</span>
+                                          <span>Joined: {new Date(booking.check_in).toLocaleDateString('en-IN')}</span>
+                                        </div>
+                                      </div>
+                                    );
+                                  } else {
+                                    return (
+                                      <div key={index} className="flex items-center justify-between p-3 rounded-2xl border border-dashed border-white/5 bg-white/[0.01]">
+                                        <div className="flex items-center gap-2">
+                                          <div className="w-7 h-7 rounded-lg bg-zinc-800 border border-white/5 flex items-center justify-center text-zinc-550 font-bold text-xs">{bedLetter}</div>
+                                          <span className="text-[10px] text-zinc-550 font-bold uppercase tracking-wider">Vacant Bed</span>
+                                        </div>
+                                        <button
+                                          onClick={() => {
+                                            setSelectedCoLivingRoomId(room.id);
+                                            setShowCoLivingModal(true);
+                                          }}
+                                          className="px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-450 hover:text-black border border-emerald-500/20 hover:border-transparent rounded-lg text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1"
+                                        >
+                                          <Plus size={10} /> Allocate
+                                        </button>
+                                      </div>
+                                    );
+                                  }
+                                })}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {filteredRooms.map(room => {
@@ -3470,28 +3714,28 @@ export default function FrontOfficeTerminal() {
                     onClick={() => {
                       setExpandedRoomIds(prev => ({
                         ...prev,
-                        [room.id]: !prev[room.id]
+                        [room.id]: !isExpanded
                       }));
                     }}
-                    className="p-5 pb-4 border-b border-white/[0.04] bg-black/10 flex justify-between items-center cursor-pointer select-none hover:bg-white/[0.02] transition-colors"
+                    className="p-4 pb-3 border-b border-white/[0.04] bg-black/10 flex justify-between items-center cursor-pointer select-none hover:bg-white/[0.02] transition-colors"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 font-black text-sm">
+                      <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 font-black text-xs">
                         {room.room_number}
                       </div>
                       <div>
-                        <h4 className="text-sm font-bold text-white flex items-center gap-1.5">
+                        <h4 className="text-xs font-bold text-white flex items-center gap-1">
                           Room {room.room_number}
-                          <ChevronRight size={14} className={`text-zinc-500 transition-transform duration-200 ${isExpanded ? 'rotate-90' : 'rotate-0'}`} />
+                          <ChevronRight size={12} className={`text-zinc-500 transition-transform duration-200 ${isExpanded ? 'rotate-90' : 'rotate-0'}`} />
                         </h4>
-                        <p className="text-[10px] text-zinc-550 font-bold uppercase tracking-wider">{room.type} Class</p>
+                        <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">{room.type} Class</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <span className="text-[9px] bg-zinc-800 text-zinc-400 border border-white/5 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                      <span className="text-[8px] bg-zinc-800 text-zinc-400 border border-white/5 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
                         {capacity}-Sharing
                       </span>
-                      <p className="text-[10px] text-zinc-400 mt-1.5 font-bold">
+                      <p className="text-[9px] text-zinc-450 mt-1 font-bold">
                         {activeRoomBookings.length}/{capacity} Occupied
                       </p>
                     </div>
@@ -3528,14 +3772,18 @@ export default function FrontOfficeTerminal() {
                               return (
                                 <div 
                                   key={index}
-                                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[10px] font-bold transition-all hover:bg-white/[0.02] ${
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedRoomIds(prev => ({ ...prev, [room.id]: true }));
+                                  }}
+                                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[10px] font-bold cursor-pointer transition-all hover:bg-white/[0.02] ${
                                     balanceDue > 0.01 
-                                      ? 'bg-rose-500/5 text-rose-400 border-rose-500/10' 
+                                      ? 'bg-rose-500/5 text-rose-450 border-rose-500/10' 
                                       : 'bg-indigo-500/5 text-indigo-400 border-indigo-500/10'
                                   }`}
                                   title={`${booking.guest_name} - Rent: ₹${booking.monthly_rate} - Due: ₹${balanceDue}`}
                                 >
-                                  <span className={`w-4 h-4 rounded flex items-center justify-center text-[9px] font-black shrink-0 ${
+                                  <span className={`w-3.5 h-3.5 rounded flex items-center justify-center text-[8px] font-black shrink-0 ${
                                     balanceDue > 0.01 ? 'bg-rose-500/10' : 'bg-indigo-500/10'
                                   }`}>{bedLetter}</span>
                                   <span className="truncate max-w-[65px]">{booking.guest_name.split(' ')[0]}</span>
@@ -3548,23 +3796,12 @@ export default function FrontOfficeTerminal() {
                                   key={index}
                                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-dashed border-white/5 bg-white/[0.01] text-zinc-550 text-[10px] font-bold"
                                 >
-                                  <span className="w-4 h-4 rounded bg-zinc-800 border border-white/5 flex items-center justify-center text-[9px] font-black text-zinc-500 shrink-0">{bedLetter}</span>
+                                  <span className="w-3.5 h-3.5 rounded bg-zinc-800 border border-white/5 flex items-center justify-center text-[8px] font-black text-zinc-500 shrink-0">{bedLetter}</span>
                                   <span>Vacant</span>
                                 </div>
                               );
                             }
                           })}
-                        </div>
-                        <div className="mt-3 text-center">
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setExpandedRoomIds(prev => ({ ...prev, [room.id]: true }));
-                            }}
-                            className="text-[9px] font-bold uppercase tracking-wider text-indigo-400 hover:text-indigo-300 transition-colors py-0.5 px-2 bg-indigo-500/5 border border-indigo-500/10 rounded-lg"
-                          >
-                            Show Resident Details
-                          </button>
                         </div>
                       </div>
                     ) : (
@@ -3599,8 +3836,8 @@ export default function FrontOfficeTerminal() {
                                   <div className="flex items-center gap-2 shrink-0">
                                     <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
                                       balanceDue > 0.01 
-                                        ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' 
-                                        : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                        ? 'bg-rose-500/10 text-rose-450 border border-rose-500/20' 
+                                        : 'bg-emerald-500/10 text-emerald-450 border border-emerald-500/20'
                                     }`}>
                                       {balanceDue > 0.01 ? `₹${balanceDue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : 'Paid'}
                                     </span>
@@ -3615,7 +3852,7 @@ export default function FrontOfficeTerminal() {
                                             amount: booking.amount
                                           });
                                         }}
-                                        className="p-1.5 hover:bg-indigo-600 hover:text-white text-zinc-400 transition-colors"
+                                        className="p-1.5 hover:bg-indigo-600 hover:text-white text-zinc-405 transition-colors"
                                         title="Collect Payment"
                                       >
                                         <Banknote size={12} />
@@ -3624,7 +3861,7 @@ export default function FrontOfficeTerminal() {
                                         onClick={() => {
                                           setSelectedBooking(booking);
                                         }}
-                                        className="p-1.5 hover:bg-white/10 text-zinc-400 hover:text-white border-l border-white/5 transition-colors"
+                                        className="p-1.5 hover:bg-white/10 text-zinc-405 hover:text-white border-l border-white/5 transition-colors"
                                         title="Booking Options"
                                       >
                                         <Settings size={12} />
@@ -3646,7 +3883,7 @@ export default function FrontOfficeTerminal() {
                                   <div className="w-7 h-7 rounded-lg bg-zinc-800 border border-white/5 flex items-center justify-center text-zinc-500 font-bold text-xs">
                                       {bedLetter}
                                   </div>
-                                  <span className="text-[10px] text-zinc-555 font-bold uppercase tracking-wider">Vacant Bed</span>
+                                  <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Vacant Bed</span>
                                 </div>
                                 <button
                                   onClick={() => {
@@ -3679,11 +3916,10 @@ export default function FrontOfficeTerminal() {
               );
             })}
           </div>
-        )
-      }
-    </div>
-  );
-};
+        )}
+      </div>
+    );
+  };
   const renderBalancesView = () => {
     // Filter bookings based on selected balancesFilter (In-House Only or All Active)
     let filteredBookings = bookings.filter(b => !b.is_monthly);
