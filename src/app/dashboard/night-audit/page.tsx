@@ -59,6 +59,7 @@ interface Booking {
   check_out: string;
   status: string;
   amount: number;
+  is_monthly?: boolean;
 }
 
 interface Room {
