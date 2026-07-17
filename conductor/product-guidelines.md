@@ -1,16 +1,17 @@
-# Product Guidelines - RE-PMS Engine 2026
+# Product Guidelines - StaySync PMS Engine 2026
 
 ## Design Aesthetic
-- **Accessible Operations:** Utilitarian, accessibility-first design for efficient hotel operations across both roles (Owners and Staff).
+- **Accessible Operations:** Utilitarian, accessibility-first design for efficient property operations across all workspaces.
 - **Minimalist Interaction:** Clean layouts with subtle, high-performance animations (Framer Motion) to enhance the user experience without being distracting.
+- **Premium Aesthetics:** Sleek, modern dashboards using curated, high-contrast dark themes and clear operational metrics to present professional indicators.
 
 ## Tone & Voice
-- **Empathetic & Guiding:** Support hotel operations and staff with a helpful, guiding voice throughout the application.
+- **Empathetic & Guiding:** Support operators and staff with a helpful, guiding voice throughout the application.
 - **Professionalism:** Maintain a high standard of professional communication, especially in guest-facing automated messaging.
 
 ## UX Principles
-- **Role Isolation UX:** Ensure strict role-based views with zero "role bleed," keeping the user's interface focused on their specific operational responsibilities (Owner vs. Staff views).
-- **Low Latency UI:** Prioritize near-instant updates through Supabase Realtime and efficient n8n relays, ensuring the frontend reflects the system's "database-as-an-event-source" speed.
+- **Unified Self-Service UX:** A single-tier, flat architecture with zero gateways or role restrictions. Users have unrestricted capabilities to manage properties, rooms, and bookings where they are the owner/creator.
+- **Low Latency UI:** Prioritize near-instant updates through Supabase Realtime, ensuring the frontend reflects operational updates immediately.
 - **Error Resiliency:** Implement clear, actionable error states, particularly for authentication and access control, to guide users back to safety.
 
 ## Automated Guest Communications

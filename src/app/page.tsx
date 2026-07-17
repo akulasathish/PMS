@@ -24,35 +24,45 @@ export default function HomePage() {
     {
       name: "Free Trial",
       price: "₹0",
+      period: "3 months",
+      effective: "Free access to test the platform",
       description: "Explore all features for 3 months. No credit card required.",
       features: ["Full Platform Access", "Up to 1 Property", "Basic Analytics", "Community Support"],
       color: "emerald"
     },
     {
       name: "1 Month",
-      price: "₹3,000",
-      description: "Perfect for short-term needs or seasonal properties.",
+      price: "₹1,500",
+      period: "month",
+      effective: "₹1,500 / month",
+      description: "Standard month-to-month access. Perfect for seasonal properties.",
       features: ["Full Platform Access", "Unlimited Properties", "Advanced Analytics", "Email Support"],
       color: "indigo"
     },
     {
       name: "3 Months",
-      price: "₹6,000",
-      description: "Cost-effective for ongoing property management.",
+      price: "₹3,000",
+      period: "3 months",
+      effective: "₹1,000 / month (billed quarterly)",
+      description: "Quarterly plan. Cost-effective for ongoing property management.",
       features: ["Full Platform Access", "Unlimited Properties", "Advanced Analytics", "Email & Chat Support"],
       color: "violet",
       popular: true
     },
     {
       name: "6 Months",
-      price: "₹9,000",
-      description: "Increased savings for long-term commitment.",
+      price: "₹4,800",
+      period: "6 months",
+      effective: "₹800 / month (billed semi-annually)",
+      description: "Semi-annual plan. Save more with a 6-month commitment.",
       features: ["Full Platform Access", "Unlimited Properties", "Advanced Analytics", "Priority Support"],
       color: "orange"
     },
     {
       name: "1 Year",
-      price: "₹12,000",
+      price: "₹6,000",
+      period: "year",
+      effective: "₹500 / month (billed annually)",
       description: "Best value for a full year of seamless operations.",
       features: ["Full Platform Access", "Unlimited Properties", "Advanced Analytics", "24/7 Priority Support", "Dedicated Account Manager"],
       color: "rose"
@@ -66,9 +76,7 @@ export default function HomePage() {
       <nav className="fixed top-0 left-0 w-full z-50 bg-[#08080a]/80 backdrop-blur-xl border-b border-white/[0.05]">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/20">
-              <span className="text-white font-black text-xl leading-none">S</span>
-            </div>
+            <img src="/logo.png" alt="StaySync Logo" className="w-[42px] h-[42px] object-contain rounded-lg shadow-lg shadow-indigo-500/10" />
             <span className="text-white font-bold text-xl tracking-tight">StaySync</span>
           </div>
           
@@ -247,10 +255,12 @@ export default function HomePage() {
                 )}
                 <div className="mb-8">
                   <h4 className="text-lg font-bold text-white mb-2">{plan.name}</h4>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-4xl font-bold text-white">{plan.price}</span>
-                    {plan.price !== 'Custom' && <span className="text-zinc-500 text-sm">/</span>}
-                    {plan.price !== 'Custom' && <span className="text-zinc-500 text-sm">{plan.name === "Free Trial" ? "3 months" : "month"}</span>}
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-4xl font-bold text-white">{plan.price}</span>
+                      <span className="text-zinc-500 text-sm">/ {plan.period}</span>
+                    </div>
+                    <span className="text-zinc-500 text-xs font-semibold">{plan.effective}</span>
                   </div>
                   <p className="mt-4 text-sm text-zinc-500 leading-relaxed">{plan.description}</p>
                 </div>
@@ -281,25 +291,25 @@ export default function HomePage() {
         <section id="about" className="mb-32">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-5xl font-bold text-white tracking-tight mb-4">About StaySync</h2>
-            <p className="text-zinc-500 max-w-2xl mx-auto">
-              We are dedicated to revolutionizing property management through intelligent automation and unparalleled efficiency. Our platform is built on cutting-edge technology to empower hospitality businesses of all sizes.
+            <p className="text-zinc-400 max-w-3xl mx-auto leading-relaxed">
+              StaySync is a modern hospitality technology company built to simplify property operations. We replace complex, outdated hotel software with a single, unified B2B SaaS platform that operates seamlessly across devices. We believe in providing hotel owners, homestay hosts, and resort operators with clean, fast, and secure tools to run their businesses without administrative hurdles.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
             <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, delay: 0.1 }}>
               <Zap size={48} className="text-indigo-400 mx-auto mb-4" />
               <h3 className="text-xl font-bold text-white mb-2">Our Mission</h3>
-              <p className="text-zinc-500">To simplify complex operations, maximize revenue, and enhance guest experiences for properties worldwide.</p>
+              <p className="text-zinc-500 text-sm leading-relaxed">To remove operational complexity, protect property inventory, and enhance guest experiences globally.</p>
             </motion.div>
             <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, delay: 0.2 }}>
               <Globe size={48} className="text-emerald-400 mx-auto mb-4" />
               <h3 className="text-xl font-bold text-white mb-2">Our Vision</h3>
-              <p className="text-zinc-500">A future where property management is effortless, intelligent, and infinitely scalable.</p>
+              <p className="text-zinc-500 text-sm leading-relaxed">A completely connected, automated, and serverless ecosystem for modern hospitality operators.</p>
             </motion.div>
             <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, delay: 0.3 }}>
               <Code2 size={48} className="text-violet-400 mx-auto mb-4" />
               <h3 className="text-xl font-bold text-white mb-2">Our Technology</h3>
-              <p className="text-zinc-500">Leveraging cloud-native infrastructure, AI, and robust APIs for a seamless platform.</p>
+              <p className="text-zinc-500 text-sm leading-relaxed">Powered by Next.js, Supabase RLS isolation, n8n webhook triggers, and automated scaling on AWS ECS Fargate.</p>
             </motion.div>
           </div>
         </section>
@@ -318,7 +328,8 @@ export default function HomePage() {
               <p className="text-lg text-zinc-400 max-w-2xl mx-auto mb-10 leading-relaxed">
                 Join modern hoteliers who have automated their operations, secured their data, and scaled their portfolios with StaySync.
               </p>
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
                 <Link 
                   href="/signup" 
                   className="w-full sm:w-auto px-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-2xl transition-all shadow-xl shadow-indigo-500/20"
@@ -332,18 +343,26 @@ export default function HomePage() {
                   Contact Sales Team
                 </a>
               </div>
+
+              {/* Direct Contacts Info */}
+              <div className="inline-flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-8 px-6 py-3 rounded-full bg-white/[0.02] border border-white/[0.05] text-xs font-semibold text-zinc-500">
+                <span>Sales: <a href="mailto:sales@staysync.online" className="text-indigo-400 hover:underline">sales@staysync.online</a></span>
+                <span className="hidden sm:block text-white/10">|</span>
+                <span>Support: <a href="mailto:support@staysync.online" className="text-emerald-400 hover:underline">support@staysync.online</a></span>
+                <span className="hidden sm:block text-white/10">|</span>
+                <span>Phone: <a href="tel:+918686113435" className="text-white hover:underline">+91 8686113435</a></span>
+              </div>
+
             </div>
           </div>
         </section>
 
         {/* Expanded Footer */}
         <footer className="border-t border-white/[0.05] pt-20 pb-10">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-10 mb-16">
-            <div className="col-span-2 md:col-span-1">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-16">
+            <div>
               <div className="flex items-center gap-2 mb-6">
-                <div className="w-6 h-6 bg-indigo-500 rounded-md flex items-center justify-center">
-                  <span className="text-white font-black text-xs">S</span>
-                </div>
+                <img src="/logo.png" alt="StaySync Logo" className="w-[31px] h-[31px] object-contain rounded-md" />
                 <span className="text-white font-bold text-lg tracking-tight">StaySync</span>
               </div>
               <p className="text-zinc-500 text-sm leading-relaxed">
@@ -354,43 +373,27 @@ export default function HomePage() {
             <div>
               <h4 className="text-white font-bold mb-6">Product</h4>
               <ul className="space-y-4 text-sm text-zinc-500">
-                <li><a href="#" className="hover:text-indigo-400 transition-colors">Front Office</a></li>
-                <li><a href="#" className="hover:text-indigo-400 transition-colors">Housekeeping</a></li>
-                <li><a href="#" className="hover:text-indigo-400 transition-colors">Folio Engine</a></li>
+                <li><Link href="/product/front-office" className="hover:text-indigo-400 transition-colors">Front Office</Link></li>
+                <li><Link href="/product/housekeeping" className="hover:text-indigo-400 transition-colors">Housekeeping</Link></li>
+                <li><Link href="/product/folio" className="hover:text-indigo-400 transition-colors">Folio Engine</Link></li>
                 <li><a href="#pricing" className="hover:text-indigo-400 transition-colors">Pricing</a></li>
               </ul>
             </div>
-
-            <div>
-              <h4 className="text-white font-bold mb-6">Resources</h4>
-              <ul className="space-y-4 text-sm text-zinc-500">
-                <li><a href="#" className="hover:text-indigo-400 transition-colors">Documentation</a></li>
-                <li><a href="#" className="hover:text-indigo-400 transition-colors">API Reference</a></li>
-                <li><a href="#" className="hover:text-indigo-400 transition-colors">Help Center</a></li>
-                <li><a href="#" className="hover:text-indigo-400 transition-colors">System Status</a></li>
-              </ul>
-            </div>
-
+ 
             <div>
               <h4 className="text-white font-bold mb-6">Company</h4>
               <ul className="space-y-4 text-sm text-zinc-500">
                 <li><a href="#about" className="hover:text-indigo-400 transition-colors">About Us</a></li>
-                <li><a href="#" className="hover:text-indigo-400 transition-colors">Careers</a></li>
                 <li><a href="mailto:sales@staysync.online" className="hover:text-indigo-400 transition-colors">Contact Sales</a></li>
-                <li><a href="#" className="hover:text-indigo-400 transition-colors">Legal & Privacy</a></li>
+                <li><Link href="/legal" className="hover:text-indigo-400 transition-colors">Legal & Privacy</Link></li>
               </ul>
             </div>
           </div>
 
           <div className="border-t border-white/[0.05] pt-10 flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-[11px] text-zinc-600 font-bold uppercase tracking-[0.2em]">
-              &copy; 2026 Ishitham Projects &bull; Secure Protocol
+              &copy; 2026 StaySync &bull; Unified Property Intelligence
             </p>
-            <div className="flex gap-6 text-[11px] font-bold uppercase tracking-widest text-zinc-600">
-              <a href="#" className="hover:text-zinc-400 transition-colors">WhatsApp</a>
-              <a href="#" className="hover:text-zinc-400 transition-colors">Instagram</a>
-              <a href="#" className="hover:text-zinc-400 transition-colors">Facebook</a>
-            </div>
           </div>
         </footer>
 

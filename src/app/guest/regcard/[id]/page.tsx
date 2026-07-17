@@ -59,7 +59,7 @@ export default function GuestRegCard() {
       <main className="p-6 max-w-md mx-auto">
          <GuestRegistrationForm 
             bookingId={(booking as Record<string, unknown>).id as string} 
-            activePropertyId={(property as Record<string, unknown>).id as string} 
+            activePropertyId={((property as Record<string, unknown>)?.id || (booking as Record<string, unknown>)?.property_id) as string} 
             guestName={(booking as Record<string, unknown>).guest_name as string} 
             guestEmail={(booking as Record<string, unknown>).guest_email as string} 
          />

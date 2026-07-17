@@ -23,17 +23,20 @@ interface FolioPDFData {
   propertyCountry?: string;
   propertyGst?: string;
   propertyStateCode?: string;
+  isMonthly?: boolean;
   incidentals: Array<{
     id: string;
     amount: number;
     description: string;
     created_at: string;
+    business_date?: string;
   }>;
   payments: Array<{
     id: string;
     amount: number;
     method: string;
     created_at: string;
+    business_date?: string;
     transaction_id?: string;
   }>;
   totalCharges: number;
@@ -239,12 +242,13 @@ export async function generateGuestBillPDF(folio: FolioPDFData) {
   doc.setTextColor(30, 30, 30);
   doc.text("2. PAYMENT & TRANSACTION HISTORY", margin, currentY);
 
-  const paymentsRows = folio.payments.length === 0 
+  const activePayments = folio.payments.filter(p => !(p as any).is_void);
+  const paymentsRows = activePayments.length === 0 
     ? [['-', 'No payments recorded on ledger', '-', '-']]
-    : folio.payments.map((p, index) => [
+    : activePayments.map((p, index) => [
         (index + 1).toString(),
         p.method + (p.transaction_id ? ` (Txn: ${p.transaction_id})` : ''),
-        formatDate(p.created_at),
+        formatDate(p.business_date || p.created_at),
         `-Rs. ${Number(p.amount).toFixed(2)}`
       ]);
 
@@ -355,5 +359,200 @@ export async function generateGuestBillPDF(folio: FolioPDFData) {
 
   // Save/Download the PDF with custom file name
   const fileName = `Folio_Invoice_Room_${folio.roomNumber}_${folio.guestName.replace(/\s+/g, '_')}.pdf`;
+  doc.save(fileName);
+}
+
+export async function generateDailyItemizedLedgerPDF(folio: FolioPDFData) {
+  const { jsPDF } = await import('jspdf');
+  
+  if (typeof window !== 'undefined') {
+    (window as any).jsPDF = jsPDF;
+  }
+  
+  const { default: autoTable } = await import('jspdf-autotable');
+  
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  const pageWidth = 210;
+  const pageHeight = 297;
+  const margin = 15;
+
+  // Header Banner
+  doc.setFillColor(18, 18, 20); // Deep luxury dark theme
+  doc.rect(0, 0, pageWidth, 42, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(20);
+  doc.text(folio.propertyName.toUpperCase(), margin, 16);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(180, 180, 182);
+  
+  const addressLine = [
+    folio.propertyAddress,
+    folio.propertyCity,
+    folio.propertyCountry
+  ].filter(Boolean).join(', ');
+  doc.text(addressLine, margin, 23);
+  
+  if (folio.propertyGst) {
+    doc.text(`GSTIN: ${folio.propertyGst}`, margin, 28);
+  }
+
+  // Title
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.setTextColor(255, 255, 255);
+  doc.text("DAILY ROOM CHARGES LEDGER", pageWidth - margin - 75, 16, { align: 'left' });
+  
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(180, 180, 182);
+  doc.text(`Room: Room ${folio.roomNumber}`, pageWidth - margin - 75, 23);
+  doc.text(`Guest: ${folio.guestName}`, pageWidth - margin - 75, 28);
+  doc.text(`Generated: ${new Date().toLocaleDateString('en-IN')}`, pageWidth - margin - 75, 33);
+
+  // Metadata block (Guest details)
+  let yPos = 52;
+  doc.setFillColor(248, 249, 250);
+  doc.rect(margin, yPos, pageWidth - (margin * 2), 22, 'F');
+  doc.setDrawColor(230, 232, 235);
+  doc.rect(margin, yPos, pageWidth - (margin * 2), 22, 'D');
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(60, 60, 60);
+  doc.text("LEDGER METADATA", margin + 5, yPos + 6);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100, 100, 100);
+  doc.text(`Stay Period: ${formatDate(folio.checkIn)} to ${formatDate(folio.checkOut)}`, margin + 5, yPos + 12);
+  doc.text(`Base Total Tariff: Rs. ${folio.roomAmount.toFixed(2)}`, margin + 5, yPos + 17);
+
+  // Parse days
+  const dates: string[] = [];
+  const start = new Date(folio.checkIn);
+  const end = new Date(folio.checkOut);
+
+  let current = new Date(start);
+  while (current < end) {
+    dates.push(current.toISOString().substring(0, 10));
+    current.setDate(current.getDate() + 1);
+  }
+
+  // If stay duration is somehow 0, fallback to checkIn date
+  if (dates.length === 0) {
+    dates.push(folio.checkIn.substring(0, 10));
+  }
+
+  // Parse codes helpers
+  const extractQty = (desc: string): number => {
+    const qtyMatch = desc.match(/\(Qty:\s*(\d+)\)/i);
+    if (qtyMatch) return parseInt(qtyMatch[1]);
+    const xMatch = desc.match(/x\s*(\d+)/i);
+    if (xMatch) return parseInt(xMatch[1]);
+    return 1;
+  };
+
+  const rows: any[] = [];
+  let grandTotal = 0;
+
+  dates.forEach((dateStr, idx) => {
+    // 1. TARIFF
+    let dailyTariff = 0;
+    const dailyAuditCharge = folio.incidentals.find(item => {
+      const itemDate = item.business_date || item.created_at.substring(0, 10);
+      return itemDate === dateStr && item.description.startsWith('Daily Room Charge');
+    });
+    if (dailyAuditCharge) {
+      dailyTariff = Number(dailyAuditCharge.amount);
+    } else if (!folio.isMonthly) {
+      dailyTariff = folio.roomAmount / dates.length;
+    }
+
+    // 2. F/W & OTHERS
+    const dayIncidentals = folio.incidentals.filter(item => {
+      const itemDate = item.business_date || item.created_at.substring(0, 10);
+      return itemDate === dateStr && 
+             !item.description.startsWith('Daily Room Charge') && 
+             item.id !== 'security-deposit-charge';
+    });
+
+    const fwCodes: string[] = [];
+    let dayIncidentalTotal = 0;
+
+    dayIncidentals.forEach(item => {
+      dayIncidentalTotal += Number(item.amount);
+      const desc = item.description.toLowerCase();
+      const qty = extractQty(item.description);
+
+      if (desc.includes('lunch')) {
+        fwCodes.push(`${item.amount}L`);
+      } else if (desc.includes('dinner')) {
+        fwCodes.push(`${item.amount}D`);
+      } else if (desc.includes('water')) {
+        fwCodes.push(qty > 1 ? `${qty}W` : `${item.amount}W`);
+      } else {
+        const categoryInitial = item.description.trim().substring(0, 1).toUpperCase();
+        fwCodes.push(`${item.amount}${categoryInitial}`);
+      }
+    });
+
+    const fwString = fwCodes.length > 0 ? fwCodes.join(' / ') : '';
+    const dailyTotal = dailyTariff + dayIncidentalTotal;
+    grandTotal += dailyTotal;
+
+    // Convert YYYY-MM-DD to DD/MM/YYYY
+    const dateParts = dateStr.split('-');
+    const formattedDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
+
+    rows.push([
+      (idx + 1).toString(),
+      formattedDate,
+      `Rs. ${dailyTariff.toFixed(2)}`,
+      fwString || '-',
+      `Rs. ${dailyTotal.toFixed(2)}`
+    ]);
+  });
+
+  autoTable(doc, {
+    startY: yPos + 28,
+    head: [['SL', 'DATE', 'TARIFF', 'F/W (LUNCH / DINNER / WATER CODES)', 'DAILY TOTAL']],
+    body: rows,
+    theme: 'grid',
+    headStyles: { fillColor: [54, 69, 79], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9 },
+    bodyStyles: { fontSize: 8.5, textColor: [80, 80, 80] },
+    columnStyles: {
+      0: { cellWidth: 12, halign: 'center' },
+      1: { cellWidth: 35, halign: 'center' },
+      2: { cellWidth: 35, halign: 'right' },
+      3: { cellWidth: 80, halign: 'center' },
+      4: { cellWidth: 33, halign: 'right' }
+    },
+    margin: { left: margin, right: margin }
+  });
+
+  const finalY = (doc as any).lastAutoTable.finalY + 8;
+
+  // Add Grand Total
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(30, 30, 30);
+  doc.text("GRAND TOTAL CHARGES:", pageWidth - margin - 80, finalY);
+  doc.text(`Rs. ${grandTotal.toFixed(2)}`, pageWidth - margin - 4, finalY, { align: 'right' });
+
+  // Codes Guide Legend
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(120, 120, 120);
+  doc.text("Codes Guide: L = Lunch, D = Dinner, W = Water bottles. (e.g. 2W/1D = 2 Water Bottles and 1 Dinner, 40W = Rs. 40 Water).", margin, finalY + 12);
+
+  // Save/Download the PDF with custom file name
+  const fileName = `Daily_Ledger_Room_${folio.roomNumber}_${folio.guestName.replace(/\s+/g, '_')}.pdf`;
   doc.save(fileName);
 }

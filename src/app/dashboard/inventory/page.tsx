@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
   DoorOpen,
@@ -18,12 +18,12 @@ import {
   Activity,
   Brush,
   Lock,
-  Trash2, DollarSign, Moon
+  Trash2, DollarSign, Moon, RefreshCw, X
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { addRoom, deleteRoom } from '@/app/actions/inventory';
+import { addRoom, deleteRoom, convertRoomCategory } from '@/app/actions/inventory';
 import { Property, Room, UserProfile } from '@/lib/types';
 
 const NAV_ITEMS = [
@@ -52,6 +52,11 @@ export default function Inventory() {
   const [accessiblePropsList, setAccessiblePropsList] = useState<{ id: string, name: string }[]>([]);
   const [showPropertyDropdown, setShowPropertyDropdown] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+
+  const [newRoomBillingType, setNewRoomBillingType] = useState<'daily' | 'monthly'>('daily');
+  const [inventoryFilter, setInventoryFilter] = useState<'all' | 'daily' | 'monthly'>('all');
+  const [convertingRoom, setConvertingRoom] = useState<Room | null>(null);
+  const [convertSharingCapacity, setConvertSharingCapacity] = useState<number>(2);
 
   const supabase = createClient();
   const router = useRouter();
@@ -85,7 +90,7 @@ export default function Inventory() {
         let parsedPropsList: { id: string, name: string }[] = [];
 
         if (accessibleProperties && accessibleProperties.length > 0) {
-          parsedPropsList = accessibleProperties.map((p) => p.properties as unknown as { id: string, name: string });
+          parsedPropsList = accessibleProperties.map((p: any) => p.properties as unknown as { id: string, name: string });
           setAccessiblePropsList(parsedPropsList);
 
           const savedId = localStorage.getItem('pms_active_property');
@@ -161,7 +166,7 @@ export default function Inventory() {
           table: 'rooms',
           filter: 'property_id=eq.' + propertyId
         },
-        (payload) => {
+        (payload: any) => {
           if (payload.eventType === 'UPDATE') {
             setRooms((prevRooms) =>
               prevRooms.map((r) => r.id === (payload.new as Room).id ? { ...r, ...(payload.new as Room) } : r)
@@ -209,6 +214,37 @@ export default function Inventory() {
     }
   };
 
+  const handleConvertCategoryClick = async (room: Room) => {
+    if (room.allowed_billing_type === 'monthly') {
+      if (window.confirm(`Are you sure you want to convert Room ${room.room_number} to Daily Only?`)) {
+        setActionLoading(true);
+        const result = await convertRoomCategory(room.id, 'daily');
+        if (result?.error) {
+          alert(result.error);
+        } else {
+          setRooms(prev => prev.map(r => r.id === room.id ? { ...r, allowed_billing_type: 'daily', sharing_capacity: 1 } : r));
+        }
+        setActionLoading(false);
+      }
+    } else {
+      setConvertingRoom(room);
+      setConvertSharingCapacity(2);
+    }
+  };
+
+  const submitConversion = async () => {
+    if (!convertingRoom) return;
+    setActionLoading(true);
+    const result = await convertRoomCategory(convertingRoom.id, 'monthly', convertSharingCapacity);
+    if (result?.error) {
+      alert(result.error);
+    } else {
+      setRooms(prev => prev.map(r => r.id === convertingRoom.id ? { ...r, allowed_billing_type: 'monthly', sharing_capacity: convertSharingCapacity } : r));
+      setConvertingRoom(null);
+    }
+    setActionLoading(false);
+  };
+
   const handleAddRoom = async (formData: FormData) => {
     setActionLoading(true);
     setActionError('');
@@ -224,6 +260,11 @@ export default function Inventory() {
     }
     setActionLoading(false);
   };
+
+  const filteredRooms = rooms.filter(room => {
+    if (inventoryFilter === 'all') return true;
+    return room.allowed_billing_type === inventoryFilter;
+  });
 
   if (isLoading) return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
 
@@ -353,15 +394,37 @@ export default function Inventory() {
                 </div>
               </div>
 
-              {rooms.length === 0 ? (
+              {/* List Filter Tabs */}
+              <div className="flex items-center gap-1 mb-6 bg-white/[0.02] border border-white/[0.05] p-1 rounded-xl w-fit">
+                {[
+                  { id: 'all', label: 'ALL' },
+                  { id: 'daily', label: 'Daily Inventory' },
+                  { id: 'monthly', label: 'Monthly Inventory' }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setInventoryFilter(tab.id as any)}
+                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${
+                      inventoryFilter === tab.id 
+                        ? 'bg-indigo-600 text-white shadow-md' 
+                        : 'text-zinc-400 hover:text-white hover:bg-white/[0.02]'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {filteredRooms.length === 0 ? (
                 <div className="py-20 text-center border-2 border-dashed border-white/5 rounded-2xl bg-white/[0.02]">
                   <DoorOpen size={32} className="mx-auto text-zinc-600 mb-3" />
-                  <p className="text-zinc-400 font-medium mb-1">No rooms added yet.</p>
-                  <p className="text-[11px] text-zinc-600">Add a room using the quick form to populate your fleet.</p>
+                  <p className="text-zinc-400 font-medium mb-1">No rooms found.</p>
+                  <p className="text-[11px] text-zinc-600">No rooms match the selected filter criteria.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {rooms.map((room, i) => (
+                  {filteredRooms.map((room, i) => (
                     <motion.div 
                       key={room.id}
                       initial={{ opacity: 0, scale: 0.95 }}
@@ -378,16 +441,42 @@ export default function Inventory() {
                       <div className="flex justify-between items-end">
                         <div>
                           <h4 className="text-xl font-bold text-white tracking-tight mb-1">{room.room_number}</h4>
-                          <p className="text-[11px] font-medium text-zinc-500 uppercase tracking-widest">{room.type}</p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="text-[11px] font-medium text-zinc-500 uppercase tracking-widest">{room.type}</p>
+                            {room.allowed_billing_type && room.allowed_billing_type !== 'both' && (
+                              <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                                room.allowed_billing_type === 'monthly' ? 'bg-violet-500/10 text-violet-400 border border-violet-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                              }`}>
+                                {room.allowed_billing_type === 'monthly' ? 'Monthly Only' : 'Daily Only'}
+                              </span>
+                            )}
+                            {room.allowed_billing_type && room.allowed_billing_type !== 'daily' && (
+                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-teal-500/10 text-teal-400 border border-teal-500/20">
+                                {(room as any).sharing_capacity || 2}-Sharing
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <button 
-                          onClick={() => handleDeleteRoom(room.id, room.room_number)}
-                          disabled={actionLoading}
-                          className="p-2 text-zinc-600 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors disabled:opacity-50"
-                          title="Delete Room"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button 
+                            type="button"
+                            onClick={() => handleConvertCategoryClick(room)}
+                            disabled={actionLoading}
+                            className="p-2 text-zinc-600 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors disabled:opacity-50"
+                            title="Convert Category"
+                          >
+                            <RefreshCw size={14} className={actionLoading ? "animate-spin" : ""} />
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => handleDeleteRoom(room.id, room.room_number)}
+                            disabled={actionLoading}
+                            className="p-2 text-zinc-600 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors disabled:opacity-50"
+                            title="Delete Room"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </div>
                     </motion.div>
                   ))}
@@ -435,6 +524,36 @@ export default function Inventory() {
                     <option value="Deluxe AC" />
                   </datalist>
                 </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Allowed Billing Type</label>
+                  <select 
+                    name="allowedBillingType"
+                    value={newRoomBillingType}
+                    onChange={(e) => setNewRoomBillingType(e.target.value as 'daily' | 'monthly')}
+                    className="w-full bg-black/60 border border-white/[0.05] rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500/50 transition-all cursor-pointer"
+                  >
+                    <option value="daily">Daily Only (Transient)</option>
+                    <option value="monthly">Monthly Only (Co-Living)</option>
+                  </select>
+                </div>
+
+                {newRoomBillingType === 'monthly' && (
+                  <div className="space-y-1.5 animate-fade-in">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Sharing Capacity (Co-Living Beds)</label>
+                    <select 
+                      name="sharingCapacity"
+                      defaultValue="2"
+                      className="w-full bg-black/60 border border-white/[0.05] rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500/50 transition-all cursor-pointer"
+                    >
+                      <option value="1">1 Bed (Single Occupancy)</option>
+                      <option value="2">2 Beds (Double Sharing)</option>
+                      <option value="3">3 Beds (Triple Sharing)</option>
+                      <option value="4">4 Beds (Four Sharing)</option>
+                      <option value="5">5 Beds (Five Sharing)</option>
+                    </select>
+                  </div>
+                )}
 
                 {actionError && (
                   <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-lg text-rose-400 text-xs flex items-center gap-2">
@@ -495,6 +614,90 @@ export default function Inventory() {
           })}
         </div>
       </div>
+
+      {/* Category Conversion Dialog Overlay */}
+      <AnimatePresence>
+        {convertingRoom && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setConvertingRoom(null)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            
+            {/* Dialog Content */}
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="relative w-full max-w-md bg-[#0a0a0c] border border-white/[0.08] rounded-3xl p-6 shadow-2xl overflow-hidden"
+            >
+              <div className="flex justify-between items-start mb-6">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <RefreshCw className="text-indigo-400 animate-spin-slow" size={18} />
+                    Convert Room {convertingRoom.room_number}
+                  </h3>
+                  <p className="text-[11px] text-zinc-500 mt-1">Convert category to Monthly Only (Co-Living)</p>
+                </div>
+                <button 
+                  onClick={() => setConvertingRoom(null)}
+                  className="p-1.5 text-zinc-500 hover:text-white rounded-lg hover:bg-white/5 transition-colors"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="p-4 rounded-2xl bg-zinc-900/40 border border-white/[0.04] space-y-2">
+                  <div className="flex justify-between text-xs text-zinc-400">
+                    <span>Current Category</span>
+                    <span className="font-bold text-white uppercase">{convertingRoom.type}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-zinc-400">
+                    <span>Current Billing</span>
+                    <span className="font-bold text-white uppercase">{convertingRoom.allowed_billing_type || 'Daily'}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Select Monthly Sharing Capacity</label>
+                  <select 
+                    value={convertSharingCapacity}
+                    onChange={(e) => setConvertSharingCapacity(parseInt(e.target.value, 10))}
+                    className="w-full bg-black/60 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-indigo-500/50 transition-all cursor-pointer"
+                  >
+                    <option value="1">1 Bed (Single Occupancy)</option>
+                    <option value="2">2 Beds (Double Sharing)</option>
+                    <option value="3">3 Beds (Triple Sharing)</option>
+                    <option value="4">4 Beds (Four Sharing)</option>
+                    <option value="5">5 Beds (Five Sharing)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 mt-8">
+                <button 
+                  onClick={() => setConvertingRoom(null)}
+                  className="flex-1 bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 text-zinc-400 hover:text-white rounded-xl py-3 text-xs font-bold uppercase tracking-wider transition-all"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={submitConversion}
+                  disabled={actionLoading}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl py-3 text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2"
+                >
+                  {actionLoading ? <Loader2 size={14} className="animate-spin" /> : 'Confirm Convert'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

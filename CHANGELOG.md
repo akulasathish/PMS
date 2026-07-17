@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Released] - 2026-07-02
+
+### Added
+- **Redesigned Monthly Co-Living Hub:** Replaced the tabbed bed selector with an elegant, high-density bed-slot grid that visualizes all occupants, rent cycles, and payment dues simultaneously. Added segment filters ('All', 'With Vacancy', 'Fully Booked', 'Has Dues') and glowing status strips.
+- **Folio & Ledger Upgrades:** Enabled full folio ledgers and payment posting directly for bookings in 'Confirmed' status.
+- **Settings Drawer Enhancement:** Added a premium email verification card in the Settings drawer, prompting users to verify their email.
+- **Onboarding Flow Enhancements:** Added graceful handling and user-facing notifications for existing email addresses in the signup form.
+- **Accessibility Enhancements:** Resolved forms accessibility issues by strictly associating labels with their respective inputs.
+
+### Fixed
+- **Page Refresh Redirection:** Implemented `redirect_to` query parameter tracking in the middleware and login page to keep users on their active tabs (like housekeeping) after refreshes.
+- **Double-Click Ledger Posting:** Added double-submission prevention checks at the handler level for payments, charges, and check-ins to prevent duplicate entries in database tables.
+- **Group Check-In Compliance:** Programmed automatic propagation of guest compliance verification flags, ID photos, and signatures to all rooms in a group reservation.
+- **Monthly Card Search:** Enabled the unified search bar on the Co-Living/Monthly page tab to allow receptionists to filter rooms by number.
+- **Security Deposit Deletion:** Added support for deleting/clearing the advance payment (security deposit) directly from the professional folio ledger.
+- **Folio PDF & Reconciliation:** Corrected the PDF invoicing to use the property's operational `business_date` and implemented a chronological monthly payment allocation method for central ledger reports.
+- **Settings Drawers UX:** Fixed a JSX tag imbalance crash in the Settings/Subscription drawer layout.
+- **Baking Key Fallbacks:** Added client-side fallbacks and logging to prevent application build failures when environment variables are not baked during Docker compilation.
+
 ## [Unreleased] - 2026-03-24
 
 ### Added

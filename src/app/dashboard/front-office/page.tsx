@@ -2,20 +2,22 @@
 import { QRCodeSVG } from 'qrcode.react';
 // Dynamically imported inline to avoid SSR pre-rendering failures
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Bed, Calendar, Search, UserCheck, 
   ArrowRightLeft, ChevronRight, 
   Plus, Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, LogOut,
-  ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck, RefreshCw, RotateCcw, Printer, XCircle, Link2, Camera, X, ShieldCheck, AlertCircle, Phone, Mail,
-  Trash2, DollarSign, Moon, Banknote, Smartphone, CreditCard, Clock, TrendingDown, Download, Wallet, FileText
+  ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck, RefreshCw, RotateCcw, Printer, XCircle, Link2, Camera, X, ShieldCheck, AlertCircle, Phone, Mail, Eye,
+  Trash2, IndianRupee, Moon, Banknote, Smartphone, CreditCard, Clock, TrendingDown, Download, Wallet, FileText,
+  Home, UserPlus, User
 } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import BookingModal from './BookingModal';
+import CoLivingBookingModal from './CoLivingBookingModal';
 import FolioModal from '@/components/FolioModal';
 import RoomBlockModal from '@/components/RoomBlockModal';
 import { checkInGuest, checkOutGuest, updateGuestNotes, upgradeRoom, issueRefund, cancelBooking, resetGuestIdentity, updateCheckInTime } from '@/app/actions/booking';
@@ -28,7 +30,7 @@ const NAV_ITEMS = [
   { icon: Brush, label: "Housekeeping", href: "/dashboard/housekeeping", active: false, module: 'housekeeping' },
   { icon: DoorOpen, label: "Inventory", href: "/dashboard/inventory", active: false, module: 'inventory' },
   { icon: Moon, label: "Night Audit", href: "/dashboard/night-audit", active: false, module: 'night_audit' },
-  { icon: Settings, label: "Settings", href: "#", active: false, module: 'settings' },
+  { icon: FileText, label: "Daily Reports", href: "#", active: false, module: 'front_office' },
 ];
 
 const generateDaysFromDate = (baseDateStr: string) => {
@@ -78,6 +80,8 @@ const isRoomRelatedCharge = (desc: string): boolean => {
     d.includes('due amount') ||
     d.includes('balance transfer') ||
     d.includes('extra guest') ||
+    d.includes('extra person') ||
+    d.includes('extra occupant') ||
     d.includes('extra bed') ||
     d.includes('upgrade')
   );
@@ -96,6 +100,81 @@ const isCardRoomCharge = (desc: string): boolean => {
   return isRoomRelatedCharge(desc);
 };
 
+const openSecurePDFWindow = () => {
+  if (typeof window === 'undefined') return null;
+  const newWindow = window.open('', '_blank');
+  if (newWindow) {
+    try {
+      newWindow.document.title = "Generating Report...";
+      newWindow.document.body.innerHTML = `
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0a0a0c; color: #fff; margin: 0; padding: 20px; box-sizing: border-box; text-align: center;">
+          <div style="width: 48px; height: 48px; border: 3px solid rgba(255,255,255,0.05); border-radius: 50%; border-top-color: #4f46e5; animation: spin 1s linear infinite;"></div>
+          <p style="margin-top: 24px; font-size: 15px; font-weight: 700; color: #f4f4f5; letter-spacing: 0.1em; text-transform: uppercase;">Generating Secure Report</p>
+          <p style="margin-top: 6px; font-size: 12px; color: #71717a; max-width: 280px; line-height: 1.5;">Please wait while your PDF report is compiled on-the-fly.</p>
+          <style>
+            @keyframes spin {
+              to { transform: rotate(360deg); }
+            }
+          </style>
+        </div>
+      `;
+    } catch (e) {
+      console.warn("Could not write loader to new window", e);
+    }
+  }
+  return newWindow;
+};
+
+const compressImage = (file: File, maxWidth = 1600, maxHeight = 1600, quality = 0.75): Promise<Blob> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = document.createElement('img');
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth || height > maxHeight) {
+          if (width > height) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          } else {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(file);
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(blob);
+            } else {
+              resolve(file);
+            }
+          },
+          'image/jpeg',
+          quality
+        );
+      };
+      img.onerror = () => resolve(file);
+      img.src = event.target?.result as string;
+    };
+    reader.onerror = () => resolve(file);
+    reader.readAsDataURL(file);
+  });
+};
+
 
 export default function FrontOfficeTerminal() {
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -109,7 +188,9 @@ export default function FrontOfficeTerminal() {
   const [showBookingModal, setShowBookingModal] = useState(false);
   
   // Tabs State
-  const [activeTab, setActiveTab] = useState<'tape' | 'arrivals' | 'departures' | 'house' | 'all' | 'balances' | 'expenses'>('tape');
+  const [activeTab, setActiveTab] = useState<'tape' | 'arrivals' | 'departures' | 'house' | 'all' | 'balances' | 'expenses' | 'monthly' | 'reports'>('tape');
+  const [showCoLivingModal, setShowCoLivingModal] = useState(false);
+  const [selectedCoLivingRoomId, setSelectedCoLivingRoomId] = useState<string | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState('');
   const [balancesFilter, setBalancesFilter] = useState<'inHouse' | 'allActive'>('inHouse');
   const [hidePaidGuests, setHidePaidGuests] = useState(true);
@@ -152,11 +233,34 @@ export default function FrontOfficeTerminal() {
   const [checkInPaymentAmount, setCheckInPaymentAmount] = useState('');
   const [checkInPaymentTxnId, setCheckInPaymentTxnId] = useState('');
   
+  // Check-In Addon Charges States
+  const [earlyCheckInAmount, setEarlyCheckInAmount] = useState('');
+  const [extraBedAmount, setExtraBedAmount] = useState('');
+  const [foodWaterAmount, setFoodWaterAmount] = useState('');
+  const [otherChargesAmount, setOtherChargesAmount] = useState('');
+  const [otherChargesDescription, setOtherChargesDescription] = useState('');
+
+  // Automatically recalculate check-in payment amount when selectedBooking or addons change
+  useEffect(() => {
+    if (!selectedBooking) return;
+    const base = Number(selectedBooking.amount || 0);
+    const early = Number(earlyCheckInAmount || 0);
+    const bed = Number(extraBedAmount || 0);
+    const food = Number(foodWaterAmount || 0);
+    const other = Number(otherChargesAmount || 0);
+    setCheckInPaymentAmount((base + early + bed + food + other).toString());
+  }, [selectedBooking, earlyCheckInAmount, extraBedAmount, foodWaterAmount, otherChargesAmount]);
+  
   // Form F Fields State
   const [guestAddress, setGuestAddress] = useState('');
   const [showQrCode, setShowQrCode] = useState(false);
+  const [isIdentityMenuOpen, setIsIdentityMenuOpen] = useState(false);
   const [activeCheckoutBooking, setActiveCheckoutBooking] = useState<{bookingId: string, roomId: string, guestName: string, amount: number} | null>(null);
   const [activeBlockRoom, setActiveBlockRoom] = useState<Room | null>(null);
+  const [selectedBeds, setSelectedBeds] = useState<{ [roomId: string]: number }>({});
+  const [monthlyFilter, setMonthlyFilter] = useState<'all' | 'vacancy' | 'occupied' | 'dues'>('all');
+  const [expandedRoomIds, setExpandedRoomIds] = useState<Record<string, boolean>>({});
+  const [selectedReportType, setSelectedReportType] = useState<'checkins' | 'inhouse' | 'checkouts' | 'pending' | null>(null);
 
   // Cash Handover and Close Counter states
   const [isCloseCashModalOpen, setIsCloseCashModalOpen] = useState(false);
@@ -166,7 +270,219 @@ export default function FrontOfficeTerminal() {
   const [isEditingCheckInTime, setIsEditingCheckInTime] = useState(false);
   const [tempCheckInTime, setTempCheckInTime] = useState('');
 
+  // Live Webcam Modal states
+  const [showWebcamModal, setShowWebcamModal] = useState(false);
+  const [webcamStream, setWebcamStream] = useState<MediaStream | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const startWebcam = async () => {
+    setShowWebcamModal(true);
+    try {
+      let stream;
+      try {
+        // Try with ideal facingMode constraint (great for mobile rear camera)
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: { ideal: 'environment' }, 
+            width: { ideal: 1280 }, 
+            height: { ideal: 720 } 
+          } 
+        });
+      } catch (firstErr) {
+        console.warn("Could not start webcam with facingMode constraint, trying standard video:", firstErr);
+        // Fallback to simple video constraint (works on any desktop/laptop webcam)
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: true 
+        });
+      }
+      
+      setWebcamStream(stream);
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      }, 100);
+    } catch (err: any) {
+      console.error("Failed to start webcam completely:", err);
+      setShowWebcamModal(false);
+      // Fallback: trigger standard native camera/file picker
+      alert("Browser camera access blocked or unsupported. Falling back to native device file/camera picker...");
+      document.getElementById('direct-id-capture-input')?.click();
+    }
+  };
+
+  const stopWebcam = useCallback(() => {
+    if (webcamStream) {
+      webcamStream.getTracks().forEach(track => track.stop());
+      setWebcamStream(null);
+    }
+    setShowWebcamModal(false);
+  }, [webcamStream]);
+
+  const captureSnapshot = async () => {
+    if (!videoRef.current || !selectedBooking) return;
+    
+    try {
+      const video = videoRef.current;
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      canvas.toBlob(async (blob) => {
+        if (!blob) return;
+        
+        // Stop stream first
+        if (webcamStream) {
+          webcamStream.getTracks().forEach(track => track.stop());
+          setWebcamStream(null);
+        }
+        setShowWebcamModal(false);
+        
+        setActionLoading(true);
+        try {
+          console.log("Webcam Capture: Starting image compression");
+          const file = new File([blob], "webcam_capture.jpg", { type: 'image/jpeg' });
+          const compressedBlob = await compressImage(file);
+          const idExt = 'jpg';
+          const idFileName = `${selectedBooking.id}_id_${Date.now()}.${idExt}`;
+
+          console.log("Webcam Capture: Uploading compressed file to Supabase Storage");
+          const { error: uploadError } = await supabase.storage
+            .from('guest-ids')
+            .upload(idFileName, compressedBlob, { upsert: true, contentType: 'image/jpeg' });
+
+          if (uploadError) throw uploadError;
+
+          console.log("Webcam Capture: Updating Booking");
+          const { error: updateError } = await supabase
+            .from('bookings')
+            .update({
+              id_verified: true,
+              id_photo_url: idFileName,
+              status: 'Confirmed'
+            })
+            .eq('id', selectedBooking.id);
+
+          if (updateError) throw updateError;
+
+          console.log("Webcam Capture: Inserting record into Guests table");
+          const { error: guestError } = await supabase
+            .from('guests')
+            .insert([{
+              booking_id: selectedBooking.id,
+              property_id: selectedBooking.property_id,
+              full_name: selectedBooking.guest_name,
+              email: selectedBooking.guest_email || '',
+              id_photo_url: idFileName
+            }]);
+
+          if (guestError) {
+            console.warn("Webcam Capture: Guests insertion warning:", guestError);
+          }
+
+          await loadDashboardData();
+          
+          const { data: updatedBooking } = await supabase
+            .from('bookings')
+            .select('*')
+            .eq('id', selectedBooking.id)
+            .single();
+          if (updatedBooking) {
+            setSelectedBooking(updatedBooking as Booking);
+            setCheckIdVerified(true);
+            setCheckRegCardSigned(true);
+          }
+
+          alert("ID Card captured and verified successfully!");
+        } catch (err: any) {
+          console.error("Webcam capture failed during upload/update:", err);
+          alert("Webcam capture failed: " + err.message);
+        } finally {
+          setActionLoading(false);
+        }
+      }, 'image/jpeg', 0.8);
+    } catch (err: any) {
+      console.error("Failed to capture snapshot:", err);
+      alert("Failed to capture snapshot: " + err.message);
+    }
+  };
+
   const supabase = createClient();
+
+  const handleDirectCameraCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedBooking) return;
+
+    setActionLoading(true);
+    try {
+      console.log("Direct Capture: Starting image compression for", file.name);
+      const compressedBlob = await compressImage(file);
+      const idExt = file.type === 'image/jpeg' ? 'jpg' : (file.name.split('.').pop()?.toLowerCase() || 'jpg');
+      const idFileName = `${selectedBooking.id}_id_${Date.now()}.${idExt}`;
+
+      console.log("Direct Capture: Uploading compressed file to Supabase Storage as", idFileName);
+      // Upload to storage with explicit contentType: 'image/jpeg'
+      const { error: uploadError } = await supabase.storage
+        .from('guest-ids')
+        .upload(idFileName, compressedBlob, { upsert: true, contentType: 'image/jpeg' });
+
+      if (uploadError) throw uploadError;
+
+      console.log("Direct Capture: Updating Booking id_verified and id_photo_url");
+      const { error: updateError } = await supabase
+        .from('bookings')
+        .update({
+          id_verified: true,
+          id_photo_url: idFileName,
+          status: 'Confirmed'
+        })
+        .eq('id', selectedBooking.id);
+
+      if (updateError) throw updateError;
+
+      console.log("Direct Capture: Inserting record into Guests table");
+      const { error: guestError } = await supabase
+        .from('guests')
+        .insert([{
+          booking_id: selectedBooking.id,
+          property_id: selectedBooking.property_id,
+          full_name: selectedBooking.guest_name,
+          email: selectedBooking.guest_email || '',
+          id_photo_url: idFileName
+        }]);
+
+      if (guestError) {
+        console.warn("Direct Capture: Non-fatal guests table insertion warning:", guestError);
+      }
+
+      await loadDashboardData();
+      
+      // Also force-refresh the selected booking state so drawer displays it immediately
+      const { data: updatedBooking } = await supabase
+        .from('bookings')
+        .select('*')
+        .eq('id', selectedBooking.id)
+        .single();
+      if (updatedBooking) {
+        setSelectedBooking(updatedBooking as Booking);
+        setCheckIdVerified(true);
+        setCheckRegCardSigned(true);
+      }
+
+      alert("ID Card captured and verified successfully!");
+    } catch (err: any) {
+      console.error("Direct capture failed:", err);
+      alert("Direct capture failed: " + err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // Extract fetch data to a callable function to avoid window.location.reload()
   const loadDashboardData = useCallback(async () => {
     setIsLoading(true);
@@ -207,15 +523,29 @@ export default function FrontOfficeTerminal() {
         }
         bookingsQuery = bookingsQuery.order('created_at', { ascending: false });
 
-        const [propRes, settingsRes, roomsRes, bookingsRes, incidentalsRes, paymentsRes, expensesRes, cashBalancesRes] = await Promise.all([
+        const [propRes, settingsRes, roomsRes, bookingsRes, expensesRes, cashBalancesRes] = await Promise.all([
           supabase.from('properties').select('*').eq('id', activeId).single(),
           supabase.from('app_settings').select('value').eq('key', 'business_date').single(),
           finalRoomsQuery,
           bookingsQuery,
-          supabase.from('incidental_charges').select('*').eq('property_id', activeId),
-          supabase.from('payments').select('*').eq('property_id', activeId),
           supabase.from('expenses').select('*').eq('property_id', activeId),
           supabase.from('daily_cash_balances').select('*').eq('property_id', activeId)
+        ]);
+
+        const loadedBookings = bookingsRes.data || [];
+        const bookingIds = loadedBookings.map((b: any) => b.id);
+
+        let incidentalsQuery = supabase.from('incidental_charges').select('*').eq('property_id', activeId);
+        let paymentsQuery = supabase.from('payments').select('*').eq('property_id', activeId);
+
+        if (bookingIds.length > 0) {
+          incidentalsQuery = supabase.from('incidental_charges').select('*').or(`property_id.eq.${activeId},booking_id.in.(${bookingIds.join(',')})`);
+          paymentsQuery = supabase.from('payments').select('*').or(`property_id.eq.${activeId},booking_id.in.(${bookingIds.join(',')})`);
+        }
+
+        const [incidentalsRes, paymentsRes] = await Promise.all([
+          incidentalsQuery,
+          paymentsQuery
         ]);
 
         if (propRes.data) {
@@ -283,7 +613,7 @@ export default function FrontOfficeTerminal() {
           table: 'rooms',
           filter: 'property_id=eq.' + property.id
         },
-        (payload) => {
+        (payload: any) => {
           console.log("Realtime Room Update:", payload.new);
           setRooms((prevRooms) => 
             prevRooms.map((r) => r.id === payload.new.id ? { ...r, status: payload.new.status as Room['status'] } : r)
@@ -309,6 +639,7 @@ export default function FrontOfficeTerminal() {
   const getBookingForRoom = (roomId: string) => {
     return bookings.find(b => {
       if (b.room_id !== roomId) return false;
+      if (b.is_monthly) return false;
       if (!['Confirmed', 'Checked In', 'Checked Out'].includes(b.status)) return false;
       
       const bIn = b.check_in ? String(b.check_in).substring(0, 10) : '';
@@ -340,7 +671,7 @@ export default function FrontOfficeTerminal() {
     let filtered = bookings.filter(b => {
       // Extract only the first 10 characters (YYYY-MM-DD) from whatever Postgres returned
       const dbDate = b.check_in ? String(b.check_in).substring(0, 10) : '';
-      return dbDate === todayStr && b.status === 'Confirmed';
+      return dbDate === todayStr && b.status === 'Confirmed' && !b.is_monthly;
     });
 
     if (searchQuery) {
@@ -361,7 +692,7 @@ export default function FrontOfficeTerminal() {
     let filtered = bookings.filter(b => {
       // Extract only the first 10 characters
       const dbDate = b.check_out ? String(b.check_out).substring(0, 10) : '';
-      return dbDate === todayStr && b.status === 'Checked In';
+      return dbDate === todayStr && b.status === 'Checked In' && !b.is_monthly;
     });
 
     if (searchQuery) {
@@ -383,6 +714,7 @@ export default function FrontOfficeTerminal() {
     if (filterStartDate || filterEndDate) {
       filtered = bookings.filter(b => {
         if (!['Confirmed', 'Checked In', 'Checked Out'].includes(b.status)) return false;
+        if (b.is_monthly) return false;
 
         const bIn = b.check_in ? String(b.check_in).substring(0, 10) : '';
         const bOut = b.check_out ? String(b.check_out).substring(0, 10) : '';
@@ -393,7 +725,7 @@ export default function FrontOfficeTerminal() {
         return bIn < endBoundary && bOut > startBoundary;
       });
     } else {
-      filtered = bookings.filter(b => b.status === 'Checked In');
+      filtered = bookings.filter(b => b.status === 'Checked In' && !b.is_monthly);
     }
 
     if (searchQuery) {
@@ -412,7 +744,7 @@ export default function FrontOfficeTerminal() {
   
   
   const getAllReservations = () => {
-    let filtered = bookings;
+    let filtered = bookings.filter(b => !b.is_monthly);
     
     // 1. Status Filter
     if (reservationFilter !== 'All') {
@@ -531,7 +863,7 @@ export default function FrontOfficeTerminal() {
       setBookings(bookings.map(b => b.id === selectedBooking.id ? { ...b, amount: res.newAmount } : b));
       setRefundInput('');
       setSelectedBooking({ ...selectedBooking, amount: res.newAmount }); // Update drawer UI
-      alert(`Refund of $${amount} successful. New balance: $${res.newAmount}`);
+      alert(`Refund of ₹${amount} successful. New balance: ₹${res.newAmount}`);
     } else {
       alert(res.error);
     }
@@ -556,6 +888,7 @@ export default function FrontOfficeTerminal() {
 
   const handleSafeCheckIn = async (e: React.MouseEvent, bookingId: string) => {
     e.stopPropagation();
+    if (actionLoading) return;
     setActionLoading(true);
     
     let paymentDetails = undefined;
@@ -573,7 +906,28 @@ export default function FrontOfficeTerminal() {
       };
     }
 
-    const res = await checkInGuest(bookingId, paymentDetails);
+    const addonCharges = [];
+    const earlyVal = parseFloat(earlyCheckInAmount);
+    if (!isNaN(earlyVal) && earlyVal > 0) {
+      addonCharges.push({ description: 'Early Check-In', amount: earlyVal });
+    }
+    const bedVal = parseFloat(extraBedAmount);
+    if (!isNaN(bedVal) && bedVal > 0) {
+      addonCharges.push({ description: 'Extra Bed', amount: bedVal });
+    }
+    const foodVal = parseFloat(foodWaterAmount);
+    if (!isNaN(foodVal) && foodVal > 0) {
+      addonCharges.push({ description: 'Food & Water', amount: foodVal });
+    }
+    const otherVal = parseFloat(otherChargesAmount);
+    if (!isNaN(otherVal) && otherVal > 0) {
+      addonCharges.push({
+        description: otherChargesDescription.trim() || 'Other Charges',
+        amount: otherVal
+      });
+    }
+
+    const res = await checkInGuest(bookingId, paymentDetails, addonCharges);
     setActionLoading(false);
     
     if (res.error) {
@@ -610,7 +964,7 @@ export default function FrontOfficeTerminal() {
           table: 'bookings',
           filter: "id=eq." + selectedBooking.id
         },
-        (payload) => {
+        (payload: any) => {
           if (payload.new.id_verified) {
             setSelectedBooking(payload.new as Booking);
             setCheckIdVerified(true);
@@ -672,6 +1026,13 @@ export default function FrontOfficeTerminal() {
     setCheckFormFDone(false);
     setGuestAddress(booking.guest_address || '');
     
+    // Reset Check-In Addon Charges
+    setEarlyCheckInAmount('');
+    setExtraBedAmount('');
+    setFoodWaterAmount('');
+    setOtherChargesAmount('');
+    setOtherChargesDescription('');
+    
     // Reset and pre-fill check-in payment details
     setCheckInPaymentRecorded(true);
     setCheckInPaymentMethod('Cash');
@@ -692,21 +1053,25 @@ export default function FrontOfficeTerminal() {
   // --- SUB-COMPONENT: LIST ITEM ---
   const BookingRow = ({ booking }: { booking: Booking }) => {
     const bookingIncidentals = incidentals.filter(i => i.booking_id === booking.id);
-    const bookingPayments = payments.filter(p => p.booking_id === booking.id);
+    const bookingPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
 
     const dailyRoomChargesSum = bookingIncidentals
       .filter(item => item.description?.startsWith('Daily Room Charge'))
       .reduce((sum, item) => sum + Number(item.amount), 0);
 
-    const roomAmount = Math.max(0, Number(booking.amount) - dailyRoomChargesSum);
-    const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0);
+    const roomAmount = booking.is_monthly
+      ? Number(booking.monthly_rate || 0)
+      : Math.max(0, Number(booking.amount) - dailyRoomChargesSum);
+    const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0) + (booking.is_monthly ? Number(booking.amount) : 0);
     const totalCharges = roomAmount + incidentalsAmount;
     const totalPaid = bookingPayments.reduce((sum, item) => sum + Number(item.amount), 0);
 
     // Compute room-only charges for the card (Standard Room Tariff + Past Stay Dues only, EXCLUDING food & water, early check-in, and late checkout)
-    const cardChargesTotal = roomAmount + bookingIncidentals
-      .filter(inc => isCardRoomCharge(inc.description || ''))
-      .reduce((sum, inc) => sum + Number(inc.amount), 0);
+    const cardChargesTotal = roomAmount + 
+      (booking.is_monthly ? Number(booking.amount) : 0) +
+      bookingIncidentals
+        .filter(inc => isCardRoomCharge(inc.description || ''))
+        .reduce((sum, inc) => sum + Number(inc.amount), 0);
 
     const excludedChargesTotal = totalCharges - cardChargesTotal;
     const cardPaid = Math.max(0, totalPaid - excludedChargesTotal);
@@ -735,6 +1100,11 @@ export default function FrontOfficeTerminal() {
                 <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest bg-indigo-500/10 px-2 py-0.5 rounded-md w-fit">
                   {calculateNights(booking.check_in, booking.check_out)} Nights &bull; {formatFriendlyDate(booking.check_in)} to {formatFriendlyDate(booking.check_out)}
                 </p>
+                {booking.is_monthly && (
+                  <p className="text-[10px] font-bold text-violet-400 uppercase tracking-widest bg-violet-500/10 px-2 py-0.5 rounded-md w-fit flex items-center gap-1">
+                    Co-Living Guest (Rent: ₹{Number(booking.monthly_rate || 0).toLocaleString('en-IN')} /mo, Cycle Day: {booking.billing_cycle_date})
+                  </p>
+                )}
                 {booking.check_in_time && (
                   <p className="text-[10px] font-bold text-amber-400 uppercase tracking-widest bg-amber-500/10 px-2 py-0.5 rounded-md w-fit flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
@@ -810,6 +1180,59 @@ export default function FrontOfficeTerminal() {
     }
   };
 
+  const getMonthlyPaymentAllocations = (allPayments: any[], allBookings: any[]) => {
+    const allocations: { [paymentId: string]: { rent: number; deposit: number } } = {};
+    
+    const paymentsByBooking: { [bookingId: string]: any[] } = {};
+    allPayments.forEach(p => {
+      if (!p.is_void) {
+        if (!paymentsByBooking[p.booking_id]) {
+          paymentsByBooking[p.booking_id] = [];
+        }
+        paymentsByBooking[p.booking_id].push(p);
+      }
+    });
+
+    allBookings.forEach(b => {
+      if (!b.is_monthly) return;
+      const bPayments = paymentsByBooking[b.id] || [];
+      
+      const sorted = [...bPayments].sort((a, b) => {
+        const dateA = getPaymentDateStr(a);
+        const dateB = getPaymentDateStr(b);
+        if (dateA !== dateB) return dateA.localeCompare(dateB);
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      });
+
+      let depositNeeded = Number(b.amount || 0);
+      let rentNeeded = Number(b.monthly_rate || 0);
+
+      sorted.forEach(p => {
+        const amt = Number(p.amount);
+        let depositAlloc = 0;
+        let rentAlloc = 0;
+
+        if (depositNeeded > 0) {
+          const alloc = Math.min(amt, depositNeeded);
+          depositAlloc = alloc;
+          depositNeeded -= alloc;
+          const remaining = amt - alloc;
+          if (remaining > 0) {
+            rentAlloc = remaining;
+            rentNeeded = Math.max(0, rentNeeded - remaining);
+          }
+        } else {
+          rentAlloc = amt;
+          rentNeeded = Math.max(0, rentNeeded - amt);
+        }
+
+        allocations[p.id] = { rent: rentAlloc, deposit: depositAlloc };
+      });
+    });
+
+    return allocations;
+  };
+
   const getOpeningCashForDate = (dateStr: string): number => {
     const record = dailyCashBalances.find(b => b.date === dateStr);
     if (record) {
@@ -832,7 +1255,7 @@ export default function FrontOfficeTerminal() {
   const getExpectedCashForDate = (dateStr: string): number => {
     const opening = getOpeningCashForDate(dateStr);
     const cashPayments = payments
-      .filter(p => p.method === 'Cash' && getPaymentDateStr(p) === dateStr)
+      .filter(p => !p.is_void && p.method === 'Cash' && getPaymentDateStr(p) === dateStr)
       .reduce((sum, p) => sum + Number(p.amount), 0);
     const cashExpenses = expenses
       .filter(e => e.payment_method === 'Cash' && e.date === dateStr)
@@ -843,13 +1266,13 @@ export default function FrontOfficeTerminal() {
   const getLedgerTotalsForDate = (dateStr: string) => {
     const openingCash = getOpeningCashForDate(dateStr);
     const cashPayments = payments
-      .filter(p => p.method === 'Cash' && getPaymentDateStr(p) === dateStr)
+      .filter(p => !p.is_void && p.method === 'Cash' && getPaymentDateStr(p) === dateStr)
       .reduce((sum, p) => sum + Number(p.amount), 0);
     const upiPayments = payments
-      .filter(p => p.method === 'UPI' && getPaymentDateStr(p) === dateStr)
+      .filter(p => !p.is_void && p.method === 'UPI' && getPaymentDateStr(p) === dateStr)
       .reduce((sum, p) => sum + Number(p.amount), 0);
     const otherPayments = payments
-      .filter(p => !['Cash', 'UPI'].includes(p.method) && getPaymentDateStr(p) === dateStr)
+      .filter(p => !p.is_void && !['Cash', 'UPI'].includes(p.method) && getPaymentDateStr(p) === dateStr)
       .reduce((sum, p) => sum + Number(p.amount), 0);
     const cashExpenses = expenses
       .filter(e => e.payment_method === 'Cash' && e.date === dateStr)
@@ -1053,8 +1476,13 @@ export default function FrontOfficeTerminal() {
   };
 
   const generateHorizontalPDFReport = async (type: 'checkins' | 'checkouts' | 'pending' | 'inhouse') => {
-    if (!property) return;
-    const { jsPDF } = await import('jspdf');
+    const newWindow = openSecurePDFWindow();
+    if (!property) {
+      if (newWindow) newWindow.close();
+      return;
+    }
+    try {
+      const { jsPDF } = await import('jspdf');
     
     // Polyfill window.jsPDF to ensure jspdf-autotable loads/binds properly in Next.js
     if (typeof window !== 'undefined') {
@@ -1072,6 +1500,7 @@ export default function FrontOfficeTerminal() {
     if (type === 'checkins') {
       title = `Daily Check-Ins Report - ${formatFriendlyDate(selectedLedgerDate)}`;
       dataList = bookings.filter(b => {
+        if (b.is_monthly) return false; // Isolate from daily transient reports
         const cInTimeStr = b.check_in_time ? getLocalYYYYMMDD(new Date(b.check_in_time)) : '';
         const cInDateStr = b.check_in ? b.check_in.substring(0, 10) : '';
         const actDate = cInTimeStr || cInDateStr;
@@ -1080,6 +1509,7 @@ export default function FrontOfficeTerminal() {
     } else if (type === 'checkouts') {
       title = `Daily Check-Outs Report - ${formatFriendlyDate(selectedLedgerDate)}`;
       dataList = bookings.filter(b => {
+        if (b.is_monthly) return false; // Isolate from daily transient reports
         const cOutTimeStr = b.check_out_time ? getLocalYYYYMMDD(new Date(b.check_out_time)) : '';
         const cOutDateStr = b.check_out ? b.check_out.substring(0, 10) : '';
         const actDate = cOutTimeStr || cOutDateStr;
@@ -1088,6 +1518,7 @@ export default function FrontOfficeTerminal() {
     } else if (type === 'inhouse') {
       title = `Daily In-House Guests Report - ${formatFriendlyDate(selectedLedgerDate)}`;
       dataList = bookings.filter(b => {
+        if (b.is_monthly) return false; // Isolate from daily transient reports
         const checkInDate = b.check_in_time ? getLocalYYYYMMDD(new Date(b.check_in_time)) : (b.check_in ? b.check_in.substring(0, 10) : '');
         const checkOutDate = b.check_out_time ? getLocalYYYYMMDD(new Date(b.check_out_time)) : (b.check_out ? b.check_out.substring(0, 10) : '');
         
@@ -1095,22 +1526,25 @@ export default function FrontOfficeTerminal() {
           return checkInDate <= selectedLedgerDate;
         }
         if (b.status === 'Checked Out') {
-          // Historically in-house on selectedLedgerDate
-          return checkInDate <= selectedLedgerDate && checkOutDate >= selectedLedgerDate;
+          // Historically in-house on selectedLedgerDate (excluding checkout date)
+          return checkInDate <= selectedLedgerDate && checkOutDate > selectedLedgerDate;
         }
         return false;
       });
     } else if (type === 'pending') {
       title = `Daily Pending Bills Report - ${formatFriendlyDate(selectedLedgerDate)}`;
       dataList = bookings.filter(b => {
+        if (b.is_monthly) return false; // Isolate from daily transient reports
         if (b.status !== 'Checked In') return false;
         const bookingIncidentals = incidentals.filter(i => i.booking_id === b.id);
-        const bookingPayments = payments.filter(p => p.booking_id === b.id);
+        const bookingPayments = payments.filter(p => p.booking_id === b.id && !p.is_void);
         const dailyRoomChargesSum = bookingIncidentals
           .filter(item => item.description?.startsWith('Daily Room Charge'))
           .reduce((sum, item) => sum + Number(item.amount), 0);
-        const roomAmount = Math.max(0, Number(b.amount) - dailyRoomChargesSum);
-        const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0);
+        const roomAmount = b.is_monthly
+          ? Number(b.monthly_rate || 0)
+          : Math.max(0, Number(b.amount) - dailyRoomChargesSum);
+        const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0) + (b.is_monthly ? Number(b.amount) : 0);
         const totalCharges = roomAmount + incidentalsAmount;
         const totalPaid = bookingPayments.reduce((sum, item) => sum + Number(item.amount), 0);
         const balanceDue = totalCharges - totalPaid;
@@ -1122,17 +1556,19 @@ export default function FrontOfficeTerminal() {
     let totalDue = 0;
     const rows = dataList.map((b, idx) => {
       const roomNum = rooms.find(r => r.id === b.room_id)?.room_number || 'N/A';
-      const bookingPaymentsOnDate = payments.filter(p => p.booking_id === b.id && getPaymentDateStr(p) === selectedLedgerDate);
+      const bookingPaymentsOnDate = payments.filter(p => p.booking_id === b.id && getPaymentDateStr(p) === selectedLedgerDate && !p.is_void);
       const cashAmt = bookingPaymentsOnDate.filter(p => p.method === 'Cash').reduce((sum, p) => sum + Number(p.amount), 0);
       const upiAmt = bookingPaymentsOnDate.filter(p => p.method === 'UPI').reduce((sum, p) => sum + Number(p.amount), 0);
       
       const bookingIncidentals = incidentals.filter(i => i.booking_id === b.id);
-      const bookingPaymentsAll = payments.filter(p => p.booking_id === b.id);
+      const bookingPaymentsAll = payments.filter(p => p.booking_id === b.id && !p.is_void);
       const dailyRoomChargesSum = bookingIncidentals
         .filter(item => item.description?.startsWith('Daily Room Charge'))
         .reduce((sum, item) => sum + Number(item.amount), 0);
-      const roomAmount = Math.max(0, Number(b.amount) - dailyRoomChargesSum);
-      const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0);
+      const roomAmount = b.is_monthly
+        ? Number(b.monthly_rate || 0)
+        : Math.max(0, Number(b.amount) - dailyRoomChargesSum);
+      const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0) + (b.is_monthly ? Number(b.amount) : 0);
       const totalCharges = roomAmount + incidentalsAmount;
       const totalPaid = bookingPaymentsAll.reduce((sum, item) => sum + Number(item.amount), 0);
       const balanceDue = Math.max(0, totalCharges - totalPaid);
@@ -1195,6 +1631,7 @@ export default function FrontOfficeTerminal() {
       head: [['SL', 'GUEST NAME', 'PHONE', 'C.IN/TIME', 'C.OUT/TIME', 'ROOM', 'CASH', 'UPI', 'DUE']],
       body: rows,
       foot: [['', 'TOTALS', '', '', '', '', `Rs. ${totalCash.toFixed(2)}`, `Rs. ${totalUPI.toFixed(2)}`, `Rs. ${totalDue.toFixed(2)}` ]],
+      showFoot: 'lastPage',
       theme: 'grid',
       rowPageBreak: 'avoid',
       styles: {
@@ -1224,14 +1661,27 @@ export default function FrontOfficeTerminal() {
       }
     });
     
-    // Output a Blob and open it in a new tab for inline previewing/printing/downloading
-    const pdfBlob = doc.output('blob');
-    const pdfUrl = URL.createObjectURL(pdfBlob);
-    window.open(pdfUrl, '_blank');
+      // Output a Blob and open it in a new tab for inline previewing/printing/downloading
+      const pdfBlob = doc.output('blob');
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      if (newWindow) {
+        newWindow.location.href = pdfUrl;
+      } else {
+        window.open(pdfUrl, '_blank');
+      }
+    } catch (err: any) {
+      if (newWindow) newWindow.close();
+      console.error("PDF Generate error:", err);
+      alert("Failed to build PDF. Please check console.");
+    }
   };
 
   const generateReconciliationPDFReport = async () => {
-    if (!property) return;
+    const newWindow = openSecurePDFWindow();
+    if (!property) {
+      if (newWindow) newWindow.close();
+      return;
+    }
     try {
       const { jsPDF } = await import('jspdf');
       const { default: autoTable } = await import('jspdf-autotable');
@@ -1239,7 +1689,7 @@ export default function FrontOfficeTerminal() {
       const doc = new jsPDF();
       
       // Calculate identical metrics as Night Audit to guarantee absolute precision
-      const dayPayments = payments.filter(p => getPaymentDateStr(p) === selectedLedgerDate);
+      const dayPayments = payments.filter(p => getPaymentDateStr(p) === selectedLedgerDate && !p.is_void);
 
       let roomCash = 0, roomUPI = 0, roomSwipe = 0, roomOthers = 0;
       let foodCash = 0, foodUPI = 0, foodSwipe = 0, foodOthers = 0;
@@ -1251,7 +1701,7 @@ export default function FrontOfficeTerminal() {
         
         // Find all incidentals and payments for this booking
         const bookingIncidentals = incidentals.filter(inc => inc.booking_id === bkId);
-        const bookingPayments = payments.filter(pm => pm.booking_id === bkId);
+        const bookingPayments = payments.filter(pm => pm.booking_id === bkId && !pm.is_void);
 
         // Sum food & water charges
         const foodChargesTotal = bookingIncidentals
@@ -1440,12 +1890,15 @@ export default function FrontOfficeTerminal() {
         margin: { left: 15 }
       });
 
+      const netSaleVsExpenses = totalSaleAmount - totalExpenses;
       const paymentSalesSummary = [
         ["Cash Collections", `Rs. ${reconData.total.Cash.toFixed(2)}`],
         ["PhonePe UPI Collections", `Rs. ${reconData.total.UPI.toFixed(2)}`],
         ["Swipe Card Collections", `Rs. ${reconData.total.SWIPE.toFixed(2)}`],
         ["Others (Custom Payment Modes)", `Rs. ${reconData.total.Others.toFixed(2)}`],
-        ["TOTAL SALE FOR THE PERIOD", `Rs. ${totalSaleAmount.toFixed(2)}`]
+        ["TOTAL SALE FOR THE PERIOD", `Rs. ${totalSaleAmount.toFixed(2)}`],
+        ["Total Logged Expenses", `- Rs. ${totalExpenses.toFixed(2)}`],
+        ["TOTAL SALE VS EXPENSES (NET)", `Rs. ${netSaleVsExpenses.toFixed(2)}`]
       ];
 
       autoTable(doc, {
@@ -1497,15 +1950,24 @@ export default function FrontOfficeTerminal() {
       // Output and open in a new tab (inline PDF viewer)
       const pdfBlob = doc.output('blob');
       const pdfUrl = URL.createObjectURL(pdfBlob);
-      window.open(pdfUrl, '_blank');
+      if (newWindow) {
+        newWindow.location.href = pdfUrl;
+      } else {
+        window.open(pdfUrl, '_blank');
+      }
     } catch (err) {
+      if (newWindow) newWindow.close();
       console.error("PDF Generate error:", err);
       alert("Failed to build PDF. Please check console.");
     }
   };
 
   const generateNightAuditPDFReport = async () => {
-    if (!property) return;
+    const newWindow = openSecurePDFWindow();
+    if (!property) {
+      if (newWindow) newWindow.close();
+      return;
+    }
     try {
       const { jsPDF } = await import('jspdf');
       const { default: autoTable } = await import('jspdf-autotable');
@@ -1513,7 +1975,7 @@ export default function FrontOfficeTerminal() {
       const doc = new jsPDF();
       
       // Split calculation logic matching Step 3
-      const dayPayments = payments.filter(p => getPaymentDateStr(p) === selectedLedgerDate);
+      const dayPayments = payments.filter(p => getPaymentDateStr(p) === selectedLedgerDate && !p.is_void);
 
       let roomCash = 0, roomUPI = 0, roomSwipe = 0, roomOthers = 0;
       let foodCash = 0, foodUPI = 0, foodSwipe = 0, foodOthers = 0;
@@ -1525,7 +1987,7 @@ export default function FrontOfficeTerminal() {
         
         // Find all incidentals and payments for this booking
         const bookingIncidentals = incidentals.filter(inc => inc.booking_id === bkId);
-        const bookingPayments = payments.filter(pm => pm.booking_id === bkId);
+        const bookingPayments = payments.filter(pm => pm.booking_id === bkId && !pm.is_void);
 
         // Sum food & water charges
         const foodChargesTotal = bookingIncidentals
@@ -1714,12 +2176,15 @@ export default function FrontOfficeTerminal() {
         margin: { left: 15 }
       });
 
+      const netSaleVsExpenses = totalSaleAmount - totalExpenses;
       const paymentSalesSummary = [
         ["Cash Collections", `Rs. ${reconData.total.Cash.toFixed(2)}`],
         ["PhonePe UPI Collections", `Rs. ${reconData.total.UPI.toFixed(2)}`],
         ["Swipe Card Collections", `Rs. ${reconData.total.SWIPE.toFixed(2)}`],
         ["Others (Custom Payment Modes)", `Rs. ${reconData.total.Others.toFixed(2)}`],
-        ["TOTAL SALE FOR THE DAY", `Rs. ${totalSaleAmount.toFixed(2)}`]
+        ["TOTAL SALE FOR THE DAY", `Rs. ${totalSaleAmount.toFixed(2)}`],
+        ["Total Logged Expenses", `- Rs. ${totalExpenses.toFixed(2)}`],
+        ["TOTAL SALE VS EXPENSES (NET)", `Rs. ${netSaleVsExpenses.toFixed(2)}`]
       ];
 
       autoTable(doc, {
@@ -1746,18 +2211,729 @@ export default function FrontOfficeTerminal() {
       // Output and open in a new tab (inline PDF viewer)
       const pdfBlob = doc.output('blob');
       const pdfUrl = URL.createObjectURL(pdfBlob);
-      window.open(pdfUrl, '_blank');
+      if (newWindow) {
+        newWindow.location.href = pdfUrl;
+      } else {
+        window.open(pdfUrl, '_blank');
+      }
     } catch (err) {
+      if (newWindow) newWindow.close();
       console.error("PDF Generate error:", err);
       alert("Failed to build PDF. Please check console.");
     }
   };
 
+  const generateMonthlyPaymentsPDFReport = async () => {
+    const newWindow = openSecurePDFWindow();
+    if (!property) {
+      if (newWindow) newWindow.close();
+      return;
+    }
+    try {
+      const { jsPDF } = await import('jspdf');
+      const { default: autoTable } = await import('jspdf-autotable');
+
+      const doc = new jsPDF();
+
+      // Filter payments strictly by selected business date
+      const dayPayments = payments.filter(p => getPaymentDateStr(p) === selectedLedgerDate && !p.is_void);
+
+      // Find monthly guest payments
+      const monthlyPayments = dayPayments.filter(p => {
+        const b = bookings.find(bk => bk.id === p.booking_id);
+        return b && b.is_monthly === true;
+      });
+
+      let totalRent = 0;
+      let totalDeposit = 0;
+      let totalGrand = 0;
+
+      const allocations = getMonthlyPaymentAllocations(payments, bookings);
+
+      const rows = monthlyPayments.map((p, idx) => {
+        const b = bookings.find(bk => bk.id === p.booking_id);
+        const guestName = b ? b.guest_name : 'Monthly Guest';
+        const roomNum = b ? (rooms.find(r => r.id === b.room_id)?.room_number || 'N/A') : 'N/A';
+        const amt = Number(p.amount);
+        totalGrand += amt;
+
+        // Classification
+        let classification = "Monthly Rent";
+        if (b) {
+          const alloc = allocations[p.id] || { rent: 0, deposit: 0 };
+          totalRent += alloc.rent;
+          totalDeposit += alloc.deposit;
+
+          if (alloc.deposit > 0 && alloc.rent > 0) {
+            classification = "Rent & Deposit";
+          } else if (alloc.deposit > 0) {
+            const depositAmt = Number(b.amount || 0);
+            classification = alloc.deposit === depositAmt ? "Security Deposit" : "Partial Deposit / Advance";
+          } else {
+            const rentAmt = Number(b.monthly_rate || 0);
+            classification = alloc.rent === rentAmt ? "Monthly Rent" : "Partial Monthly Rent";
+          }
+        } else {
+          totalRent += amt;
+        }
+
+        return [
+          idx + 1,
+          roomNum,
+          guestName,
+          p.method,
+          p.transaction_id || 'N/A',
+          classification,
+          `Rs. ${amt.toFixed(2)}`
+        ];
+      });
+
+      if (rows.length === 0) {
+        rows.push(["-", "-", "No monthly guest payments collected today.", "-", "-", "-", "Rs. 0.00"]);
+      }
+
+      // Luxury dark header block for Monthly Payments
+      doc.setFillColor(30, 27, 75); // deep royal indigo
+      doc.rect(0, 0, 210, 36, 'F');
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(15);
+      doc.setFont("helvetica", "bold");
+      doc.text("STAYSYNC PMS - MONTHLY PAYMENTS REGISTER", 15, 14);
+      
+      doc.setFontSize(8.5);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(199, 210, 254); // indigo-200
+      doc.text(`PROPERTY: ${property?.name || 'StaySync Boutique Property'}`, 15, 22);
+      doc.text(`BUSINESS DATE: ${formatFriendlyDate(selectedLedgerDate)}`, 15, 28);
+      doc.text(`GENERATED ON: ${new Date().toLocaleString()}`, 135, 28);
+
+      let currentY = 46;
+      doc.setTextColor(15, 23, 42);
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text("DAILY CO-LIVING RESIDENT PAYMENTS RECEIVED", 15, currentY);
+
+      autoTable(doc, {
+        startY: currentY + 3,
+        head: [["S.No", "Room", "Guest Name", "Payment Mode", "Transaction ID", "Classification", "Amount"]],
+        body: rows,
+        theme: 'grid',
+        styles: { fontSize: 8.5, cellPadding: 2.2, font: 'helvetica' },
+        headStyles: { fillColor: [49, 46, 129], textColor: [255, 255, 255], fontStyle: 'bold' }, // indigo-800
+        columnStyles: {
+          0: { halign: 'center', cellWidth: 10 },
+          1: { halign: 'center', cellWidth: 15 },
+          2: { fontStyle: 'bold', cellWidth: 40 },
+          3: { halign: 'center', cellWidth: 22 },
+          4: { halign: 'center', cellWidth: 30 },
+          5: { halign: 'center', cellWidth: 38 },
+          6: { halign: 'right', fontStyle: 'bold', cellWidth: 25 }
+        }
+      });
+
+      const lastY = (doc as any).lastAutoTable.finalY + 10;
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(15, 23, 42);
+      doc.text("MONTHLY GUEST REVENUE SUMMARY", 15, lastY);
+
+      const summaryRows = [
+        ["Total Security Deposit / Advance Collected", `Rs. ${totalDeposit.toFixed(2)}`],
+        ["Total Monthly Rent Collected", `Rs. ${totalRent.toFixed(2)}`],
+        ["GRAND TOTAL MONTHLY COLLECTIONS", `Rs. ${totalGrand.toFixed(2)}`]
+      ];
+
+      autoTable(doc, {
+        startY: lastY + 3,
+        body: summaryRows,
+        theme: 'plain',
+        styles: { fontSize: 9, cellPadding: 4, font: 'helvetica' },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 100 },
+          1: { halign: 'right', fontStyle: 'bold', cellWidth: 40 }
+        },
+        margin: { left: 15 }
+      });
+
+      const finalY = (doc as any).lastAutoTable.finalY + 15;
+      doc.setDrawColor(226, 232, 240);
+      doc.line(15, finalY, 195, finalY);
+      doc.setFontSize(7.5);
+      doc.setFont("helvetica", "italic");
+      doc.setTextColor(148, 163, 184);
+      doc.text("* Reconciled automatically. Monthly guest ledgers are mapped per contractual tenancy cycles.", 15, finalY + 4);
+
+      // Output and open in a new tab
+      const pdfBlob = doc.output('blob');
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      if (newWindow) {
+        newWindow.location.href = pdfUrl;
+      } else {
+        window.open(pdfUrl, '_blank');
+      }
+    } catch (err) {
+      if (newWindow) newWindow.close();
+      console.error("PDF Generate error:", err);
+      alert("Failed to build PDF. Please check console.");
+    }
+  };
+
+  const generateCentralPaymentsPDFReport = async () => {
+    const newWindow = openSecurePDFWindow();
+    if (!property) {
+      if (newWindow) newWindow.close();
+      return;
+    }
+    try {
+      const { jsPDF } = await import('jspdf');
+      const { default: autoTable } = await import('jspdf-autotable');
+
+      const doc = new jsPDF();
+
+      // Filter payments strictly by selected business date, excluding voided payments
+      const dayPayments = payments.filter(p => getPaymentDateStr(p) === selectedLedgerDate && !p.is_void);
+
+      let totalRegular = 0;
+      let totalMonthlyRent = 0;
+      let totalMonthlyDeposit = 0;
+      let totalMonthlyTotal = 0;
+
+      const allocations = getMonthlyPaymentAllocations(payments, bookings);
+
+      // Group payments into Transient and Monthly
+      const transientPayments: any[] = [];
+      const monthlyPayments: any[] = [];
+
+      dayPayments.forEach(p => {
+        const b = bookings.find(bk => bk.id === p.booking_id);
+        const isMonthly = b ? b.is_monthly === true : false;
+        const amt = Number(p.amount);
+
+        if (isMonthly && b) {
+          const alloc = allocations[p.id] || { rent: 0, deposit: 0 };
+          totalMonthlyRent += alloc.rent;
+          totalMonthlyDeposit += alloc.deposit;
+          totalMonthlyTotal += amt;
+          monthlyPayments.push(p);
+        } else {
+          totalRegular += amt;
+          transientPayments.push(p);
+        }
+      });
+
+      // UPI metrics calculations
+      const dailyUPIPayments = transientPayments.filter(p => p.method === 'UPI');
+      const dailyUPICount = dailyUPIPayments.length;
+      const dailyUPISum = dailyUPIPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+
+      const monthlyUPIPayments = monthlyPayments.filter(p => p.method === 'UPI');
+      const monthlyUPICount = monthlyUPIPayments.length;
+      const monthlyUPISum = monthlyUPIPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+
+      const totalUPICount = dailyUPICount + monthlyUPICount;
+      const totalUPISum = dailyUPISum + monthlyUPISum;
+
+      // Cash metrics calculations
+      const dailyCashPayments = transientPayments.filter(p => p.method === 'Cash');
+      const dailyCashCount = dailyCashPayments.length;
+      const dailyCashSum = dailyCashPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+
+      const monthlyCashPayments = monthlyPayments.filter(p => p.method === 'Cash');
+      const monthlyCashCount = monthlyCashPayments.length;
+      const monthlyCashSum = monthlyCashPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+
+      const totalCashCount = dailyCashCount + monthlyCashCount;
+      const totalCashSum = dailyCashSum + monthlyCashSum;
+
+      // Other metrics calculations (Card, Swipe, Bank Transfer, etc.)
+      const dailyOtherPayments = transientPayments.filter(p => !['UPI', 'Cash'].includes(p.method));
+      const dailyOtherCount = dailyOtherPayments.length;
+      const dailyOtherSum = dailyOtherPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+
+      const monthlyOtherPayments = monthlyPayments.filter(p => !['UPI', 'Cash'].includes(p.method));
+      const monthlyOtherCount = monthlyOtherPayments.length;
+      const monthlyOtherSum = monthlyOtherPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+
+      const totalOtherCount = dailyOtherCount + monthlyOtherCount;
+      const totalOtherSum = dailyOtherSum + monthlyOtherSum;
+
+      // Luxury dark header block for Central Master Ledger
+      doc.setFillColor(15, 23, 42); // slate-900 (highly professional)
+      doc.rect(0, 0, 210, 36, 'F');
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(15);
+      doc.setFont("helvetica", "bold");
+      doc.text("STAYSYNC PMS - CENTRAL MASTER PAYMENTS LEDGER", 15, 14);
+      
+      doc.setFontSize(8.5);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(148, 163, 184); // slate-400
+      doc.text(`PROPERTY: ${property?.name || 'StaySync Boutique Property'}`, 15, 22);
+      doc.text(`BUSINESS DATE: ${formatFriendlyDate(selectedLedgerDate)}`, 15, 28);
+      doc.text(`GENERATED ON: ${new Date().toLocaleString()}`, 135, 28);
+
+      let currentY = 46;
+
+      // Section 1: Transient Daily Guest Payments
+      doc.setTextColor(15, 23, 42);
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text("1. DAILY TRANSIENT GUEST PAYMENTS", 15, currentY);
+
+      const transientRows = transientPayments.map((p, idx) => {
+        const b = bookings.find(bk => bk.id === p.booking_id);
+        const guestName = b ? b.guest_name : 'Walk-In Guest';
+        const roomNum = b ? (rooms.find(r => r.id === b.room_id)?.room_number || 'N/A') : 'N/A';
+        const amt = Number(p.amount);
+        
+        let classification = "Base Rate / Incidentals";
+        if (b) {
+          const roomTariff = Number(b.amount || 0);
+          const bookingIncidentals = incidentals.filter(inc => inc.booking_id === p.booking_id);
+          
+          if (bookingIncidentals.length > 0) {
+            const incidentalParts = bookingIncidentals.map(inc => `${inc.description} (Rs. ${Number(inc.amount).toFixed(0)})`);
+            classification = `Room Tariff (Rs. ${roomTariff.toFixed(0)}) + ${incidentalParts.join(' + ')}`;
+          } else {
+            classification = `Room Tariff (Rs. ${roomTariff.toFixed(0)})`;
+          }
+        }
+
+        return [
+          idx + 1,
+          roomNum,
+          guestName,
+          p.method,
+          p.transaction_id || 'N/A',
+          classification,
+          `Rs. ${amt.toFixed(2)}`
+        ];
+      });
+
+      if (transientRows.length === 0) {
+        transientRows.push(["-", "-", "No transient payments received today.", "-", "-", "-", "Rs. 0.00"]);
+      }
+
+      autoTable(doc, {
+        startY: currentY + 3,
+        head: [["S.No", "Room", "Guest Name", "Mode", "Transaction ID", "Classification", "Amount"]],
+        body: transientRows,
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 2, font: 'helvetica' },
+        headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontStyle: 'bold' },
+        columnStyles: {
+          0: { halign: 'center', cellWidth: 10 },
+          1: { halign: 'center', cellWidth: 12 },
+          2: { fontStyle: 'bold', cellWidth: 35 },
+          3: { halign: 'center', cellWidth: 15 },
+          4: { halign: 'center', cellWidth: 25 },
+          5: { halign: 'left', cellWidth: 60 },
+          6: { halign: 'right', fontStyle: 'bold', cellWidth: 23 }
+        }
+      });
+
+      currentY = (doc as any).lastAutoTable.finalY + 8;
+
+      // Section 2: Monthly Co-Living Guest Payments
+      doc.setTextColor(15, 23, 42);
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text("2. MONTHLY CO-LIVING GUEST PAYMENTS", 15, currentY);
+
+      const monthlyRows = monthlyPayments.map((p, idx) => {
+        const b = bookings.find(bk => bk.id === p.booking_id);
+        const guestName = b ? b.guest_name : 'Monthly Guest';
+        const roomNum = b ? (rooms.find(r => r.id === b.room_id)?.room_number || 'N/A') : 'N/A';
+        const amt = Number(p.amount);
+
+        let classification = "Monthly Rent";
+        if (b) {
+          const alloc = allocations[p.id] || { rent: 0, deposit: 0 };
+          if (alloc.deposit > 0 && alloc.rent > 0) {
+            classification = "Rent & Deposit";
+          } else if (alloc.deposit > 0) {
+            const depositAmt = Number(b.amount || 0);
+            classification = alloc.deposit === depositAmt ? "Security Deposit" : "Partial Deposit / Advance";
+          } else {
+            const rentAmt = Number(b.monthly_rate || 0);
+            classification = alloc.rent === rentAmt ? "Monthly Rent" : "Partial Monthly Rent";
+          }
+        }
+
+        return [
+          idx + 1,
+          roomNum,
+          guestName,
+          p.method,
+          p.transaction_id || 'N/A',
+          classification,
+          `Rs. ${amt.toFixed(2)}`
+        ];
+      });
+
+      if (monthlyRows.length === 0) {
+        monthlyRows.push(["-", "-", "No monthly payments received today.", "-", "-", "-", "Rs. 0.00"]);
+      }
+
+      autoTable(doc, {
+        startY: currentY + 3,
+        head: [["S.No", "Room", "Guest Name", "Mode", "Transaction ID", "Classification", "Amount"]],
+        body: monthlyRows,
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 2, font: 'helvetica' },
+        headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255], fontStyle: 'bold' },
+        columnStyles: {
+          0: { halign: 'center', cellWidth: 10 },
+          1: { halign: 'center', cellWidth: 15 },
+          2: { fontStyle: 'bold', cellWidth: 45 },
+          3: { halign: 'center', cellWidth: 18 },
+          4: { halign: 'center', cellWidth: 32 },
+          5: { halign: 'center', cellWidth: 35 },
+          6: { halign: 'right', fontStyle: 'bold', cellWidth: 25 }
+        }
+      });
+
+      currentY = (doc as any).lastAutoTable.finalY + 8;
+      const lastY = currentY + 2;
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(15, 23, 42);
+      doc.text("REVENUE RECONCILIATION SUMMARY", 15, lastY);
+
+      const summaryRows = [
+        ["Total Regular Transient Collections (Daily Guest)", `Rs. ${totalRegular.toFixed(2)}`],
+        ["Total Monthly Co-Living Rent Collected", `Rs. ${totalMonthlyRent.toFixed(2)}`],
+        ["Total Monthly Co-Living Security Deposits Collected", `Rs. ${totalMonthlyDeposit.toFixed(2)}`],
+        ["Total Monthly Co-Living Collections (Sub-Total)", `Rs. ${totalMonthlyTotal.toFixed(2)}`],
+        ["GRAND TOTAL REVENUE COLLECTIONS (CONSOLIDATED)", `Rs. ${(totalRegular + totalMonthlyTotal).toFixed(2)}`],
+        ["", ""], // spacer
+        ["[TALLY] UPI TRANSIENT COLLECTIONS", `${dailyUPICount} Payment(s) - Rs. ${dailyUPISum.toFixed(2)}`],
+        ["[TALLY] UPI MONTHLY COLLECTIONS", `${monthlyUPICount} Payment(s) - Rs. ${monthlyUPISum.toFixed(2)}`],
+        ["[TALLY] GRAND TOTAL UPI COLLECTIONS", `${totalUPICount} Payment(s) - Rs. ${totalUPISum.toFixed(2)}`],
+        ["", ""], // spacer
+        ["[TALLY] CASH TRANSIENT COLLECTIONS", `${dailyCashCount} Payment(s) - Rs. ${dailyCashSum.toFixed(2)}`],
+        ["[TALLY] CASH MONTHLY COLLECTIONS", `${monthlyCashCount} Payment(s) - Rs. ${monthlyCashSum.toFixed(2)}`],
+        ["[TALLY] GRAND TOTAL CASH COLLECTIONS", `${totalCashCount} Payment(s) - Rs. ${totalCashSum.toFixed(2)}`],
+        ["", ""], // spacer
+        ["[TALLY] OTHER MODE COLLECTIONS", `${totalOtherCount} Payment(s) - Rs. ${totalOtherSum.toFixed(2)}`],
+        ["[TALLY] CONSOLIDATED TOTAL COLLECTIONS (ALL MODES)", `${totalUPICount + totalCashCount + totalOtherCount} Payment(s) - Rs. ${(totalUPISum + totalCashSum + totalOtherSum).toFixed(2)}`]
+      ];
+
+      autoTable(doc, {
+        startY: lastY + 3,
+        body: summaryRows,
+        theme: 'plain',
+        styles: { fontSize: 8.5, cellPadding: 4, font: 'helvetica' },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 110 },
+          1: { halign: 'right', fontStyle: 'bold', cellWidth: 65 }
+        },
+        margin: { left: 15 }
+      });
+
+      const finalY = (doc as any).lastAutoTable.finalY + 15;
+      doc.setDrawColor(226, 232, 240);
+      doc.line(15, finalY, 195, finalY);
+      doc.setFontSize(7.5);
+      doc.setFont("helvetica", "italic");
+      doc.setTextColor(148, 163, 184);
+      doc.text("* Master unified ledger statement generated automatically from live transactions data under full integrity.", 15, finalY + 4);
+
+      // Output and open in a new tab
+      const pdfBlob = doc.output('blob');
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      if (newWindow) {
+        newWindow.location.href = pdfUrl;
+      } else {
+        window.open(pdfUrl, '_blank');
+      }
+    } catch (err) {
+      if (newWindow) newWindow.close();
+      console.error("PDF Generate error:", err);
+      alert("Failed to build PDF. Please check console.");
+    }
+  };
+
+  const renderReportsView = () => {
+    const getReportData = (): any[] => {
+      if (!selectedReportType) return [];
+      if (selectedReportType === 'checkins') {
+        return bookings.filter(b => {
+          if (b.is_monthly) return false;
+          const cInTimeStr = b.check_in_time ? getLocalYYYYMMDD(new Date(b.check_in_time)) : '';
+          const cInDateStr = b.check_in ? b.check_in.substring(0, 10) : '';
+          const actDate = cInTimeStr || cInDateStr;
+          return actDate === selectedLedgerDate && ['Checked In', 'Checked Out'].includes(b.status);
+        });
+      } else if (selectedReportType === 'checkouts') {
+        return bookings.filter(b => {
+          if (b.is_monthly) return false;
+          const cOutTimeStr = b.check_out_time ? getLocalYYYYMMDD(new Date(b.check_out_time)) : '';
+          const cOutDateStr = b.check_out ? b.check_out.substring(0, 10) : '';
+          const actDate = cOutTimeStr || cOutDateStr;
+          return actDate === selectedLedgerDate && b.status === 'Checked Out';
+        });
+      } else if (selectedReportType === 'inhouse') {
+        return bookings.filter(b => {
+          if (b.is_monthly) return false;
+          const checkInDate = b.check_in_time ? getLocalYYYYMMDD(new Date(b.check_in_time)) : (b.check_in ? b.check_in.substring(0, 10) : '');
+          const checkOutDate = b.check_out_time ? getLocalYYYYMMDD(new Date(b.check_out_time)) : (b.check_out ? b.check_out.substring(0, 10) : '');
+          
+          if (b.status === 'Checked In') {
+            return checkInDate <= selectedLedgerDate;
+          }
+          if (b.status === 'Checked Out') {
+            return checkInDate <= selectedLedgerDate && checkOutDate > selectedLedgerDate;
+          }
+          return false;
+        });
+      } else if (selectedReportType === 'pending') {
+        return bookings.filter(b => {
+          if (b.is_monthly) return false;
+          if (b.status !== 'Checked In') return false;
+          const bookingIncidentals = incidentals.filter(i => i.booking_id === b.id);
+          const bookingPayments = payments.filter(p => p.booking_id === b.id && !p.is_void);
+          const dailyRoomChargesSum = bookingIncidentals
+            .filter(item => item.description?.startsWith('Daily Room Charge'))
+            .reduce((sum, item) => sum + Number(item.amount), 0);
+          const roomAmount = b.is_monthly
+            ? Number(b.monthly_rate || 0)
+            : Math.max(0, Number(b.amount) - dailyRoomChargesSum);
+          const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0) + (b.is_monthly ? Number(b.amount) : 0);
+          const totalCharges = roomAmount + incidentalsAmount;
+          const totalPaid = bookingPayments.reduce((sum, item) => sum + Number(item.amount), 0);
+          const balanceDue = totalCharges - totalPaid;
+          return balanceDue > 0.01;
+        });
+      }
+      return [];
+    };
+
+    const getBookingFolioDues = (b: any) => {
+      const bookingIncidentals = incidentals.filter(i => i.booking_id === b.id);
+      const bookingPayments = payments.filter(p => p.booking_id === b.id && !p.is_void);
+      const dailyRoomChargesSum = bookingIncidentals
+        .filter(item => item.description?.startsWith('Daily Room Charge'))
+        .reduce((sum, item) => sum + Number(item.amount), 0);
+      const roomAmount = b.is_monthly
+        ? Number(b.monthly_rate || 0)
+        : Math.max(0, Number(b.amount) - dailyRoomChargesSum);
+      const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0) + (b.is_monthly ? Number(b.amount) : 0);
+      const totalCharges = roomAmount + incidentalsAmount;
+      const totalPaid = bookingPayments.reduce((sum, item) => sum + Number(item.amount), 0);
+      const balanceDue = totalCharges - totalPaid;
+      return { totalCharges, totalPaid, balanceDue };
+    };
+
+    const reportEntries = getReportData();
+
+    return (
+      <div className="space-y-8 animate-fade-in">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-zinc-900/40 border border-white/[0.04] p-6 rounded-3xl backdrop-blur-xl">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest pl-1">Selected Ledger Date</span>
+              <input 
+                type="date"
+                value={selectedLedgerDate}
+                onChange={(e) => {
+                  setSelectedLedgerDate(e.target.value);
+                  setNewExpenseDate(e.target.value);
+                  setSelectedReportType(null);
+                }}
+                className="bg-black/60 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white font-bold focus:outline-none focus:border-indigo-500/50 transition-all cursor-pointer [color-scheme:dark] shadow-xl"
+              />
+            </div>
+            <div className="mt-4 sm:mt-0 sm:pl-4 sm:border-l sm:border-white/10">
+              <h3 className="text-sm font-bold text-white">Daily Ledger Reports</h3>
+              <p className="text-xs text-zinc-500 mt-1">Review operational logs and view guest folios directly.</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-3 w-full lg:w-auto">
+            <button
+              onClick={() => setSelectedReportType(selectedReportType === 'checkins' ? null : 'checkins')}
+              className={`flex-1 sm:flex-initial px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
+                selectedReportType === 'checkins' 
+                  ? 'bg-indigo-600 text-white border border-indigo-500' 
+                  : 'bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20'
+              }`}
+            >
+              <Eye size={14} />
+              Check-Ins Report
+            </button>
+            <button
+              onClick={() => setSelectedReportType(selectedReportType === 'inhouse' ? null : 'inhouse')}
+              className={`flex-1 sm:flex-initial px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
+                selectedReportType === 'inhouse' 
+                  ? 'bg-indigo-600 text-white border border-indigo-500' 
+                  : 'bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20'
+              }`}
+            >
+              <Eye size={14} />
+              In-House Report
+            </button>
+            <button
+              onClick={() => setSelectedReportType(selectedReportType === 'checkouts' ? null : 'checkouts')}
+              className={`flex-1 sm:flex-initial px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
+                selectedReportType === 'checkouts' 
+                  ? 'bg-indigo-600 text-white border border-indigo-500' 
+                  : 'bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20'
+              }`}
+            >
+              <Eye size={14} />
+              Check-Outs Report
+            </button>
+            <button
+              onClick={() => setSelectedReportType(selectedReportType === 'pending' ? null : 'pending')}
+              className={`flex-1 sm:flex-initial px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
+                selectedReportType === 'pending' 
+                  ? 'bg-indigo-600 text-white border border-indigo-500' 
+                  : 'bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20'
+              }`}
+            >
+              <Eye size={14} />
+              Dues Report
+            </button>
+            <button
+              onClick={generateReconciliationPDFReport}
+              className="w-full sm:w-auto bg-emerald-500/10 hover:bg-emerald-500 hover:text-black text-emerald-400 border border-emerald-500/20 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+            >
+              <FileText size={14} />
+              Shift Handover Report
+            </button>
+            <button
+              onClick={generateNightAuditPDFReport}
+              className="w-full sm:w-auto bg-amber-500/10 hover:bg-amber-500 hover:text-black text-amber-400 border border-amber-500/20 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+            >
+              <Moon size={14} />
+              Night Audit Report
+            </button>
+            <button
+              onClick={generateMonthlyPaymentsPDFReport}
+              className="w-full sm:w-auto bg-indigo-500/10 hover:bg-indigo-500 hover:text-black text-indigo-400 border border-indigo-500/20 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+            >
+              <Users size={14} />
+              Monthly Payments Report
+            </button>
+            <button
+              onClick={generateCentralPaymentsPDFReport}
+              className="w-full sm:w-auto bg-emerald-500/10 hover:bg-emerald-500 hover:text-black text-emerald-400 border border-emerald-500/20 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+            >
+              <ClipboardCheck size={14} />
+              Central Payments Report
+            </button>
+          </div>
+        </div>
+
+        {selectedReportType && (
+          <div className="bg-zinc-900/40 border border-white/[0.04] p-6 rounded-3xl backdrop-blur-xl animate-fade-in">
+            <div className="flex justify-between items-center mb-6 border-b border-white/5 pb-4">
+              <div>
+                <h4 className="text-sm font-bold text-white uppercase tracking-wider">
+                  {selectedReportType === 'checkins' && 'Check-Ins'}
+                  {selectedReportType === 'inhouse' && 'In-House'}
+                  {selectedReportType === 'checkouts' && 'Check-Outs'}
+                  {selectedReportType === 'pending' && 'Pending Dues'} Report Entries ({reportEntries.length})
+                </h4>
+                <p className="text-[10px] text-zinc-500 mt-1 uppercase tracking-widest font-semibold">
+                  Ledger Date: {formatFriendlyDate(selectedLedgerDate)}
+                </p>
+              </div>
+              <button 
+                onClick={() => setSelectedReportType(null)}
+                className="text-xs text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-lg border border-white/5 transition-colors"
+              >
+                Close Report View
+              </button>
+            </div>
+
+            {reportEntries.length === 0 ? (
+              <div className="text-zinc-500 text-xs py-8 text-center border border-dashed border-white/10 rounded-2xl">
+                No bookings found for this report on {formatFriendlyDate(selectedLedgerDate)}.
+              </div>
+            ) : (
+              <div className="overflow-hidden border border-white/[0.04] rounded-2xl">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-white/[0.01] border-b border-white/10 text-zinc-400 uppercase tracking-widest text-[9px]">
+                      <th className="py-3.5 px-4">Room</th>
+                      <th className="py-3.5 px-4">Guest Name</th>
+                      <th className="py-3.5 px-4">Contact Info</th>
+                      <th className="py-3.5 px-4">Stay Dates</th>
+                      <th className="py-3.5 px-4 text-right">Charges / Balance</th>
+                      <th className="py-3.5 px-4 text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5 bg-black/10">
+                    {reportEntries.map((b) => {
+                      const roomNum = rooms.find(r => r.id === b.room_id)?.room_number || 'N/A';
+                      const { totalCharges, totalPaid, balanceDue } = getBookingFolioDues(b);
+                      return (
+                        <tr key={b.id} className="hover:bg-white/[0.02] transition-colors">
+                          <td className="py-4 px-4 font-bold text-white text-sm">{roomNum}</td>
+                          <td className="py-4 px-4">
+                            <div className="font-semibold text-white">{b.guest_name}</div>
+                            <div className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mt-0.5">{b.status}</div>
+                          </td>
+                          <td className="py-4 px-4 text-zinc-400">
+                            <div className="flex items-center gap-1.5">
+                              <Phone size={10} className="text-zinc-500" />
+                              <span>{b.guest_phone}</span>
+                            </div>
+                            {b.guest_email && (
+                              <div className="flex items-center gap-1.5 mt-1 text-[10px] text-zinc-500">
+                                <Mail size={10} />
+                                <span>{b.guest_email}</span>
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-4 px-4 text-zinc-400">
+                            <div>In: {new Date(b.check_in).toLocaleDateString()}</div>
+                            <div className="mt-0.5">Out: {new Date(b.check_out).toLocaleDateString()}</div>
+                          </td>
+                          <td className="py-4 px-4 text-right font-mono">
+                            <div className="text-zinc-400">Paid: ₹{totalPaid.toFixed(2)}</div>
+                            <div className={`mt-0.5 font-bold ${balanceDue > 0.01 ? 'text-red-400' : 'text-zinc-500'}`}>
+                              Due: ₹{balanceDue.toFixed(2)}
+                            </div>
+                          </td>
+                          <td className="py-4 px-4 text-center">
+                            <button
+                              onClick={() => setActiveCheckoutBooking({
+                                bookingId: b.id,
+                                roomId: b.room_id,
+                                guestName: b.guest_name,
+                                amount: b.amount
+                              })}
+                              className="px-3.5 py-2 rounded-xl bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20 hover:border-indigo-500 transition-all text-[10px] font-black uppercase tracking-wider shadow-md"
+                            >
+                              View Folio
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderExpensesView = () => {
     const stats = getLedgerTotalsForDate(selectedLedgerDate);
     const dayExpenses = expenses.filter(e => e.date === selectedLedgerDate);
+    const totalSales = stats.cashPayments + stats.upiPayments + stats.otherPayments;
+    const totalExpensesSum = stats.cashExpenses + stats.upiExpenses;
+    const netBalance = totalSales - totalExpensesSum;
     return (
-      <div className="space-y-8">
+      <div className="space-y-8 animate-fade-in">
+        {/* Date Selector Header for Expenses */}
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-zinc-900/40 border border-white/[0.04] p-6 rounded-3xl backdrop-blur-xl">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
             <div className="flex flex-col gap-1.5">
@@ -1773,56 +2949,13 @@ export default function FrontOfficeTerminal() {
               />
             </div>
             <div className="mt-4 sm:mt-0 sm:pl-4 sm:border-l sm:border-white/10">
-              <h3 className="text-sm font-bold text-white">Daily Ledger Overview</h3>
-              <p className="text-xs text-zinc-500 mt-1">Review ledger logs and export registers matching your notebook log.</p>
+              <h3 className="text-sm font-bold text-white">Daily Expenses & Cash Drawer</h3>
+              <p className="text-xs text-zinc-500 mt-1">Log property expenditures and reconcile expected drawer cash vs float.</p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-3 w-full lg:w-auto">
-            <button
-              onClick={() => generateHorizontalPDFReport('checkins')}
-              className="flex-1 sm:flex-initial bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-            >
-              <Download size={14} />
-              Check-Ins PDF
-            </button>
-            <button
-              onClick={() => generateHorizontalPDFReport('inhouse')}
-              className="flex-1 sm:flex-initial bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-            >
-              <Download size={14} />
-              In-House PDF
-            </button>
-            <button
-              onClick={() => generateHorizontalPDFReport('checkouts')}
-              className="flex-1 sm:flex-initial bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-            >
-              <Download size={14} />
-              Check-Outs PDF
-            </button>
-            <button
-              onClick={() => generateHorizontalPDFReport('pending')}
-              className="flex-1 sm:flex-initial bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-            >
-              <Download size={14} />
-              Dues PDF
-            </button>
-            <button
-              onClick={generateReconciliationPDFReport}
-              className="w-full sm:w-auto bg-emerald-500/10 hover:bg-emerald-500 hover:text-black text-emerald-400 border border-emerald-500/20 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-            >
-              <FileText size={14} />
-              Reconcile PDF
-            </button>
-            <button
-              onClick={generateNightAuditPDFReport}
-              className="w-full sm:w-auto bg-amber-500/10 hover:bg-amber-500 hover:text-black text-amber-400 border border-amber-500/20 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-            >
-              <Moon size={14} />
-              Night Audit PDF
-            </button>
-          </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
           <div className="bg-zinc-900/20 border border-white/[0.04] p-6 rounded-3xl space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Opening Cash Balance</span>
@@ -1902,10 +3035,10 @@ export default function FrontOfficeTerminal() {
           <div className="bg-zinc-900/20 border border-white/[0.04] p-6 rounded-3xl space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Income Collections</span>
-              <DollarSign className="text-indigo-400" size={16} />
+              <IndianRupee className="text-indigo-400" size={16} />
             </div>
             <div>
-              <p className="text-2xl font-black text-white">₹{(stats.cashPayments + stats.upiPayments + stats.otherPayments).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+              <p className="text-2xl font-black text-white">₹{totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
               <div className="text-[9px] text-zinc-500 mt-1 uppercase font-bold space-y-0.5">
                 <p className="flex justify-between"><span>Cash Collected:</span><span className="text-zinc-400">₹{stats.cashPayments.toFixed(2)}</span></p>
                 <p className="flex justify-between"><span>UPI Collected:</span><span className="text-zinc-400">₹{stats.upiPayments.toFixed(2)}</span></p>
@@ -1919,11 +3052,34 @@ export default function FrontOfficeTerminal() {
               <TrendingDown className="text-rose-400" size={16} />
             </div>
             <div>
-              <p className="text-2xl font-black text-rose-400">₹{(stats.cashExpenses + stats.upiExpenses).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+              <p className="text-2xl font-black text-rose-400">₹{totalExpensesSum.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
               <div className="text-[9px] text-zinc-500 mt-1 uppercase font-bold space-y-0.5">
                 <p className="flex justify-between"><span>Cash Spent:</span><span className="text-zinc-400">₹{stats.cashExpenses.toFixed(2)}</span></p>
                 <p className="flex justify-between"><span>UPI Spent:</span><span className="text-zinc-400">₹{stats.upiExpenses.toFixed(2)}</span></p>
                 <p className="flex justify-between"><span>Total Entries:</span><span className="text-zinc-400">{dayExpenses.length} bills</span></p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-zinc-900/20 border border-white/[0.04] p-6 rounded-3xl space-y-3">
+            <div className="flex items-center justify-between">
+              <span className={`text-[10px] font-black uppercase tracking-widest ${netBalance >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                Sale vs Expenses Net
+              </span>
+              <Activity className={netBalance >= 0 ? "text-emerald-400" : "text-rose-400"} size={16} />
+            </div>
+            <div>
+              <p className={`text-2xl font-black ${netBalance >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                ₹{netBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </p>
+              <div className="text-[9px] text-zinc-500 mt-1 uppercase font-bold space-y-0.5">
+                <p className="flex justify-between"><span>Total Sales:</span><span className="text-zinc-400">₹{totalSales.toFixed(2)}</span></p>
+                <p className="flex justify-between"><span>Total Expenses:</span><span className="text-zinc-400">₹{totalExpensesSum.toFixed(2)}</span></p>
+                <p className="flex justify-between">
+                  <span>Net Status:</span>
+                  <span className={netBalance >= 0 ? "text-emerald-400" : "text-rose-400"}>
+                    {netBalance >= 0 ? "SURPLUS" : "DEFICIT"}
+                  </span>
+                </p>
               </div>
             </div>
           </div>
@@ -1987,100 +3143,102 @@ export default function FrontOfficeTerminal() {
                     min="1"
                     value={newExpenseQuantity}
                     onChange={(e) => setNewExpenseQuantity(parseInt(e.target.value) || 1)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-2 text-white text-xs focus:outline-none focus:border-indigo-500/50 transition-all font-mono"
+                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-3 text-white text-xs focus:outline-none focus:border-indigo-500/50 transition-all [color-scheme:dark]"
                   />
                 </div>
-                <div className="space-y-1.5">
+                <div className="col-span-2 space-y-1.5">
                   <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest pl-1">Amount (₹)</label>
                   <input
                     type="number"
-                    required
-                    min="0.01"
                     step="0.01"
+                    required
                     placeholder="0.00"
                     value={newExpenseAmount}
                     onChange={(e) => setNewExpenseAmount(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-2 text-white text-xs focus:outline-none focus:border-indigo-500/50 transition-all font-mono"
+                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-3 text-white text-xs focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-zinc-700"
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest pl-1">Date</label>
-                  <input
-                    type="date"
-                    required
-                    value={newExpenseDate}
-                    onChange={(e) => setNewExpenseDate(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-2 text-white text-xs focus:outline-none focus:border-indigo-500/50 transition-all [color-scheme:dark] cursor-pointer"
-                  />
-                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest pl-1">Date</label>
+                <input
+                  type="date"
+                  required
+                  value={newExpenseDate}
+                  onChange={(e) => setNewExpenseDate(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-3 text-white text-xs focus:outline-none focus:border-indigo-500/50 transition-all [color-scheme:dark] cursor-pointer"
+                />
               </div>
               <button
                 type="submit"
                 disabled={isSavingExpense}
-                className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-indigo-500/10 flex items-center justify-center gap-2 transition-all active:scale-[0.98] mt-2"
+                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs uppercase tracking-widest py-3.5 rounded-xl transition-all shadow-lg shadow-indigo-600/15 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50"
               >
-                {isSavingExpense ? <Loader2 size={14} className="animate-spin" /> : <><Plus size={14} /> Log Expense</>}
+                {isSavingExpense ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" /> Saving...
+                  </>
+                ) : (
+                  <>
+                    <Plus size={14} /> Log Expense
+                  </>
+                )}
               </button>
             </form>
           </div>
-          <div className="lg:col-span-2 bg-[#0a0a0c]/60 border border-white/[0.04] rounded-3xl overflow-hidden shadow-2xl">
-            <div className="p-6 border-b border-white/[0.04] bg-black/20 flex items-center justify-between">
+          <div className="lg:col-span-2 bg-zinc-900/20 border border-white/[0.04] p-6 rounded-3xl space-y-6">
+            <div className="flex items-center justify-between border-b border-white/[0.04] pb-4 flex-wrap gap-4">
               <div>
-                <h3 className="text-sm font-bold text-white">Today&apos;s Expense Ledger</h3>
-                <p className="text-xs text-zinc-500 mt-0.5">Summary of payments logged for {formatFriendlyDate(selectedLedgerDate)}</p>
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <TrendingDown size={16} className="text-rose-400" />
+                  Today&apos;s Expense Ledger
+                </h3>
+                <p className="text-xs text-zinc-500 mt-1">Summary of payments logged for {formatFriendlyDate(selectedLedgerDate)}</p>
               </div>
-              <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest bg-white/5 px-2.5 py-1 rounded-lg">
+              <span className="bg-zinc-800/80 border border-white/5 px-3 py-1 rounded-full text-[10px] font-black uppercase text-zinc-400 tracking-wider">
                 {dayExpenses.length} Records
               </span>
             </div>
             {dayExpenses.length === 0 ? (
-              <div className="py-24 text-center">
-                <CheckCircle2 size={36} className="text-emerald-500/40 mx-auto mb-3" />
+              <div className="py-24 text-center border border-dashed border-white/5 rounded-2xl bg-white/[0.01] flex flex-col items-center justify-center">
+                <CheckCircle2 size={32} className="text-emerald-500/40 mb-3" />
                 <p className="text-zinc-500 font-bold uppercase tracking-widest text-[10px]">No Expenses Logged For This Date</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-black/40 border-b border-white/[0.06] text-[9px] font-black text-zinc-500 uppercase tracking-widest">
-                      <th className="p-4 pl-6">SL</th>
-                      <th className="p-4">Description</th>
-                      <th className="p-4">Category</th>
-                      <th className="p-4">Method</th>
-                      <th className="p-4 text-right">Amount</th>
-                      <th className="p-4 pr-6 text-center">Action</th>
+                    <tr className="border-b border-white/5 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                      <th className="py-3 px-2">Desc</th>
+                      <th className="py-3 px-2">Cat</th>
+                      <th className="py-3 px-2">Qty</th>
+                      <th className="py-3 px-2">Method</th>
+                      <th className="py-3 px-2 text-right">Amount</th>
+                      <th className="py-3 px-2 text-center">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/[0.02]">
-                    {dayExpenses.map((expense, idx) => (
-                      <tr key={expense.id} className="hover:bg-white/[0.01] transition-colors">
-                        <td className="p-4 pl-6 align-middle text-xs font-bold text-zinc-500">{idx + 1}</td>
-                        <td className="p-4 align-middle text-xs font-bold text-white">{expense.description}</td>
-                        <td className="p-4 align-middle">
-                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-white/5 text-zinc-400 border border-white/5">
-                            {expense.category}
+                  <tbody className="divide-y divide-white/[0.03] text-xs">
+                    {dayExpenses.map((exp) => (
+                      <tr key={exp.id} className="text-zinc-300 hover:text-white transition-colors">
+                        <td className="py-3 px-2 font-medium">{exp.description}</td>
+                        <td className="py-3 px-2">
+                          <span className="bg-zinc-800 px-2 py-0.5 rounded text-[10px] font-semibold text-zinc-400">
+                            {exp.category}
                           </span>
                         </td>
-                        <td className="p-4 align-middle">
-                          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${
-                            expense.payment_method === 'Cash' 
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                              : 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
-                          }`}>
-                            {expense.payment_method}
-                          </span>
+                        <td className="py-3 px-2 text-zinc-500">{exp.quantity}x</td>
+                        <td className="py-3 px-2 font-bold text-[10px] tracking-wider text-indigo-400">{exp.payment_method}</td>
+                        <td className="py-3 px-2 text-right font-bold text-rose-400">
+                          ₹{(Number(exp.amount) * Number(exp.quantity || 1)).toFixed(2)}
                         </td>
-                        <td className="p-4 text-right align-middle font-mono font-bold text-white">
-                          ₹{Number(expense.amount).toFixed(2)}
-                        </td>
-                        <td className="p-4 pr-6 text-center align-middle">
+                        <td className="py-3 px-2 text-center">
                           <button
-                            onClick={() => handleDeleteExpense(expense.id)}
+                            onClick={() => handleDeleteExpense(exp.id)}
                             disabled={isSavingExpense}
-                            className="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                            title="Delete Entry"
+                            className="p-1.5 text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
+                            title="Delete record"
                           >
-                            <Trash2 size={14} />
+                            <Trash2 size={13} />
                           </button>
                         </td>
                       </tr>
@@ -2095,15 +3253,446 @@ export default function FrontOfficeTerminal() {
     );
   };
 
+  const renderMonthlyCoLivingView = () => {
+    const getRoomCapacity = (room: Room): number => {
+      return (room as any).sharing_capacity || 2;
+    };
+
+    // Filter rooms that are allowed for monthly co-living
+    const monthlyRooms = rooms.filter(
+      r => r.allowed_billing_type === 'monthly'
+    ).sort((a, b) => a.room_number.localeCompare(b.room_number, undefined, { numeric: true, sensitivity: 'base' }));
+
+    // Apply text search filter if any
+    const searchQueryLower = searchQuery.toLowerCase().trim();
+    const filteredMonthlyRooms = searchQueryLower
+      ? monthlyRooms.filter(r => {
+          const roomMatch = r.room_number.toLowerCase().includes(searchQueryLower);
+          const hasGuestMatch = bookings.some(b => 
+            b.room_id === r.id && 
+            b.is_monthly === true &&
+            b.status !== 'Cancelled' && 
+            b.status !== 'Checked Out' &&
+            b.guest_name.toLowerCase().includes(searchQueryLower)
+          );
+          return roomMatch || hasGuestMatch;
+        })
+      : monthlyRooms;
+
+    // Apply monthly filter
+    let filteredRooms = filteredMonthlyRooms;
+    if (monthlyFilter === 'vacancy') {
+      filteredRooms = filteredMonthlyRooms.filter(r => {
+        const activeCount = bookings.filter(b => b.room_id === r.id && b.is_monthly === true && b.status !== 'Cancelled' && b.status !== 'Checked Out').length;
+        const cap = getRoomCapacity(r);
+        return activeCount < cap;
+      });
+    } else if (monthlyFilter === 'occupied') {
+      filteredRooms = filteredMonthlyRooms.filter(r => {
+        const activeCount = bookings.filter(b => b.room_id === r.id && b.is_monthly === true && b.status !== 'Cancelled' && b.status !== 'Checked Out').length;
+        const cap = getRoomCapacity(r);
+        return activeCount === cap;
+      });
+    } else if (monthlyFilter === 'dues') {
+      filteredRooms = filteredMonthlyRooms.filter(r => {
+        const activeRoomBookings = bookings.filter(b => b.room_id === r.id && b.is_monthly === true && b.status !== 'Cancelled' && b.status !== 'Checked Out');
+        return activeRoomBookings.some(booking => {
+          const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
+          const guestPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
+          const totalCharged = Number(booking.monthly_rate || 0) + Number(booking.amount) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
+          const totalPaid = guestPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+          return (totalCharged - totalPaid) > 0.01;
+        });
+      });
+    }
+
+    // Calculate quick stats
+    let totalBeds = 0;
+    let occupiedBeds = 0;
+    let totalMonthlyDues = 0;
+
+    monthlyRooms.forEach(room => {
+      const cap = getRoomCapacity(room);
+      totalBeds += cap;
+      
+      const activeRoomBookings = bookings.filter(b => 
+        b.room_id === room.id && 
+        b.is_monthly === true &&
+        b.status !== 'Cancelled' && 
+        b.status !== 'Checked Out'
+      );
+      occupiedBeds += activeRoomBookings.length;
+
+      activeRoomBookings.forEach(booking => {
+        const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
+        const guestPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
+        const totalCharged = Number(booking.monthly_rate || 0) + Number(booking.amount) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
+        const totalPaid = guestPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+        const due = totalCharged - totalPaid;
+        if (due > 0) {
+          totalMonthlyDues += due;
+        }
+      });
+    });
+
+    const vacantBeds = Math.max(0, totalBeds - occupiedBeds);
+
+    return (
+      <div className="space-y-6">
+        {/* STATS OVERVIEW CARDS */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {/* Card 1 */}
+          <div className="relative overflow-hidden bg-zinc-900/40 border border-white/[0.06] p-6 rounded-[2rem] hover:border-indigo-500/30 transition-all duration-300 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.15)]">
+              <Building2 size={20} />
+            </div>
+            <div>
+              <p className="text-[9px] font-black text-zinc-555 uppercase tracking-widest">Co-Living Rooms</p>
+              <h3 className="text-2xl font-black text-white mt-0.5">{monthlyRooms.length}</h3>
+            </div>
+            <div className="absolute right-[-10px] bottom-[-10px] text-[70px] font-black text-white/[0.01] pointer-events-none select-none font-sans italic">ROOMS</div>
+          </div>
+
+          {/* Card 2 */}
+          <div className="relative overflow-hidden bg-zinc-900/40 border border-white/[0.06] p-6 rounded-[2rem] hover:border-emerald-500/30 transition-all duration-300 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.15)]">
+              <UserCheck size={20} />
+            </div>
+            <div>
+              <p className="text-[9px] font-black text-zinc-555 uppercase tracking-widest">Occupied Beds</p>
+              <h3 className="text-2xl font-black text-white mt-0.5">{occupiedBeds} <span className="text-xs text-zinc-500 font-medium">of {totalBeds}</span></h3>
+            </div>
+            <div className="absolute right-[-10px] bottom-[-10px] text-[70px] font-black text-white/[0.01] pointer-events-none select-none font-sans italic">BEDS</div>
+          </div>
+
+          {/* Card 3 */}
+          <div className="relative overflow-hidden bg-zinc-900/40 border border-white/[0.06] p-6 rounded-[2rem] hover:border-amber-500/30 transition-all duration-300 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.15)]">
+              <Bed size={20} />
+            </div>
+            <div>
+              <p className="text-[9px] font-black text-zinc-555 uppercase tracking-widest">Vacant Beds</p>
+              <h3 className="text-2xl font-black text-white mt-0.5">{vacantBeds} <span className="text-xs text-zinc-500 font-medium">available</span></h3>
+            </div>
+            <div className="absolute right-[-10px] bottom-[-10px] text-[70px] font-black text-white/[0.01] pointer-events-none select-none font-sans italic">FREE</div>
+          </div>
+
+          {/* Card 4 */}
+          <div className="relative overflow-hidden bg-zinc-900/40 border border-white/[0.06] p-6 rounded-[2rem] hover:border-rose-500/30 transition-all duration-300 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.15)] font-black text-md">
+              ₹
+            </div>
+            <div>
+              <p className="text-[9px] font-black text-zinc-555 uppercase tracking-widest">Total Monthly Dues</p>
+              <h3 className="text-xl font-black text-white mt-0.5">₹{totalMonthlyDues.toLocaleString(`en-IN`, { maximumFractionDigits: 0 })}</h3>
+            </div>
+            <div className="absolute right-[-10px] bottom-[-10px] text-[70px] font-black text-white/[0.01] pointer-events-none select-none font-sans italic">DUES</div>
+          </div>
+        </div>
+
+        {/* SECTION HEADER & CONTROL */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-zinc-900/40 border border-white/[0.06] p-5 rounded-3xl">
+          <div>
+            <h2 className="text-md font-bold text-white">Monthly Co-Living Hub</h2>
+            <p className="text-xs text-zinc-400 mt-1">Manage long-term, multi-sharing residents and billing cycles.</p>
+          </div>
+          
+          <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
+            {/* Filter segments */}
+            <div className="flex items-center bg-black/40 border border-white/10 rounded-xl p-1 text-[10px] font-bold">
+              {[
+                { id: 'all', label: 'All Rooms' },
+                { id: 'vacancy', label: 'With Vacancy' },
+                { id: 'occupied', label: 'Fully Booked' },
+                { id: 'dues', label: 'Has Dues' },
+              ].map(segment => (
+                <button
+                  key={segment.id}
+                  onClick={() => setMonthlyFilter(segment.id as any)}
+                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                    monthlyFilter === segment.id 
+                      ? 'bg-zinc-800 text-white shadow-md' 
+                      : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  {segment.label}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => {
+                setSelectedCoLivingRoomId(undefined);
+                setShowCoLivingModal(true);
+              }}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-xs active:scale-95 shadow-lg shadow-indigo-500/10 shrink-0 ml-auto md:ml-0"
+            >
+              <UserPlus size={15} />
+              Add Co-Living Guest
+            </button>
+          </div>
+        </div>
+
+        {filteredRooms.length === 0 ? (
+          <div className="py-24 text-center border border-dashed border-white/5 rounded-3xl bg-white/[0.01]">
+            <Home size={40} className="text-zinc-500/40 mx-auto mb-4" />
+            <h3 className="text-white font-bold text-sm">No Co-Living Rooms Found</h3>
+            <p className="text-xs text-zinc-500 mt-1 max-w-md mx-auto leading-relaxed">
+              No rooms match your filter criteria or search query. Designate rooms as <span className="text-indigo-400 font-bold">Monthly Only</span> or <span className="text-indigo-400 font-bold">Both (Daily/Monthly)</span> in Room Inventory to see them here.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {filteredRooms.map(room => {
+              const capacity = getRoomCapacity(room);
+              const activeRoomBookings = bookings.filter(b => 
+                b.room_id === room.id && 
+                b.is_monthly === true &&
+                b.status !== 'Cancelled' && 
+                b.status !== 'Checked Out'
+              );
+
+              const isExpanded = expandedRoomIds[room.id] ?? false;
+
+              return (
+                <div key={room.id} className="relative group bg-[#121215]/60 backdrop-blur-md border border-white/[0.06] hover:border-indigo-500/30 rounded-3xl overflow-hidden transition-all duration-300 hover:shadow-2xl hover:shadow-indigo-500/5 flex flex-col">
+                  {/* Top Color strip bar */}
+                  <div className={`absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r ${
+                    activeRoomBookings.length === 0
+                      ? 'from-emerald-500 to-teal-600'
+                      : activeRoomBookings.length === capacity
+                      ? 'from-indigo-500 to-violet-600'
+                      : 'from-amber-500 to-orange-500'
+                  }`} />
+
+                  {/* Room Card Title Header */}
+                  <div 
+                    onClick={() => {
+                      setExpandedRoomIds(prev => ({
+                        ...prev,
+                        [room.id]: !prev[room.id]
+                      }));
+                    }}
+                    className="p-5 pb-4 border-b border-white/[0.04] bg-black/10 flex justify-between items-center cursor-pointer select-none hover:bg-white/[0.02] transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 font-black text-sm">
+                        {room.room_number}
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white flex items-center gap-1.5">
+                          Room {room.room_number}
+                          <ChevronRight size={14} className={`text-zinc-500 transition-transform duration-200 ${isExpanded ? 'rotate-90' : 'rotate-0'}`} />
+                        </h4>
+                        <p className="text-[10px] text-zinc-550 font-bold uppercase tracking-wider">{room.type} Class</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[9px] bg-zinc-800 text-zinc-400 border border-white/5 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                        {capacity}-Sharing
+                      </span>
+                      <p className="text-[10px] text-zinc-400 mt-1.5 font-bold">
+                        {activeRoomBookings.length}/{capacity} Occupied
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Occupancy Progress Bar */}
+                  <div className="w-full bg-zinc-950 h-1">
+                    <div className={`h-full transition-all duration-500 ${
+                      activeRoomBookings.length === 0
+                        ? 'bg-emerald-500'
+                        : activeRoomBookings.length === capacity
+                        ? 'bg-indigo-500'
+                        : 'bg-amber-500'
+                    }`} style={{ width: `${(activeRoomBookings.length / capacity) * 100}%` }} />
+                  </div>
+
+                  {/* Bed grid slots list */}
+                  <div className="p-4 flex-1 space-y-3 bg-zinc-900/10">
+                    {!isExpanded ? (
+                      /* Collapsed Compact View of Bed Slots */
+                      <div className="py-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {Array.from({ length: capacity }).map((_, index) => {
+                            const bedLetter = String.fromCharCode(65 + index);
+                            const booking = activeRoomBookings[index];
+                            if (booking) {
+                              const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
+                              const guestPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
+                              
+                              const totalCharged = Number(booking.monthly_rate || 0) + Number(booking.amount) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
+                              const totalPaid = guestPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+                              const balanceDue = totalCharged - totalPaid;
+                              
+                              return (
+                                <div 
+                                  key={index}
+                                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[10px] font-bold transition-all hover:bg-white/[0.02] ${
+                                    balanceDue > 0.01 
+                                      ? 'bg-rose-500/5 text-rose-400 border-rose-500/10' 
+                                      : 'bg-indigo-500/5 text-indigo-400 border-indigo-500/10'
+                                  }`}
+                                  title={`${booking.guest_name} - Rent: ₹${booking.monthly_rate} - Due: ₹${balanceDue}`}
+                                >
+                                  <span className={`w-4 h-4 rounded flex items-center justify-center text-[9px] font-black shrink-0 ${
+                                    balanceDue > 0.01 ? 'bg-rose-500/10' : 'bg-indigo-500/10'
+                                  }`}>{bedLetter}</span>
+                                  <span className="truncate max-w-[65px]">{booking.guest_name.split(' ')[0]}</span>
+                                  {balanceDue > 0.01 && <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shrink-0" />}
+                                </div>
+                              );
+                            } else {
+                              return (
+                                <div 
+                                  key={index}
+                                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-dashed border-white/5 bg-white/[0.01] text-zinc-550 text-[10px] font-bold"
+                                >
+                                  <span className="w-4 h-4 rounded bg-zinc-800 border border-white/5 flex items-center justify-center text-[9px] font-black text-zinc-500 shrink-0">{bedLetter}</span>
+                                  <span>Vacant</span>
+                                </div>
+                              );
+                            }
+                          })}
+                        </div>
+                        <div className="mt-3 text-center">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedRoomIds(prev => ({ ...prev, [room.id]: true }));
+                            }}
+                            className="text-[9px] font-bold uppercase tracking-wider text-indigo-400 hover:text-indigo-300 transition-colors py-0.5 px-2 bg-indigo-500/5 border border-indigo-500/10 rounded-lg"
+                          >
+                            Show Resident Details
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Expanded Detailed View of Bed Slots */
+                      <>
+                        {Array.from({ length: capacity }).map((_, index) => {
+                          const bedLetter = String.fromCharCode(65 + index);
+                          const booking = activeRoomBookings[index];
+
+                          if (booking) {
+                            const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
+                            const guestPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
+                            
+                            const totalCharged = Number(booking.monthly_rate || 0) + Number(booking.amount) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
+                            const totalPaid = guestPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+                            const balanceDue = totalCharged - totalPaid;
+
+                            return (
+                              <div key={index} className="group/bed relative flex flex-col p-3 rounded-2xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.04] hover:border-white/[0.08] transition-all duration-200">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2.5 min-w-0">
+                                    {/* Bed avatar */}
+                                    <div className="w-7 h-7 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 font-bold text-xs shrink-0">
+                                      {bedLetter}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <h5 className="text-xs font-bold text-white truncate">{booking.guest_name}</h5>
+                                      <p className="text-[9px] text-zinc-550 font-medium truncate">{booking.guest_phone || 'No phone'}</p>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
+                                      balanceDue > 0.01 
+                                        ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' 
+                                        : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                    }`}>
+                                      {balanceDue > 0.01 ? `₹${balanceDue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : 'Paid'}
+                                    </span>
+                                    
+                                    <div className="flex items-center border border-white/5 rounded-lg overflow-hidden bg-black/30">
+                                      <button
+                                        onClick={() => {
+                                          setActiveCheckoutBooking({
+                                            bookingId: booking.id,
+                                            roomId: booking.room_id,
+                                            guestName: booking.guest_name,
+                                            amount: booking.amount
+                                          });
+                                        }}
+                                        className="p-1.5 hover:bg-indigo-600 hover:text-white text-zinc-400 transition-colors"
+                                        title="Collect Payment"
+                                      >
+                                        <Banknote size={12} />
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          setSelectedBooking(booking);
+                                        }}
+                                        className="p-1.5 hover:bg-white/10 text-zinc-400 hover:text-white border-l border-white/5 transition-colors"
+                                        title="Booking Options"
+                                      >
+                                        <Settings size={12} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                                
+                                <div className="mt-2 pt-2 border-t border-white/[0.02] flex items-center justify-between text-[9px] text-zinc-500 font-medium">
+                                  <span>Rent: ₹{Number(booking.monthly_rate || 0).toLocaleString('en-IN')} (Cycle: {booking.billing_cycle_date || 'N/A'})</span>
+                                  <span>Joined: {new Date(booking.check_in).toLocaleDateString('en-IN')}</span>
+                                </div>
+                              </div>
+                            );
+                          } else {
+                            return (
+                              <div key={index} className="flex items-center justify-between p-3 rounded-2xl border border-dashed border-white/5 hover:border-emerald-500/20 bg-white/[0.01] hover:bg-emerald-500/[0.02] transition-all duration-200">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-7 h-7 rounded-lg bg-zinc-800 border border-white/5 flex items-center justify-center text-zinc-500 font-bold text-xs">
+                                      {bedLetter}
+                                  </div>
+                                  <span className="text-[10px] text-zinc-555 font-bold uppercase tracking-wider">Vacant Bed</span>
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    setSelectedCoLivingRoomId(room.id);
+                                    setShowCoLivingModal(true);
+                                  }}
+                                  className="px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-black border border-emerald-500/20 hover:border-transparent rounded-lg text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1"
+                                >
+                                  <Plus size={10} /> Allocate
+                                </button>
+                              </div>
+                            );
+                          }
+                        })}
+                        <div className="mt-3 text-center pt-2 border-t border-white/[0.02]">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedRoomIds(prev => ({ ...prev, [room.id]: false }));
+                            }}
+                            className="text-[9px] font-bold uppercase tracking-wider text-zinc-450 hover:text-zinc-300 transition-colors py-0.5 px-2"
+                          >
+                            Hide Resident Details
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )
+      }
+    </div>
+  );
+};
   const renderBalancesView = () => {
     // Filter bookings based on selected balancesFilter (In-House Only or All Active)
-    let filteredBookings = bookings;
+    let filteredBookings = bookings.filter(b => !b.is_monthly);
     
     if (balancesFilter === 'inHouse') {
-      filteredBookings = bookings.filter(b => b.status === 'Checked In');
+      filteredBookings = filteredBookings.filter(b => b.status === 'Checked In');
     } else {
       // All active includes Checked In and Confirmed (excluding Checked Out and Cancelled)
-      filteredBookings = bookings.filter(b => b.status === 'Checked In' || b.status === 'Confirmed');
+      filteredBookings = filteredBookings.filter(b => b.status === 'Checked In' || b.status === 'Confirmed');
     }
 
     // Apply text search if any
@@ -2123,14 +3712,16 @@ export default function FrontOfficeTerminal() {
       const roomNum = room?.room_number || 'N/A';
       
       const bookingIncidentals = incidentals.filter(i => i.booking_id === booking.id);
-      const bookingPayments = payments.filter(p => p.booking_id === booking.id);
+      const bookingPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
 
       const dailyRoomChargesSum = bookingIncidentals
         .filter(item => item.description?.startsWith('Daily Room Charge'))
         .reduce((sum, item) => sum + Number(item.amount), 0);
 
-      const roomAmount = Math.max(0, Number(booking.amount) - dailyRoomChargesSum);
-      const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0);
+      const roomAmount = booking.is_monthly
+        ? Number(booking.monthly_rate || 0)
+        : Math.max(0, Number(booking.amount) - dailyRoomChargesSum);
+      const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0) + (booking.is_monthly ? Number(booking.amount) : 0);
       const totalCharges = roomAmount + incidentalsAmount;
       const totalPaid = bookingPayments.reduce((sum, item) => sum + Number(item.amount), 0);
       const balanceDue = totalCharges - totalPaid;
@@ -2176,66 +3767,67 @@ export default function FrontOfficeTerminal() {
     return (
       <div className="space-y-6">
         {/* Balances Sub-Header Controls */}
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-zinc-900/20 border border-white/[0.04] p-4 rounded-2xl">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 flex-wrap">
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-zinc-500 font-bold uppercase tracking-wider">Show Dues:</span>
-              <div className="flex bg-black/40 border border-white/10 p-0.5 rounded-xl">
+        <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-4 bg-zinc-900/40 border border-white/[0.06] p-4 rounded-2xl">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 flex-wrap w-full lg:w-auto">
+            {/* Show Dues Group */}
+            <div className="flex flex-col gap-1.5 flex-1 sm:flex-none">
+              <span className="text-[10px] text-zinc-500 font-black uppercase tracking-wider">Show Dues:</span>
+              <div className="grid grid-cols-2 bg-black/40 border border-white/10 p-0.5 rounded-xl overflow-hidden">
                 <button
                   onClick={() => setBalancesFilter('inHouse')}
-                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                  className={`px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all text-center shrink-0 ${
                     balancesFilter === 'inHouse'
                       ? 'bg-[#4f46e5] text-white shadow-lg shadow-[#4f46e5]/10'
                       : 'text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
-                  In-House Only
+                  In-House
                 </button>
                 <button
                   onClick={() => setBalancesFilter('allActive')}
-                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                  className={`px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all text-center shrink-0 ${
                     balancesFilter === 'allActive'
                       ? 'bg-[#4f46e5] text-white shadow-lg shadow-[#4f46e5]/10'
                       : 'text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
-                  All Active (In-House & Confirmed)
+                  All Active
                 </button>
               </div>
             </div>
 
-            {/* Premium Hide Paid Toggle */}
-            <div className="flex items-center gap-3 sm:border-l sm:border-white/10 sm:pl-4">
-              <span className="text-xs text-zinc-500 font-bold uppercase tracking-wider hidden sm:inline">Filter:</span>
-              <div className="flex bg-black/40 border border-white/10 p-0.5 rounded-xl">
+            {/* Filter Group */}
+            <div className="flex flex-col gap-1.5 flex-1 sm:flex-none sm:border-l sm:border-white/10 sm:pl-4">
+              <span className="text-[10px] text-zinc-500 font-black uppercase tracking-wider">Filter:</span>
+              <div className="grid grid-cols-2 bg-black/40 border border-white/10 p-0.5 rounded-xl overflow-hidden">
                 <button
                   onClick={() => setHidePaidGuests(true)}
-                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                  className={`px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
                     hidePaidGuests
                       ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20 shadow-lg'
                       : 'text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
                   <span className={`w-1.5 h-1.5 rounded-full ${hidePaidGuests ? 'bg-rose-400 animate-pulse' : 'bg-zinc-500'}`} />
-                  Outstanding Dues ({outstandingCount})
+                  Dues ({outstandingCount})
                 </button>
                 <button
                   onClick={() => setHidePaidGuests(false)}
-                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                  className={`px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
                     !hidePaidGuests
-                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-lg'
+                      ? 'bg-emerald-500/10 text-[#10b981] border border-emerald-500/20 shadow-lg'
                       : 'text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
                   <span className={`w-1.5 h-1.5 rounded-full ${!hidePaidGuests ? 'bg-emerald-400' : 'bg-zinc-500'}`} />
-                  Show All ({rawBalanceItems.length})
+                  All ({rawBalanceItems.length})
                 </button>
               </div>
             </div>
           </div>
 
-          <div className="text-xs text-zinc-400 font-medium">
-            Showing <span className="text-white font-bold">{balanceItems.length}</span> rooms with active folios
+          <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider text-right lg:text-left self-end lg:self-auto">
+            Showing <span className="text-white font-black">{balanceItems.length}</span> rooms with active folios
           </div>
         </div>
 
@@ -2245,125 +3837,223 @@ export default function FrontOfficeTerminal() {
             <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs">No Outstanding Balances Found</p>
           </div>
         ) : (
-          <div className="bg-[#0a0a0c]/60 border border-white/[0.04] rounded-3xl overflow-hidden shadow-2xl">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-black/40 border-b border-white/[0.06] text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-                    <th className="p-4 pl-6">Room / Sl No</th>
-                    <th className="p-4">Guest Details</th>
-                    <th className="p-4 text-right">ROOM Charges (Pending)</th>
-                    <th className="p-4 text-right">Food & Water (Pending)</th>
-                    <th className="p-4 text-right">Total Charges</th>
-                    <th className="p-4 text-right text-emerald-400">Total Paid</th>
-                    <th className="p-4 text-right text-rose-400 font-bold bg-rose-500/5">Balance Due</th>
-                    <th className="p-4 pr-6 text-center">Settlement</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/[0.02]">
-                  {balanceItems.map(({ booking, roomNum, roomType, roomAmount, incidentalsAmount, roomChargesTotal, foodChargesTotal, foodPending, roomPending, totalCharges, totalPaid, balanceDue }) => {
-                    const hasDues = balanceDue > 0.01;
-                    return (
-                      <tr key={booking.id} className="hover:bg-white/[0.01] transition-colors">
-                        {/* Room Number / Serial */}
-                        <td className="p-4 pl-6 align-middle">
-                          <div className="flex flex-col gap-1">
-                            <span className="text-sm font-black text-white bg-white/5 px-2.5 py-1 rounded-lg w-fit">
-                              Room {roomNum}
-                            </span>
-                            <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider pl-0.5">
-                              {roomType}
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* Guest details */}
-                        <td className="p-4 align-middle">
-                          <div className="flex flex-col gap-0.5">
-                            <span className="text-sm font-bold text-white hover:text-indigo-400 transition-colors cursor-pointer" onClick={() => openActionDrawer(booking)}>
-                              {booking.guest_name}
-                            </span>
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${
-                                booking.status === 'Checked In' 
-                                  ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' 
-                                  : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
-                              }`}>
-                                {booking.status}
+          <>
+            {/* Desktop Table View */}
+            <div className="hidden md:block bg-[#0a0a0c]/60 border border-white/[0.04] rounded-3xl overflow-hidden shadow-2xl">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-black/40 border-b border-white/[0.06] text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                      <th className="p-4 pl-6">Room / Sl No</th>
+                      <th className="p-4">Guest Details</th>
+                      <th className="p-4 text-right">ROOM Charges (Pending)</th>
+                      <th className="p-4 text-right">Food & Water (Pending)</th>
+                      <th className="p-4 text-right">Total Charges</th>
+                      <th className="p-4 text-right text-emerald-400">Total Paid</th>
+                      <th className="p-4 text-right text-rose-400 font-bold bg-rose-500/5">Balance Due</th>
+                      <th className="p-4 pr-6 text-center">Settlement</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/[0.02]">
+                    {balanceItems.map(({ booking, roomNum, roomType, roomAmount, incidentalsAmount, roomChargesTotal, foodChargesTotal, foodPending, roomPending, totalCharges, totalPaid, balanceDue }) => {
+                      const hasDues = balanceDue > 0.01;
+                      return (
+                        <tr key={booking.id} className="hover:bg-white/[0.01] transition-colors">
+                          {/* Room Number / Serial */}
+                          <td className="p-4 pl-6 align-middle">
+                            <div className="flex flex-col gap-1">
+                              <span className="text-sm font-black text-white bg-white/5 px-2.5 py-1 rounded-lg w-fit">
+                                Room {roomNum}
                               </span>
-                              <span className="text-[10px] text-zinc-500">
-                                {booking.id.slice(0, 8)}
+                              <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider pl-0.5">
+                                {roomType}
                               </span>
                             </div>
-                          </div>
-                        </td>
+                          </td>
 
-                        {/* ROOM Charges (Pending) */}
-                        <td className="p-4 text-right align-middle font-semibold text-zinc-300">
-                          ₹{roomPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-
-                        {/* Food & Water (Pending) */}
-                        <td className="p-4 text-right align-middle font-semibold text-zinc-400">
-                          ₹{foodPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-
-                        {/* Total Charges */}
-                        <td className="p-4 text-right align-middle font-bold text-white">
-                          ₹{totalCharges.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-
-                        {/* Total Paid */}
-                        <td className="p-4 text-right align-middle font-bold text-emerald-400">
-                          ₹{totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-
-                        {/* Balance Due */}
-                        <td className="p-4 text-right align-middle bg-rose-500/[0.01]">
-                          <div className="flex flex-col items-end gap-1">
-                            <span className={`text-base font-black ${hasDues ? 'text-rose-400 font-mono shadow-sm' : 'text-zinc-600 font-mono'}`}>
-                              ₹{balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
-                            {hasDues ? (
-                              <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
-                                Outstanding
+                          {/* Guest details */}
+                          <td className="p-4 align-middle">
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-sm font-bold text-white hover:text-indigo-400 transition-colors cursor-pointer" onClick={() => openActionDrawer(booking)}>
+                                {booking.guest_name}
                               </span>
-                            ) : (
-                              <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                                Paid in Full
-                              </span>
-                            )}
-                          </div>
-                        </td>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${
+                                  booking.status === 'Checked In' 
+                                    ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' 
+                                    : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                                }`}>
+                                  {booking.status}
+                                </span>
+                                <span className="text-[10px] text-zinc-500">
+                                  {booking.id.slice(0, 8)}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
 
-                        {/* Action buttons */}
-                        <td className="p-4 pr-6 text-center align-middle">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveCheckoutBooking({
-                                bookingId: booking.id,
-                                roomId: booking.room_id,
-                                guestName: booking.guest_name,
-                                amount: Number(booking.amount)
-                              });
-                            }}
-                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                              hasDues
-                                ? 'bg-[#4f46e5] text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/10'
-                                : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-                            }`}
-                          >
-                            Open Folio
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          {/* ROOM Charges (Pending) */}
+                          <td className="p-4 text-right align-middle font-semibold text-zinc-300">
+                            ₹{roomPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+
+                          {/* Food & Water (Pending) */}
+                          <td className="p-4 text-right align-middle font-semibold text-zinc-400">
+                            ₹{foodPending.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+
+                          {/* Total Charges */}
+                          <td className="p-4 text-right align-middle font-bold text-white">
+                            ₹{totalCharges.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+
+                          {/* Total Paid */}
+                          <td className="p-4 text-right align-middle font-bold text-emerald-400">
+                            ₹{totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+
+                          {/* Balance Due */}
+                          <td className="p-4 text-right align-middle bg-rose-500/[0.01]">
+                            <div className="flex flex-col items-end gap-1">
+                              <span className={`text-base font-black ${hasDues ? 'text-rose-400 font-mono shadow-sm' : 'text-zinc-600 font-mono'}`}>
+                                ₹{balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                              {hasDues ? (
+                                <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
+                                  Outstanding
+                                </span>
+                              ) : (
+                                <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                                  Paid in Full
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Action buttons */}
+                          <td className="p-4 pr-6 text-center align-middle">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveCheckoutBooking({
+                                  bookingId: booking.id,
+                                  roomId: booking.room_id,
+                                  guestName: booking.guest_name,
+                                  amount: Number(booking.amount)
+                                });
+                              }}
+                              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                                hasDues
+                                  ? 'bg-[#4f46e5] text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/10'
+                                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                              }`}
+                            >
+                              Open Folio
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+
+            {/* Mobile Card Grid View */}
+            <div className="block md:hidden space-y-4">
+              {balanceItems.map(({ booking, roomNum, roomType, roomAmount, incidentalsAmount, roomChargesTotal, foodChargesTotal, foodPending, roomPending, totalCharges, totalPaid, balanceDue }) => {
+                const hasDues = balanceDue > 0.01;
+                return (
+                  <div key={booking.id} className="bg-zinc-900/40 border border-white/[0.06] rounded-2xl p-4 space-y-4">
+                    {/* Header: Room & Status */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-black text-white bg-white/5 px-2.5 py-1 rounded-lg w-fit">
+                          Room {roomNum}
+                        </span>
+                        <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider mt-1 pl-0.5">
+                          {roomType}
+                        </span>
+                      </div>
+                      <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-md ${
+                        booking.status === 'Checked In' 
+                          ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' 
+                          : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                      }`}>
+                        {booking.status}
+                      </span>
+                    </div>
+
+                    {/* Guest Details */}
+                    <div className="border-t border-white/[0.04] pt-3">
+                      <p className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-1">Guest Details</p>
+                      <p className="text-sm font-bold text-white hover:text-indigo-400 transition-colors cursor-pointer" onClick={() => openActionDrawer(booking)}>
+                        {booking.guest_name}
+                      </p>
+                      <p className="text-[9px] text-zinc-600 mt-0.5">Booking ID: {booking.id.slice(0, 8)}</p>
+                    </div>
+
+                    {/* Charges Breakdown */}
+                    <div className="grid grid-cols-2 gap-3 bg-black/20 p-3 rounded-xl border border-white/[0.02]">
+                      <div>
+                        <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Room Pending</p>
+                        <p className="text-xs font-semibold text-zinc-300 mt-0.5">
+                          ₹{roomPending.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Food Pending</p>
+                        <p className="text-xs font-semibold text-zinc-400 mt-0.5">
+                          ₹{foodPending.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                      <div className="border-t border-white/[0.04] pt-2 mt-1">
+                        <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Total Charges</p>
+                        <p className="text-xs font-bold text-white mt-0.5">
+                          ₹{totalCharges.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                      <div className="border-t border-white/[0.04] pt-2 mt-1">
+                        <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider text-emerald-400">Total Paid</p>
+                        <p className="text-xs font-bold text-emerald-400 mt-0.5">
+                          ₹{totalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Balance Due & Action */}
+                    <div className="flex items-center justify-between border-t border-white/[0.04] pt-3">
+                      <div className="flex flex-col">
+                        <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Balance Due</span>
+                        <span className={`text-sm font-black font-mono mt-0.5 ${hasDues ? 'text-rose-400' : 'text-zinc-600'}`}>
+                          ₹{balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveCheckoutBooking({
+                            bookingId: booking.id,
+                            roomId: booking.room_id,
+                            guestName: booking.guest_name,
+                            amount: Number(booking.amount)
+                          });
+                        }}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                          hasDues
+                            ? 'bg-[#4f46e5] text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/10'
+                            : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                        }`}
+                      >
+                        Open Folio
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
     );
@@ -2393,6 +4083,9 @@ export default function FrontOfficeTerminal() {
         <nav className="flex-1 px-3 space-y-1 mt-4">
           {NAV_ITEMS.map((item) => {
             const locked = !hasAccess(item.module);
+            const isItemActive = item.label === "Daily Reports" 
+              ? activeTab === 'reports' 
+              : (item.label === "Front Office" ? activeTab !== 'reports' : item.active);
             return (
               <Link
                 key={item.label}
@@ -2401,10 +4094,17 @@ export default function FrontOfficeTerminal() {
                   if (locked) {
                     e.preventDefault();
                     alert(`Access Restricted: The ${item.label} module requires higher authorization.`);
+                  } else if (item.label === "Daily Reports") {
+                    e.preventDefault();
+                    setActiveTab('reports');
+                    setSelectedReportType(null);
+                  } else if (item.label === "Front Office" && activeTab === 'reports') {
+                    setActiveTab('tape');
+                    setSelectedReportType(null);
                   }
                 }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all ${
-                  item.active ? 'bg-white/[0.06] text-white' : locked ? 'text-zinc-700' : 'text-zinc-500 hover:text-white hover:bg-white/[0.02]'
+                  isItemActive ? 'bg-white/[0.06] text-white' : locked ? 'text-zinc-700' : 'text-zinc-500 hover:text-white hover:bg-white/[0.02]'
                 }`}
               >
                 <item.icon size={17} />
@@ -2420,15 +4120,25 @@ export default function FrontOfficeTerminal() {
       <main className="flex-1 flex flex-col overflow-hidden">
         <header className="p-4 md:p-8 border-b border-white/[0.04] bg-[#08080a] flex flex-col gap-4 md:gap-6">
           <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-            <div>
-              <h2 className="text-xl sm:text-3xl font-bold text-white tracking-tight flex items-center gap-2 sm:gap-3">
-                <Activity className="text-emerald-400" />
-                Front Office Terminal
-              </h2>
-              <p className="text-zinc-500 text-xs sm:text-sm mt-1">Real-time availability and guest management</p>
-            </div>
+            {activeTab === 'reports' ? (
+              <div>
+                <h2 className="text-xl sm:text-3xl font-bold text-white tracking-tight flex items-center gap-2 sm:gap-3">
+                  <FileText className="text-indigo-400" />
+                  Daily Reports Terminal
+                </h2>
+                <p className="text-zinc-500 text-xs sm:text-sm mt-1">Audit operations and generate export registers</p>
+              </div>
+            ) : (
+              <div>
+                <h2 className="text-xl sm:text-3xl font-bold text-white tracking-tight flex items-center gap-2 sm:gap-3">
+                  <Activity className="text-emerald-400" />
+                  Front Office Terminal
+                </h2>
+                <p className="text-zinc-500 text-xs sm:text-sm mt-1">Real-time availability and guest management</p>
+              </div>
+            )}
             
-            {canCreateBooking() && (
+            {activeTab !== 'reports' && canCreateBooking() && (
               <button 
                 onClick={() => setShowBookingModal(true)}
                 className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg active:scale-95 text-xs sm:text-sm"
@@ -2440,24 +4150,27 @@ export default function FrontOfficeTerminal() {
           </div>
 
           {/* TAB SYSTEM */}
-          <div className="flex flex-col w-full gap-6">
-            {/* Mobile Dropdown Tab Selector */}
-            <div className="block md:hidden w-full relative">
-              <select
-                value={activeTab}
-                onChange={(e) => {
-                  setActiveTab(e.target.value as 'tape' | 'arrivals' | 'departures' | 'house' | 'all' | 'balances' | 'expenses');
-                  setSearchQuery('');
-                }}
+          {activeTab !== 'reports' && (
+            <div className="flex flex-col w-full gap-6">
+              {/* Mobile Dropdown Tab Selector */}
+              <div className="block md:hidden w-full relative">
+                <select
+                  value={activeTab}
+                  onChange={(e) => {
+                    setActiveTab(e.target.value as 'tape' | 'arrivals' | 'departures' | 'house' | 'all' | 'balances' | 'expenses' | 'monthly' | 'reports');
+                    setSearchQuery('');
+                    setSelectedReportType(null);
+                  }}
                 className="w-full appearance-none bg-zinc-900 border border-white/10 rounded-2xl py-3.5 pl-4 pr-12 text-xs text-white font-bold uppercase tracking-wider focus:outline-none focus:border-indigo-500/50 cursor-pointer hover:bg-zinc-800 transition-all shadow-xl active:scale-[0.99]"
               >
                 <option value="tape" className="bg-[#0c0c0e] text-white">📅 Tape Chart</option>
                 <option value="arrivals" className="bg-[#0c0c0e] text-white">👤 Arrivals Today ({getArrivalsToday().length})</option>
                 <option value="departures" className="bg-[#0c0c0e] text-white">🚪 Departures Today</option>
-                <option value="house" className="bg-[#0c0c0e] text-white">🛏️ In-House ({bookings.filter(b => b.status === 'Checked In').length} Occupied)</option>
+                <option value="house" className="bg-[#0c0c0e] text-white">🛏️ In-House ({bookings.filter(b => b.status === 'Checked In' && !b.is_monthly).length} Occupied)</option>
                 <option value="balances" className="bg-[#0c0c0e] text-white">💵 Pending Payments</option>
                 <option value="expenses" className="bg-[#0c0c0e] text-white">💸 Expenses & Cash Ledger</option>
                 <option value="all" className="bg-[#0c0c0e] text-white">🔍 Reservations</option>
+                <option value="monthly" className="bg-[#0c0c0e] text-white">🏢 Monthly Co-Living Hub</option>
               </select>
               <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-400">
                 <ChevronsUpDown size={14} />
@@ -2471,15 +4184,17 @@ export default function FrontOfficeTerminal() {
                 { id: 'arrivals', label: 'Arrivals Today', icon: UserCheck },
                 { id: 'departures', label: 'Departures Today', icon: LogOut },
                 { id: 'house', label: 'In-House', icon: Bed },
-                { id: 'balances', label: 'Pending Payments', icon: DollarSign },
+                { id: 'balances', label: 'Pending Payments', icon: IndianRupee },
                 { id: 'expenses', label: 'Expenses & Cash', icon: TrendingDown },
                 { id: 'all', label: 'Reservations', icon: Search },
+                { id: 'monthly', label: 'Monthly Co-Living', icon: Home },
               ].map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => {
                     setActiveTab(tab.id as any);
                     setSearchQuery(''); // Clear search when switching tabs
+                    setSelectedReportType(null); // Reset report type when switching tabs
                   }}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all shrink-0 ${
                     activeTab === tab.id 
@@ -2490,7 +4205,7 @@ export default function FrontOfficeTerminal() {
                   <tab.icon size={13} />
                   {tab.label}
                   {tab.id === 'arrivals' && getArrivalsToday().length > 0 && <span className="ml-1 bg-white text-indigo-600 px-1.5 py-0.5 rounded-md text-[9px]">{getArrivalsToday().length}</span>}
-                  {tab.id === 'house' && bookings.filter(b => b.status === 'Checked In').length > 0 && <span className="ml-1 bg-emerald-500 text-white px-1.5 py-0.5 rounded-md text-[9px]">{bookings.filter(b => b.status === 'Checked In').length}</span>}
+                  {tab.id === 'house' && bookings.filter(b => b.status === 'Checked In' && !b.is_monthly).length > 0 && <span className="ml-1 bg-emerald-500 text-white px-1.5 py-0.5 rounded-md text-[9px]">{bookings.filter(b => b.status === 'Checked In' && !b.is_monthly).length}</span>}
                 </button>
               ))}
             </div>
@@ -2525,7 +4240,7 @@ export default function FrontOfficeTerminal() {
             )}
 
             {/* UNIFIED SEARCH CONTROL FOR LIST TABS */}
-            {(activeTab === 'arrivals' || activeTab === 'departures' || activeTab === 'house' || activeTab === 'balances') && (
+            {(activeTab === 'arrivals' || activeTab === 'departures' || activeTab === 'house' || activeTab === 'balances' || activeTab === 'monthly') && (
               <div className="flex items-center justify-end gap-3 flex-wrap">
                 <div className="relative w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" size={14} />
@@ -2655,6 +4370,7 @@ export default function FrontOfficeTerminal() {
             )}
 
           </div>
+          )}
         </header>
 
         <div className="flex-1 p-4 md:p-8 pb-28 lg:pb-8 overflow-auto">
@@ -2670,7 +4386,7 @@ export default function FrontOfficeTerminal() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rooms.map((room) => {
+                  {rooms.filter(room => room.allowed_billing_type !== 'monthly').map((room) => {
                     const booking = getBookingForRoom(room.id);
                     return (
                       <tr key={room.id} className="border-b border-white/5 hover:bg-white/[0.01]">
@@ -2712,7 +4428,11 @@ export default function FrontOfficeTerminal() {
                                 layoutId={booking.id}
                                 onClick={() => openActionDrawer(booking)}
                                 className={`absolute inset-y-2 left-2 right-[-240px] rounded-xl border p-3 flex items-center justify-between z-20 shadow-2xl cursor-pointer hover:border-indigo-400/50 transition-colors ${
-                                  booking.status === 'Confirmed' ? 'bg-amber-500/10 border-amber-500/30' : 'bg-emerald-500/10 border-emerald-500/30'
+                                  booking.is_monthly
+                                    ? 'bg-indigo-500/10 border-indigo-500/30'
+                                    : booking.status === 'Confirmed'
+                                    ? 'bg-amber-500/10 border-amber-500/30'
+                                    : 'bg-emerald-500/10 border-emerald-500/30'
                                 }`}
                               >
                                 <div className="flex flex-col gap-1 w-full">
@@ -2722,9 +4442,13 @@ export default function FrontOfficeTerminal() {
                                   </div>
                                   <div className="flex items-center justify-between mt-2">
                                     <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                                      booking.status === 'Confirmed' ? 'bg-amber-500/20 text-amber-500' : 'bg-emerald-500/20 text-emerald-500'
+                                      booking.is_monthly
+                                        ? 'bg-indigo-500/25 text-indigo-400 border border-indigo-500/20'
+                                        : booking.status === 'Confirmed'
+                                        ? 'bg-amber-500/20 text-amber-500'
+                                        : 'bg-emerald-500/20 text-emerald-500'
                                     }`}>
-                                      {booking.status}
+                                      {booking.is_monthly ? `Monthly • ${booking.status}` : booking.status}
                                     </span>
                                     
                                     <div className="flex gap-2">
@@ -2800,9 +4524,9 @@ export default function FrontOfficeTerminal() {
                     </div>
                     <div className="text-right">
                       <span className="text-lg sm:text-xl font-black text-emerald-400 tracking-tighter">
-                        {bookings.filter(b => b.status === 'Checked In').length} Rooms Occupied
+                        {bookings.filter(b => b.status === 'Checked In' && !b.is_monthly).length} Rooms Occupied
                       </span>
-                      <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest mt-0.5">out of {rooms.length} total rooms</p>
+                      <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest mt-0.5">out of {rooms.filter(room => room.allowed_billing_type !== 'monthly').length} total rooms</p>
                     </div>
                   </div>
 
@@ -2824,6 +4548,8 @@ export default function FrontOfficeTerminal() {
               )}
               {activeTab === 'balances' && renderBalancesView()}
               {activeTab === 'expenses' && renderExpensesView()}
+              {activeTab === 'monthly' && renderMonthlyCoLivingView()}
+              {activeTab === 'reports' && renderReportsView()}
             </div>
           )}
         </div>
@@ -2990,23 +4716,40 @@ export default function FrontOfficeTerminal() {
                   </div>
                 )}
 
-                {/* 0. BILLING & FOLIO LEDGER (For Checked In and Checked Out guests) */}
-                {(selectedBooking.status === 'Checked In' || selectedBooking.status === 'Checked Out') && (
+                {/* 0. BILLING & FOLIO LEDGER (For Checked In, Checked Out, and Confirmed guests) */}
+                {(selectedBooking.status === 'Checked In' || selectedBooking.status === 'Checked Out' || selectedBooking.status === 'Confirmed') && (
                   <div className="space-y-3 pb-6 border-b border-white/[0.04]">
                     <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-2">
-                      <DollarSign size={14} /> Billing & Folio Ledger
+                      <IndianRupee size={14} /> Billing & Folio Ledger
                     </h3>
                     <div className="bg-black/40 border border-white/[0.04] rounded-2xl p-4 space-y-4">
                       <p className="text-[11px] text-zinc-500 leading-relaxed">
                         Manage guest billing, record cash or UPI payments, and view detailed folio summaries.
                       </p>
                       
-                      <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.02] flex justify-between items-center">
-                        <div>
-                          <span className="text-[9px] font-black text-zinc-500 uppercase tracking-wider block">Base Room Rate</span>
-                          <span className="text-xs text-zinc-400 mt-0.5 font-medium block">Accommodation charges</span>
+                      <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.02] space-y-2">
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <span className="text-[9px] font-black text-zinc-500 uppercase tracking-wider block">
+                              {selectedBooking.is_monthly ? 'Monthly Room Rent' : 'Base Room Rate'}
+                            </span>
+                            <span className="text-xs text-zinc-400 mt-0.5 font-medium block">Accommodation charges</span>
+                          </div>
+                          <span className="text-sm font-black text-white font-mono">
+                            ₹{Number(selectedBooking.is_monthly ? selectedBooking.monthly_rate : selectedBooking.amount).toFixed(2)}
+                          </span>
                         </div>
-                        <span className="text-sm font-black text-white font-mono">₹{Number(selectedBooking.amount).toFixed(2)}</span>
+                        {selectedBooking.is_monthly && Number(selectedBooking.amount) > 0 && (
+                          <div className="pt-2 border-t border-white/[0.02] flex justify-between items-center">
+                            <div>
+                              <span className="text-[9px] font-black text-zinc-500 uppercase tracking-wider block">Security Deposit / Advance</span>
+                              <span className="text-xs text-zinc-400 mt-0.5 font-medium block">Refundable deposit</span>
+                            </div>
+                            <span className="text-sm font-black text-white font-mono">
+                              ₹{Number(selectedBooking.amount).toFixed(2)}
+                            </span>
+                          </div>
+                        )}
                       </div>
                       
                       <button
@@ -3027,12 +4770,17 @@ export default function FrontOfficeTerminal() {
                   </div>
                 )}
 
-                {/* 0. CHECK-IN REQUIREMENTS (Only for Confirmed guests) */}
                 {selectedBooking.status === 'Confirmed' && (
                   <div className="space-y-3 pb-6 border-b border-white/[0.04]">
                     <h3 className="text-xs font-bold text-amber-400 uppercase tracking-widest flex items-center gap-2">
                       <ClipboardCheck size={14} /> Check-In Requirements
                     </h3>
+                    {selectedBooking.group_id && (
+                      <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-bold flex items-center gap-2">
+                        <Users size={14} />
+                        Group Booking: Checking in will check in all confirmed rooms in this group.
+                      </div>
+                    )}
                     <div className="space-y-2 bg-black/40 p-4 rounded-xl border border-white/[0.04]">
                       <label className="flex items-center gap-3 cursor-pointer group">
                         <input type="checkbox" className="w-4 h-4 rounded bg-black border-white/20 accent-amber-500" checked={checkIdVerified} onChange={e => setCheckIdVerified(e.target.checked)} />
@@ -3057,6 +4805,90 @@ export default function FrontOfficeTerminal() {
                               className="overflow-hidden"
                             >
                               <div className="bg-zinc-900/60 p-4 rounded-xl border border-white/[0.04] space-y-4 ml-7">
+                                {/* Optional Add-on Charges Section */}
+                                <div className="space-y-3 border-b border-white/[0.04] pb-4">
+                                  <span className="text-[10px] font-black text-zinc-500 uppercase tracking-wider block">Check-In Add-on Charges (Optional)</span>
+                                  <div className="grid grid-cols-2 gap-3">
+                                    {/* Early Check-In */}
+                                    <div className="space-y-1">
+                                      <label className="text-[10px] text-zinc-400 font-bold">Early Check-In (₹)</label>
+                                      <div className="relative">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-mono text-[11px]">₹</span>
+                                        <input 
+                                          type="number"
+                                          value={earlyCheckInAmount}
+                                          onChange={(e) => setEarlyCheckInAmount(e.target.value)}
+                                          placeholder="0"
+                                          className="w-full bg-black/40 border border-white/10 rounded-xl py-1.5 pl-6 pr-2 text-white text-xs font-mono focus:outline-none focus:border-amber-500 transition-all"
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {/* Extra Bed */}
+                                    <div className="space-y-1">
+                                      <label className="text-[10px] text-zinc-400 font-bold">Extra Bed (₹)</label>
+                                      <div className="relative">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-mono text-[11px]">₹</span>
+                                        <input 
+                                          type="number"
+                                          value={extraBedAmount}
+                                          onChange={(e) => setExtraBedAmount(e.target.value)}
+                                          placeholder="0"
+                                          className="w-full bg-black/40 border border-white/10 rounded-xl py-1.5 pl-6 pr-2 text-white text-xs font-mono focus:outline-none focus:border-amber-500 transition-all"
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {/* Food & Water */}
+                                    <div className="space-y-1">
+                                      <label className="text-[10px] text-zinc-400 font-bold">Food & Water (₹)</label>
+                                      <div className="relative">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-mono text-[11px]">₹</span>
+                                        <input 
+                                          type="number"
+                                          value={foodWaterAmount}
+                                          onChange={(e) => setFoodWaterAmount(e.target.value)}
+                                          placeholder="0"
+                                          className="w-full bg-black/40 border border-white/10 rounded-xl py-1.5 pl-6 pr-2 text-white text-xs font-mono focus:outline-none focus:border-amber-500 transition-all"
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {/* Other Charges */}
+                                    <div className="space-y-1">
+                                      <label className="text-[10px] text-zinc-400 font-bold">Other Charges (₹)</label>
+                                      <div className="relative">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-mono text-[11px]">₹</span>
+                                        <input 
+                                          type="number"
+                                          value={otherChargesAmount}
+                                          onChange={(e) => setOtherChargesAmount(e.target.value)}
+                                          placeholder="0"
+                                          className="w-full bg-black/40 border border-white/10 rounded-xl py-1.5 pl-6 pr-2 text-white text-xs font-mono focus:outline-none focus:border-amber-500 transition-all"
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Other Charges Description */}
+                                  {Number(otherChargesAmount) > 0 && (
+                                    <motion.div 
+                                      initial={{ opacity: 0, height: 0 }}
+                                      animate={{ opacity: 1, height: "auto" }}
+                                      className="space-y-1 overflow-hidden"
+                                    >
+                                      <label className="text-[10px] text-zinc-400 font-bold">Other Charges Description</label>
+                                      <input 
+                                        type="text"
+                                        value={otherChargesDescription}
+                                        onChange={(e) => setOtherChargesDescription(e.target.value)}
+                                        placeholder="e.g. Laundry, early checkin etc."
+                                        className="w-full bg-black/40 border border-white/10 rounded-xl py-1.5 px-3 text-white text-xs focus:outline-none focus:border-amber-500 transition-all"
+                                      />
+                                    </motion.div>
+                                  )}
+                                </div>
+
                                 <div className="flex items-center justify-between">
                                   <span className="text-xs font-bold text-zinc-400">Record Payment in Ledger?</span>
                                   <label className="relative inline-flex items-center cursor-pointer">
@@ -3213,27 +5045,95 @@ export default function FrontOfficeTerminal() {
                   </div>
 
                   {!selectedBooking.id_verified ? (
-                    <div className="bg-indigo-500/5 border border-indigo-500/10 p-4 rounded-2xl space-y-3">
+                    <div className="bg-indigo-500/5 border border-indigo-500/10 p-4 rounded-2xl space-y-3 relative">
+                      {/* Separate file input for Camera (forces rear camera on mobile) */}
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        capture="environment"
+                        id="direct-id-camera-input" 
+                        className="hidden" 
+                        onChange={handleDirectCameraCapture} 
+                      />
+                      {/* Separate file input for Gallery */}
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        id="direct-id-gallery-input" 
+                        className="hidden" 
+                        onChange={handleDirectCameraCapture} 
+                      />
+
                       <p className="text-[11px] text-zinc-500">
-                        Send a secure magic link to the guest&apos;s phone. They can scan their ID and sign the RegCard instantly.
+                        Select an action below to capture guest identity and sign registration forms instantly.
                       </p>
-                                            <div className="flex gap-2">
+                      
+                      <div className="relative">
                         <button 
-                          onClick={() => {
-                            const url = window.location.origin + "/guest/regcard/" + selectedBooking.id;
-                            navigator.clipboard.writeText(url);
-                            alert("Magic Link copied to clipboard! Send this to the guest via WhatsApp/SMS.");
-                          }}
-                          className="flex-[2] bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 border border-indigo-500/20 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all"
+                          type="button"
+                          onClick={() => setIsIdentityMenuOpen(!isIdentityMenuOpen)}
+                          className="w-full bg-zinc-900/60 hover:bg-zinc-900 border border-white/10 px-4 py-3 rounded-xl text-[11px] font-black uppercase tracking-wider text-white flex items-center justify-between transition-all"
                         >
-                          <Link2 size={14} /> Send Link
+                          <span className="flex items-center gap-2">
+                            <ShieldCheck size={14} className="text-indigo-400" />
+                            Select Capture Option...
+                          </span>
+                          <ChevronsUpDown size={14} className="text-zinc-500" />
                         </button>
-                        <button 
-                          onClick={() => setShowQrCode(true)}
-                          className="flex-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-500 border border-amber-500/20 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all"
-                        >
-                          <Camera size={14} /> QR Scan
-                        </button>
+
+                        {isIdentityMenuOpen && (
+                          <>
+                            {/* Invisible background overlay to handle dismiss clicking outside */}
+                            <div className="fixed inset-0 z-10" onClick={() => setIsIdentityMenuOpen(false)} />
+                            
+                            <div className="absolute left-0 right-0 mt-2 bg-zinc-950 border border-white/10 rounded-xl shadow-2xl overflow-hidden z-20 divide-y divide-white/[0.04]">
+                              <button 
+                                type="button"
+                                onClick={() => {
+                                  setIsIdentityMenuOpen(false);
+                                  document.getElementById('direct-id-camera-input')?.click();
+                                }}
+                                className="w-full hover:bg-zinc-900/60 px-4 py-2.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-300 hover:text-white flex items-center gap-2.5 transition-colors"
+                              >
+                                <Camera size={14} className="text-emerald-400" />
+                                <div>
+                                  <p>Take Photo (Camera)</p>
+                                  <p className="text-[8.5px] text-zinc-500 font-normal normal-case mt-0.5">Capture ID card directly using device camera</p>
+                                </div>
+                              </button>
+
+                              <button 
+                                type="button"
+                                onClick={() => {
+                                  setIsIdentityMenuOpen(false);
+                                  document.getElementById('direct-id-gallery-input')?.click();
+                                }}
+                                className="w-full hover:bg-zinc-900/60 px-4 py-2.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-300 hover:text-white flex items-center gap-2.5 transition-colors"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-400"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.08a2 2 0 0 0-2.828 0L6 21"/></svg>
+                                <div>
+                                  <p>Upload from Gallery</p>
+                                  <p className="text-[8.5px] text-zinc-500 font-normal normal-case mt-0.5">Choose an existing photo from photo gallery</p>
+                                </div>
+                              </button>
+
+                              <button 
+                                type="button"
+                                onClick={() => {
+                                  setIsIdentityMenuOpen(false);
+                                  setShowQrCode(true);
+                                }}
+                                className="w-full hover:bg-zinc-900/60 px-4 py-2.5 text-left text-[11px] font-black uppercase tracking-wider text-zinc-300 hover:text-white flex items-center gap-2.5 transition-colors"
+                              >
+                                <Smartphone size={14} className="text-amber-400" />
+                                <div>
+                                  <p>QR Code Scan</p>
+                                  <p className="text-[8.5px] text-zinc-500 font-normal normal-case mt-0.5">Show QR on screen for guest to scan with their phone</p>
+                                </div>
+                              </button>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -3241,6 +5141,7 @@ export default function FrontOfficeTerminal() {
                       
                       <div className="flex justify-end mb-1">
                         <button 
+                          type="button"
                           onClick={handleRetakeIdentity}
                           disabled={actionLoading}
                           className="text-[9px] font-black text-rose-500 hover:text-rose-400 uppercase flex items-center gap-1 transition-colors px-2 py-1 rounded bg-rose-500/5 hover:bg-rose-500/10"
@@ -3249,17 +5150,34 @@ export default function FrontOfficeTerminal() {
                         </button>
                       </div>
                       <div className="grid grid-cols-2 gap-3">
-                        <div className="aspect-[3/2] bg-black/40 border border-white/5 rounded-xl overflow-hidden relative group">
-                           <Image src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/guest-ids/${selectedBooking.id_photo_url}`} alt="Guest ID Scan" fill className="object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
+                        <div className="aspect-[3/2] bg-black/40 border border-white/5 rounded-xl overflow-hidden relative group flex items-center justify-center">
+                           {selectedBooking.id_photo_url ? (
+                             <img 
+                               src={`${supabase.storage.from('guest-ids').getPublicUrl(selectedBooking.id_photo_url).data.publicUrl}?t=${Date.now()}`} 
+                               alt="Guest ID Scan" 
+                               className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" 
+                             />
+                           ) : (
+                             <span className="text-[9px] font-black text-zinc-600 uppercase tracking-wider text-center px-2">No Image File</span>
+                           )}
                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                               <p className="text-[8px] font-black text-white/40 uppercase tracking-tighter drop-shadow-md">Guest ID Scan</p>
                            </div>
                         </div>
                         <div className="aspect-[3/2] bg-white rounded-xl overflow-hidden relative flex items-center justify-center p-2">
-                           {selectedBooking.signature_url && <Image src={selectedBooking.signature_url} alt="Signature" fill className="object-contain" />}
+                           {selectedBooking.signature_url && (
+                             <img 
+                               src={selectedBooking.signature_url.startsWith('http')
+                                 ? `${selectedBooking.signature_url}${selectedBooking.signature_url.includes('?') ? '&' : '?'}t=${Date.now()}`
+                                 : `${supabase.storage.from('guest-ids').getPublicUrl(selectedBooking.signature_url).data.publicUrl}?t=${Date.now()}`} 
+                               alt="Signature" 
+                               className="w-full h-full object-contain" 
+                             />
+                           )}
                         </div>
                       </div>
                       <button 
+                        type="button"
                         onClick={() => window.open("/guest/print-regcard/" + selectedBooking.id, "_blank")}
                         className="w-full bg-indigo-600/20 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/30 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg"
                       >
@@ -3307,11 +5225,11 @@ export default function FrontOfficeTerminal() {
                   </h3>
                   <div className="flex items-center justify-between p-3 bg-white/[0.02] rounded-xl border border-white/[0.04]">
                     <span className="text-xs font-bold text-zinc-400">Total Collected</span>
-                    <span className="text-sm font-black text-white">${selectedBooking.amount}</span>
+                    <span className="text-sm font-black text-white">₹{selectedBooking.amount}</span>
                   </div>
                   <div className="flex items-center gap-3 mt-2">
                     <div className="relative flex-1">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-bold">$</span>
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-bold">₹</span>
                       <input 
                         type="number"
                         value={refundInput}
@@ -3500,6 +5418,89 @@ export default function FrontOfficeTerminal() {
         );
       })()}
 
+      {showWebcamModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            className="w-full max-w-lg bg-zinc-950 border border-white/10 rounded-[32px] overflow-hidden shadow-2xl relative"
+          >
+            {/* Header */}
+            <div className="p-6 pb-4 border-b border-white/[0.06] flex justify-between items-center bg-zinc-900/50">
+              <div>
+                <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                  <Camera className="text-indigo-400 animate-pulse" size={16} /> Live ID Card Capture
+                </h3>
+                <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mt-0.5">Align the guest ID within the frame and capture</p>
+              </div>
+              <button 
+                onClick={stopWebcam} 
+                className="p-2 text-zinc-500 hover:text-white bg-white/5 hover:bg-white/10 rounded-full transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Camera Frame Container */}
+            <div className="relative aspect-[4/3] bg-black overflow-hidden flex items-center justify-center">
+              <video 
+                ref={videoRef}
+                autoPlay 
+                playsInline 
+                muted
+                className="w-full h-full object-cover"
+              />
+              
+              {/* Overlay HUD guides */}
+              <div className="absolute inset-0 border-[24px] border-black/60 pointer-events-none flex items-center justify-center">
+                {/* ID scanning guide boundary */}
+                <div className="w-[85%] h-[75%] border-2 border-dashed border-indigo-400/50 rounded-2xl relative flex items-center justify-center">
+                  {/* Subtle corners */}
+                  <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-indigo-500 -mt-1.5 -ml-1.5 rounded-tl-lg" />
+                  <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-indigo-500 -mt-1.5 -mr-1.5 rounded-tr-lg" />
+                  <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-indigo-500 -mb-1.5 -ml-1.5 rounded-bl-lg" />
+                  <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-indigo-500 -mb-1.5 -mr-1.5 rounded-br-lg" />
+                  
+                  {/* Glowing center indicator */}
+                  <span className="text-[9px] font-black text-indigo-400/80 bg-black/60 border border-indigo-500/30 px-3 py-1 rounded-full uppercase tracking-widest animate-pulse">
+                    Place ID Card Here
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer and controls */}
+            <div className="p-6 bg-zinc-900/50 border-t border-white/[0.06] flex items-center justify-between">
+              <button
+                onClick={stopWebcam}
+                className="px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-[10px] font-black uppercase tracking-wider text-zinc-300 transition-colors"
+              >
+                Cancel
+              </button>
+              
+              <button
+                onClick={captureSnapshot}
+                disabled={actionLoading}
+                className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-lg shadow-indigo-500/20 hover:scale-[1.02] active:scale-[0.98]"
+              >
+                {actionLoading ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>Processing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Camera size={14} />
+                    <span>Capture Photo</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       {showBookingModal && (
         <BookingModal 
           isOpen={showBookingModal} 
@@ -3507,6 +5508,22 @@ export default function FrontOfficeTerminal() {
           propertyId={property?.id || ''} 
           rooms={rooms}
           bookings={bookings}
+          businessDate={businessDate}
+        />
+      )}
+
+      {showCoLivingModal && (
+        <CoLivingBookingModal 
+          isOpen={showCoLivingModal} 
+          onClose={() => {
+            setShowCoLivingModal(false);
+            setSelectedCoLivingRoomId(undefined);
+          }}
+          propertyId={property?.id || ''} 
+          rooms={rooms}
+          bookings={bookings}
+          defaultRoomId={selectedCoLivingRoomId}
+          businessDate={businessDate}
         />
       )}
 
@@ -3553,7 +5570,10 @@ export default function FrontOfficeTerminal() {
           roomId={activeCheckoutBooking.roomId}
           roomNumber={rooms.find(r => r.id === activeCheckoutBooking.roomId)?.room_number || ''}
           baseAmount={activeCheckoutBooking.amount}
-          onClose={() => setActiveCheckoutBooking(null)}
+          onClose={() => {
+            setActiveCheckoutBooking(null);
+            loadDashboardData();
+          }}
           onSuccess={() => {
             setActiveCheckoutBooking(null);
             loadDashboardData();
@@ -3576,6 +5596,9 @@ export default function FrontOfficeTerminal() {
         <div className="flex items-center justify-around py-2 px-1 max-w-md mx-auto">
           {NAV_ITEMS.map((item) => {
             const locked = !hasAccess(item.module);
+            const isItemActive = item.label === "Daily Reports" 
+              ? activeTab === 'reports' 
+              : (item.label === "Front Office" ? activeTab !== 'reports' : item.active);
             return (
               <Link
                 key={item.label}
@@ -3584,17 +5607,22 @@ export default function FrontOfficeTerminal() {
                   if (locked) {
                     e.preventDefault();
                     alert(`Access Restricted: The ${item.label} module requires higher authorization.`);
+                  } else if (item.label === "Daily Reports") {
+                    e.preventDefault();
+                    setActiveTab('reports');
+                  } else if (item.label === "Front Office" && activeTab === 'reports') {
+                    setActiveTab('tape');
                   }
                 }}
                 className={`flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl transition-all duration-300 ${
-                  item.active 
+                  isItemActive 
                     ? 'text-indigo-400 font-bold' 
                     : locked 
                       ? 'text-zinc-800' 
                       : 'text-zinc-500 active:text-zinc-200'
                 }`}
               >
-                <item.icon size={18} className={item.active ? 'text-indigo-400 drop-shadow-[0_0_8px_rgba(99,102,241,0.4)]' : ''} />
+                <item.icon size={18} className={isItemActive ? 'text-indigo-400 drop-shadow-[0_0_8px_rgba(99,102,241,0.4)]' : ''} />
                 <span className="text-[9px] uppercase tracking-wider font-semibold">{item.label}</span>
               </Link>
             );

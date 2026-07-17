@@ -8,6 +8,57 @@ import {
 import Image from 'next/image';
 import { processGuestRegistration } from '@/app/actions/guest';
 
+const compressImage = (file: File, maxWidth = 1600, maxHeight = 1600, quality = 0.75): Promise<Blob> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = document.createElement('img');
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        // Maintain aspect ratio and scale down if dimensions exceed bounds
+        if (width > maxWidth || height > maxHeight) {
+          if (width > height) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          } else {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(file); // Fallback to original file
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(blob);
+            } else {
+              resolve(file); // Fallback
+            }
+          },
+          'image/jpeg',
+          quality
+        );
+      };
+      img.onerror = () => resolve(file); // Fallback on error
+      img.src = event.target?.result as string;
+    };
+    reader.onerror = () => resolve(file); // Fallback on error
+    reader.readAsDataURL(file);
+  });
+};
+
 interface GuestRegistrationFormProps {
   bookingId: string;
   activePropertyId: string;
@@ -25,6 +76,11 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [hasSigned, setHasSigned] = useState(false);
+  
+  // Custom camera and gallery file input triggers
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -39,6 +95,9 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if ('touches' in e) {
+      e.preventDefault();
+    }
     setIsDrawing(true);
     draw(e);
   };
@@ -53,6 +112,9 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if ('touches' in e) {
+      e.preventDefault();
+    }
     if (!isDrawing || !canvasRef.current) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
@@ -70,6 +132,7 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
     ctx.stroke();
     ctx.beginPath();
     ctx.moveTo(x, y);
+    setHasSigned(true);
   };
 
   const clearSignature = () => {
@@ -77,11 +140,16 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
     if (canvas) {
       const ctx = canvas.getContext('2d');
       ctx?.clearRect(0, 0, canvas.width, canvas.height);
+      setHasSigned(false);
     }
   };
 
   const handleSubmit = async () => {
     if (!idPhoto || !canvasRef.current) return;
+    if (!hasSigned) {
+      alert("Digital signature is required. Please sign the registration card before submitting.");
+      return;
+    }
     setIsSubmitting(true);
     
     try {
@@ -104,12 +172,20 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
 
       console.log("Preparing to Save Guest & Upload files via Server Action...");
       
+      console.log("Compressing ID Photo before upload to optimize transmission and stability...");
+      const compressedIdPhotoBlob = await compressImage(idPhoto);
+      // Create a File from the compressed blob (force .jpg extension since we compressed it to image/jpeg)
+      const cleanBaseName = idPhoto.name ? idPhoto.name.replace(/\.[^/.]+$/, "") : "id_photo";
+      const compressedIdPhotoFile = new File([compressedIdPhotoBlob], `${cleanBaseName}.jpg`, {
+        type: 'image/jpeg'
+      });
+
       const formData = new FormData();
       formData.append('bookingId', bookingId);
       formData.append('propertyId', safePropertyId);
       formData.append('guestName', guestName);
       formData.append('guestEmail', guestEmail);
-      formData.append('idPhoto', idPhoto);
+      formData.append('idPhoto', compressedIdPhotoFile);
       formData.append('signature', signatureBlob, 'signature.png');
 
       const result = await processGuestRegistration(formData);
@@ -149,23 +225,64 @@ export default function GuestRegistrationForm({ bookingId, activePropertyId, gue
             <p className="text-[11px] text-zinc-400 mt-1">Please provide a clear photo of your Aadhar, Passport, or Driver&apos;s License.</p>
           </div>
 
+          {/* Hidden inputs to separate Camera from Gallery selection */}
+          <input 
+            type="file" 
+            accept="image/*" 
+            capture="environment"
+            ref={cameraInputRef}
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          <input 
+            type="file" 
+            accept="image/*" 
+            ref={galleryInputRef}
+            onChange={handleFileChange}
+            className="hidden"
+          />
+
           <div className="relative group">
-            <div className={`aspect-[3/2] rounded-3xl border-2 border-dashed flex flex-col items-center justify-center transition-all overflow-hidden relative ${idPreview ? 'border-emerald-500/50' : 'border-white/10'}`}>
-              {idPreview ? (
-                <Image src={idPreview} alt="ID Preview" fill className="object-cover rounded-[22px]" />
-              ) : (
-                <>
-                  <Camera size={32} className="text-zinc-700 mb-2" />
-                  <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Tap to capture ID</p>
-                </>
-              )}
-            </div>
-            <input 
-              type="file" 
-              accept="image/*" 
-              onChange={handleFileChange}
-              className="absolute inset-0 opacity-0 cursor-pointer"
-            />
+            {idPreview ? (
+              <div className="relative aspect-[3/2] rounded-3xl border-2 border-emerald-500/50 overflow-hidden shadow-2xl">
+                <img src={idPreview} alt="ID Preview" className="w-full h-full object-cover rounded-[22px]" />
+                <button 
+                  onClick={() => {
+                    setIdPhoto(null);
+                    setIdPreview(null);
+                  }}
+                  className="absolute top-3 right-3 bg-rose-600/90 hover:bg-rose-500 backdrop-blur-md text-white text-[9px] font-black uppercase px-3 py-2 rounded-xl transition-all"
+                >
+                  Change Photo
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="aspect-[4/3] rounded-3xl border-2 border-dashed border-white/10 hover:border-emerald-500/50 bg-white/[0.02] hover:bg-emerald-500/[0.02] flex flex-col items-center justify-center p-4 transition-all group"
+                >
+                  <Camera size={28} className="text-zinc-500 group-hover:text-emerald-400 transition-colors mb-2" />
+                  <span className="text-[10px] font-black text-zinc-400 group-hover:text-white uppercase tracking-wider text-center">
+                    Take Photo
+                    <span className="text-[8px] font-normal text-zinc-500 normal-case block mt-0.5">Use Phone Camera</span>
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => galleryInputRef.current?.click()}
+                  className="aspect-[4/3] rounded-3xl border-2 border-dashed border-white/10 hover:border-indigo-500/50 bg-white/[0.02] hover:bg-indigo-500/[0.02] flex flex-col items-center justify-center p-4 transition-all group"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-500 group-hover:text-indigo-400 transition-colors mb-2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.08a2 2 0 0 0-2.828 0L6 21"/></svg>
+                  <span className="text-[10px] font-black text-zinc-400 group-hover:text-white uppercase tracking-wider text-center">
+                    Upload ID
+                    <span className="text-[8px] font-normal text-zinc-500 normal-case block mt-0.5">Choose from Gallery</span>
+                  </span>
+                </button>
+              </div>
+            )}
           </div>
 
           <button 

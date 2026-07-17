@@ -16,13 +16,13 @@ Before building any Docker image or pushing to AWS ECR, Gemini MUST execute the 
 ### 1. Database Schema Synchronization
 - **Mandate:** The database schema must be updated BEFORE the new code starts running.
 - **Action:** Run `npx supabase db push --linked`.
-- **Validation:** Ensure the migration succeeds and confirms the target project is `xjsuwjivetlmzzbngeuy`.
+- **Validation:** Ensure the migration succeeds and confirms the target project is `njblemtrkqdnijwrnvjp`.
 
 ### 2. Client-Side Key Injection (Baking)
 - **Mandate:** Next.js hard-codes `NEXT_PUBLIC_` variables at build time. Local keys must NEVER be baked into the production image.
 - **Action:** Explicitly pass production keys as `--build-arg` in the `docker build` command.
 - **Production Reference:**
-  - URL: `https://xjsuwjivetlmzzbngeuy.supabase.co`
+  - URL: `https://njblemtrkqdnijwrnvjp.supabase.co`
   - Anon Key: (Fetch from user or existing ECS service task definition if not provided)
 
 ### 3. ECS Service Alignment
@@ -41,7 +41,7 @@ npx supabase db push --linked
 
 # Step 2: Build Image (Baking PROD keys and tagging for ap-south-1 ECR)
 docker build --no-cache \
-  --build-arg NEXT_PUBLIC_SUPABASE_URL=https://xjsuwjivetlmzzbngeuy.supabase.co \
+  --build-arg NEXT_PUBLIC_SUPABASE_URL=https://njblemtrkqdnijwrnvjp.supabase.co \
   --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=<PROD_ANON_KEY> \
   -t 401644592968.dkr.ecr.ap-south-1.amazonaws.com/pms/app:latest .
 

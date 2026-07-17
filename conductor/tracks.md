@@ -1,78 +1,93 @@
-# Project Tracks
+# Project Tracks - StaySync PMS Engine 2026
 
-This file tracks all major tracks for the project. Each track has its own detailed plan in its respective folder.
+This file tracks all major development tracks for the project, updated to reflect the unified, single-tier, role-free self-service architecture.
 
 ---
 
+## 1. Core Platform & Infrastructure (Completed)
 
-## Secure Authentication & Invite Flow
-- **ID:** `auth_invite_20260331`
-- **Goal:** Transition from dummy passwords to Supabase native invites.
-- **Link:** [Track Details](./tracks/auth_invite_20260331/index.md)
+### 💾 Single-Tier Self-Service Signup & Wizard
+- **ID:** `self_service_onboarding_20260618`
+- **Goal:** Public frictionless onboarding flow at `/signup` with a setup wizard at `/dashboard/property-setup`.
+- **Status:** **Completed** — Fully decoupled from the legacy multi-role invite gating and SaaS subscription billing.
 
-## Front Desk Tape Chart & Booking Matrix
+### 🛡️ Production Hardening & Flat RLS Policies
+- **ID:** `rls_hardening_20260331`
+- **Goal:** Strict database isolation for multi-tenancy based on `owner_user_id = auth.uid()`.
+- **Status:** **Completed** — Removed legacy role-checking helper functions. Consolidated into flat, high-performance Postgres RLS policies.
+
+---
+
+## 2. Front Desk & Room Inventory (Completed)
+
+### 📅 Interactive Tape Chart & Bed Selector
 - **ID:** `tape_chart_20260331`
 - **Goal:** Build the interactive timeline grid for front-desk operations.
-- **Link:** [Track Details](./tracks/tape_chart_20260331/index.md)
+- **Status:** **Completed** — Upgraded with tabbed bed selectors for monthly co-living room cards to optimize screen space.
 
-## Inventory & Room Management
+### 🔑 Front Office Daily Lists & Action Drawer
+- **ID:** `front_office_suite_20260403`
+- **Goal:** Arrivals/Departures lists, walk-in overbooking prevention, and instant room upgrades.
+- **Status:** **Completed** — Unlocked for all users.
+
+### 🚪 Inventory & Room Management
 - **ID:** `inventory_mgmt_20260331`
-- **Goal:** Polished interface for owners to manage physical room inventory.
-- **Link:** [Track Details](./tracks/inventory_mgmt_20260331/index.md)
+- **Goal:** Polished interface for owners to configure and manage physical room inventory.
+- **Status:** **Completed** — Seamless dashboard setup integration.
 
-## [DEPRECATED / REMOVED] Tier 1 Fleet Command & "Kill Switch"
-- **ID:** `fleet_command_20260331`
-- **Goal:** Global fleet management for super-admins (Deprecated in favor of a single-tier self-service architecture).
+---
 
-## OTA Channel Manager Synchronization
-- **ID:** `ota_sync_20260331`
-- **Goal:** Inbound webhook architecture for external bookings.
-- **Link:** [Track Details](./tracks/ota_sync_20260331/index.md)
+## 3. Operational Control & Compliance (Completed)
 
-## Production Hardening & RLS Finalization
-- **ID:** `rls_hardening_20260331`
-- **Goal:** Strict database isolation for multi-tenancy.
-- **Link:** [Track Details](./tracks/rls_hardening_20260331/index.md)
-
-## [DEPRECATED / INTEGRATED] Tier 2/3 Feature Parity
-- **ID:** `tier_parity_20260331`
-- **Goal:** Enable Tier 2 Owners to access Tier 3 Front-Desk tools. (Integrated natively into the unified Owner dashboard role).
-
-## Housekeeping & Room Recovery Module
+### 🧹 Housekeeping Web Terminal
 - **ID:** `housekeeping_mgmt_20260331`
-- **Goal:** Mobile task list with "Inspect" buttons, Minibar posting, and cleaning timers.
-- **Link:** [Track Details](./tracks/housekeeping_mgmt_20260331/index.md)
+- **Goal:** Cleanliness QC loop (`Dirty` ➡️ `Clean` ➡️ `Inspected`), housekeeper task sheets, and cleaning timers.
+- **Status:** **Completed** — Unified view displaying real-time guest status to prioritize cleanings.
 
-## Guest Folio & PDF Invoicing
-- **ID:** `guest_billing_20260331`
-- **Goal:** Automated PDF generation and emailing of invoices upon guest checkout.
-- **Link:** [Track Details](./tracks/guest_billing_20260331/index.md)
-
-## Financial Analytics & Data Visualization
-- **ID:** `financial_analytics_20260331`
-- **Goal:** Real-time revenue charts and occupancy trends for the Owner Dashboard.
-- **Link:** [Track Details](./tracks/financial_analytics_20260331/index.md)
-
-## Staff Architect (Enterprise IAM)
-- **ID:** `staff_architect_20260331`
-- **Goal:** Granular action-level permission matrix (Check-in vs Check-out) and reusable role templates.
-- **Link:** [Track Details](./tracks/staff_architect_20260331/index.md)
-
-## Guest Compliance (Digital RegCard)
+### 📋 Guest Compliance (Digital RegCard)
 - **ID:** `guest_compliance_20260331`
-- **Goal:** Digital registration card with Aadhar/ID capture and e-signatures.
-- **Link:** [Track Details](./tracks/guest_compliance_20260331/index.md)
+- **Goal:** Mobile QR code handshake allowing guest self-service Aadhar/ID upload and digital signature.
+- **Status:** **Completed** — Real-time synchronization checks during guest check-in.
 
-## Performance & Logs (Audit Trail)
-- **ID:** `audit_logs_20260402`
-- **Goal:** Track all critical operational actions for accountability and display a recent activity feed.
-- **Link:** [Track Details](./tracks/audit_logs_20260402/index.md)
+### 💰 Professional Folio Ledger & Invoicing
+- **ID:** `guest_billing_20260331`
+- **Goal:** Incidental charges posting, GST-compliant invoicing, checkout balance enforcement, and PDF generation.
+- **Status:** **Completed** — Chronological monthly payment allocations and PDF GST slabs implemented.
 
-## Integrated Indian Payments (Razorpay)
-- **ID:** `integrated_payments_20260331`
-- **Goal:** UPI QR codes and dynamic checkout for the Indian market.
-- **Link:** [Track Details](./tracks/integrated_payments_20260331/index.md)
+---
 
-## [DEPRECATED / REMOVED] SaaS Subscription Billing
-- **ID:** `saas_billing_20260331`
-- **Goal:** Stripe integration to manage monthly recurring revenue. (Deprecated in favor of free-tier/open self-service PMS).
+## 4. Analytics & Integration (Completed / Integrated)
+
+### 📈 Financial Analytics & Data Visualization
+- **ID:** `financial_analytics_20260331`
+- **Goal:** Real-time revenue charts and occupancy trends for the main dashboard.
+- **Status:** **Completed** — Integrated natively into the unified `/dashboard`.
+
+### 🔄 OTA Channel Manager Synchronization
+- **ID:** `ota_sync_20260331`
+- **Goal:** Inbound webhook architecture to handle external reservation synchronization.
+- **Status:** **Completed** — Integrated using database triggers and local n8n flows.
+
+---
+
+## 5. Stability & Bug Fixes (Completed - July 2026)
+
+### 🐛 Operational Stabilization & Ledger Fixes
+- **ID:** `pms_stabilization_20260702`
+- **Goal:** Address operational bugs around routing, ledger double-postings, group check-in compliance, co-living room search, and advance payment deletions.
+- **Status:** **Completed** — Implemented:
+  1. Middleware `redirect_to` tracking to prevent page refreshes from redirecting users away from active tabs.
+  2. Double-click execution checks on folio payment/incidental postings and check-ins to prevent duplicate ledger records.
+  3. Automatic propagation of ID and signature compliance validation to all rooms during group check-ins.
+  4. Search input search bar enablement on the Co-Living / Monthly view to allow room number filtering.
+  5. Virtual security deposit deletion server actions and UI triggers inside the Folio Modal.
+  6. Complete redesign of the Monthly Co-Living Hub into a high-density, card-based bed-slot grid with occupancy filters ('All', 'With Vacancy', 'Fully Booked', 'Has Dues').
+
+---
+
+## 6. Deprecated & Removed Legacy Tracks
+
+- **Fleet Command & "Kill Switch" (`fleet_command_20260331`):** **Removed** — Deprecated in favor of the role-free self-service model.
+- **Stripe SaaS Subscription Billing (`saas_billing_20260331`):** **Removed** — Removed billing screen gating and trial expirations.
+- **Staff Architect & Granular RBAC (`staff_architect_20260331`):** **Removed** — Replaced by standard flat user access to their own workspace.
+- **Tier 2/3 Feature Parity (`tier_parity_20260331`):** **Integrated** — All capabilities natively consolidated into the unified PMS dashboard.

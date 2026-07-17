@@ -26,6 +26,14 @@ export async function createBooking(formData: FormData) {
   const amount = parseFloat(formData.get('amount') as string);
   const status = 'Confirmed';
 
+  const isMonthly = formData.get('isMonthly') === 'true';
+  const billingCycleDate = formData.get('billingCycleDate') ? parseInt(formData.get('billingCycleDate') as string, 10) : null;
+  const monthlyRate = formData.get('monthlyRate') ? parseFloat(formData.get('monthlyRate') as string) : null;
+
+  const prepaidAmount = formData.get('prepaidAmount') ? parseFloat(formData.get('prepaidAmount') as string) : 0;
+  const prepaidMethod = formData.get('prepaidMethod') as string | null;
+  const prepaidDate = formData.get('prepaidDate') as string | null;
+
   // Support both group booking (roomIds) and single room (roomId)
   const roomIds = formData.getAll('roomIds').filter(Boolean) as string[];
   if (roomIds.length === 0) {
@@ -43,6 +51,17 @@ export async function createBooking(formData: FormData) {
 
   // Loop through and perform overlap check for each room
   for (const rid of roomIds) {
+    // Fetch room details first
+    const { data: rm, error: rmError } = await supabaseAdmin
+      .from('rooms')
+      .select('room_number, sharing_capacity, allowed_billing_type')
+      .eq('id', rid)
+      .single();
+
+    if (rmError || !rm) {
+      return { error: `Failed to retrieve details for room ID: ${rid}` };
+    }
+
     // OVERLAP CHECK: Prevent booking if the room is scheduled for maintenance/blocked
     const { data: blocks } = await supabaseAdmin
       .from('room_blocks')
@@ -53,8 +72,7 @@ export async function createBooking(formData: FormData) {
       .gte('end_date', checkIn);
 
     if (blocks && blocks.length > 0) {
-      const { data: rm } = await supabaseAdmin.from('rooms').select('room_number').eq('id', rid).single();
-      return { error: `Cannot book Room ${rm?.room_number || 'Unknown'}. It is scheduled for maintenance (${blocks[0].reason}) during these dates.` };
+      return { error: `Cannot book Room ${rm.room_number}. It is scheduled for maintenance (${blocks[0].reason}) during these dates.` };
     }
 
     // OVERLAP CHECK: Prevent double-booking a room that already has a guest
@@ -67,27 +85,43 @@ export async function createBooking(formData: FormData) {
       .gte('check_out', checkIn);
 
     if (existingBookings && existingBookings.length > 0) {
-      const { data: rm } = await supabaseAdmin.from('rooms').select('room_number').eq('id', rid).single();
-      return { error: `Cannot book Room ${rm?.room_number || 'Unknown'}. It is already booked by ${existingBookings[0].guest_name} during these dates.` };
+      const isCoLiving = isMonthly || rm.allowed_billing_type === 'monthly';
+      const capacity = rm.sharing_capacity || 1;
+
+      if (isCoLiving) {
+        if (existingBookings.length >= capacity) {
+          const guestNames = existingBookings.map(b => b.guest_name).join(', ');
+          return { error: `Cannot book Room ${rm.room_number}. It is already fully booked by ${guestNames} during these dates.` };
+        }
+      } else {
+        // Standard transient bookings (daily) block the entire room regardless of sharing capacity
+        return { error: `Cannot book Room ${rm.room_number}. It is already booked by ${existingBookings[0].guest_name} during these dates.` };
+      }
     }
   }
 
-  // Split amount equally across rooms
-  const amountPerRoom = amount / roomIds.length;
   const groupId = roomIds.length > 1 ? crypto.randomUUID() : null;
 
-  const bookingsToInsert = roomIds.map(rid => ({
-    property_id: propertyId,
-    room_id: rid,
-    guest_name: guestName,
-    guest_email: guestEmail || null,
-    guest_phone: guestPhone,
-    check_in: checkIn,
-    check_out: checkOut,
-    amount: amountPerRoom,
-    status: status,
-    group_id: groupId
-  }));
+  const bookingsToInsert = roomIds.map(rid => {
+    const customRate = formData.get(`roomRate_${rid}`);
+    const roomAmount = customRate ? parseFloat(customRate as string) : (amount / roomIds.length);
+    
+    return {
+      property_id: propertyId,
+      room_id: rid,
+      guest_name: guestName,
+      guest_email: guestEmail || null,
+      guest_phone: guestPhone,
+      check_in: checkIn,
+      check_out: checkOut,
+      amount: roomAmount,
+      status: status,
+      group_id: groupId,
+      is_monthly: isMonthly,
+      billing_cycle_date: isMonthly ? billingCycleDate : null,
+      monthly_rate: isMonthly ? (monthlyRate ? (monthlyRate / roomIds.length) : null) : null
+    };
+  });
 
   const { data: bookingData, error: bookingError } = await supabaseAdmin
     .from('bookings')
@@ -97,6 +131,38 @@ export async function createBooking(formData: FormData) {
   if (bookingError) {
     console.error("Failed to create booking:", bookingError);
     return { error: `Failed to create booking: ${bookingError.message}` };
+  }
+
+  // 1b. If a prepaid advance payment was provided, record it in the payments table
+  if (bookingData && bookingData.length > 0 && !isNaN(prepaidAmount) && prepaidAmount > 0) {
+    const prepaidPerRoom = prepaidAmount / bookingData.length;
+    const paymentsToInsert = bookingData.map(b => ({
+      booking_id: b.id,
+      property_id: propertyId,
+      amount: prepaidPerRoom,
+      method: prepaidMethod || 'Cash',
+      transaction_id: 'PREPAID-AT-CREATION',
+      created_by: user.id,
+      business_date: prepaidDate || checkIn // Use selected prepaid date, or default to check-in date
+    }));
+
+    const { error: paymentInsertError } = await supabaseAdmin
+      .from('payments')
+      .insert(paymentsToInsert);
+
+    if (paymentInsertError) {
+      console.error("Failed to insert prepaid payment at booking creation:", paymentInsertError.message);
+    } else {
+      // Log the payment in Audit Trail
+      for (const pay of paymentsToInsert) {
+        await logAction({
+          propertyId,
+          action: 'PAYMENT_RECEIVED',
+          details: { bookingId: pay.booking_id, amount: pay.amount, method: pay.method, transactionId: pay.transaction_id, businessDate: pay.business_date },
+          userId: user.id
+        });
+      }
+    }
   }
 
   // Audit Log
@@ -131,7 +197,8 @@ export async function checkInGuest(
     amount: number;
     method: string;
     transactionId?: string;
-  }
+  },
+  addonCharges?: { description: string; amount: number }[]
 ) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -146,7 +213,7 @@ export async function checkInGuest(
   // Fetch the booking to get the roomId, propertyId, and group_id
   const { data: booking, error: fetchError } = await supabaseAdmin
     .from('bookings')
-    .select('room_id, property_id, guest_name, group_id')
+    .select('room_id, property_id, guest_name, group_id, id_verified, id_photo_url, signature_url, amount')
     .eq('id', bookingId)
     .single();
 
@@ -156,46 +223,124 @@ export async function checkInGuest(
   }
 
   // Get all bookings to process in the group (or fallback to this single booking)
-  let bookingsToProcess = [{ id: bookingId, room_id: booking.room_id }];
+  let bookingsToProcess = [{ id: bookingId, room_id: booking.room_id, amount: booking.amount }];
   if (booking.group_id) {
     const { data: groupBookings } = await supabaseAdmin
       .from('bookings')
-      .select('id, room_id')
+      .select('id, room_id, amount')
       .eq('group_id', booking.group_id)
       .in('status', ['Confirmed', 'Pending']); // Only process those not already checked in/out/cancelled
     
     if (groupBookings && groupBookings.length > 0) {
-      bookingsToProcess = groupBookings;
+      bookingsToProcess = groupBookings.map(b => ({ id: b.id, room_id: b.room_id, amount: b.amount }));
     }
   }
 
-  // Insert split payments if details are provided
-  if (paymentDetails && paymentDetails.amount > 0) {
-    const { data: settings } = await supabaseAdmin
-      .from('app_settings')
-      .select('value')
-      .eq('key', 'business_date')
-      .single();
-    const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+  // Get active business date from settings
+  const { data: settings } = await supabaseAdmin
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'business_date')
+    .single();
+  const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
 
-    const splitAmount = paymentDetails.amount / bookingsToProcess.length;
-    const paymentRecords = bookingsToProcess.map(b => ({
-      booking_id: b.id,
+  // Insert split payments based on outstanding dues if details are provided
+  if (paymentDetails && paymentDetails.amount > 0) {
+    const bookingIds = bookingsToProcess.map(b => b.id);
+    const { data: existingPayments } = await supabaseAdmin
+      .from('payments')
+      .select('booking_id, amount')
+      .in('booking_id', bookingIds)
+      .eq('is_void', false);
+
+    // Map of booking_id -> prepaid sum
+    const prepaidMap: { [id: string]: number } = {};
+    bookingIds.forEach(id => { prepaidMap[id] = 0; });
+    existingPayments?.forEach(p => {
+      prepaidMap[p.booking_id] = (prepaidMap[p.booking_id] || 0) + Number(p.amount);
+    });
+
+    // Calculate dues for each booking
+    const bookingsWithDues = bookingsToProcess.map(b => {
+      const prepaid = prepaidMap[b.id] || 0;
+      const dues = Math.max(0, Number(b.amount) - prepaid);
+      return { ...b, dues };
+    });
+
+    // Distribute paymentDetails.amount across bookings based on their dues
+    let remainingPayment = paymentDetails.amount;
+    const paymentRecords: any[] = [];
+
+    // First round: Allocate to settle outstanding dues
+    for (const b of bookingsWithDues) {
+      if (remainingPayment <= 0) break;
+      const paymentForThisRoom = Math.min(remainingPayment, b.dues);
+      if (paymentForThisRoom > 0) {
+        paymentRecords.push({
+          booking_id: b.id,
+          property_id: booking.property_id,
+          amount: parseFloat(paymentForThisRoom.toFixed(2)),
+          method: paymentDetails.method,
+          transaction_id: paymentDetails.transactionId || null,
+          created_by: user.id,
+          business_date: businessDate
+        });
+        remainingPayment -= paymentForThisRoom;
+      }
+    }
+
+    // Second round: If there is still payment left (overpayment), split it equally among bookings
+    if (remainingPayment > 0.01) {
+      const extraPerRoom = remainingPayment / bookingsToProcess.length;
+      bookingsToProcess.forEach(b => {
+        const existingRecord = paymentRecords.find(r => r.booking_id === b.id);
+        if (existingRecord) {
+          existingRecord.amount = parseFloat((existingRecord.amount + extraPerRoom).toFixed(2));
+        } else {
+          paymentRecords.push({
+            booking_id: b.id,
+            property_id: booking.property_id,
+            amount: parseFloat(extraPerRoom.toFixed(2)),
+            method: paymentDetails.method,
+            transaction_id: paymentDetails.transactionId || null,
+            created_by: user.id,
+            business_date: businessDate
+          });
+        }
+      });
+    }
+
+    // Insert the calculated payment records
+    if (paymentRecords.length > 0) {
+      const { error: paymentError } = await supabaseAdmin
+        .from('payments')
+        .insert(paymentRecords);
+
+      if (paymentError) {
+        console.error("Check-in Payment Error:", paymentError);
+        return { error: `Failed to record check-in payment: ${paymentError.message}` };
+      }
+    }
+  }
+
+  // Insert incidental charges if provided
+  if (addonCharges && addonCharges.length > 0) {
+    const incidentalRecords = addonCharges.map(charge => ({
+      booking_id: bookingId,
       property_id: booking.property_id,
-      amount: splitAmount,
-      method: paymentDetails.method,
-      transaction_id: paymentDetails.transactionId || null,
+      amount: charge.amount,
+      description: charge.description,
       created_by: user.id,
       business_date: businessDate
     }));
 
-    const { error: paymentError } = await supabaseAdmin
-      .from('payments')
-      .insert(paymentRecords);
+    const { error: incidentalError } = await supabaseAdmin
+      .from('incidental_charges')
+      .insert(incidentalRecords);
 
-    if (paymentError) {
-      console.error("Check-in Payment Error:", paymentError);
-      return { error: `Failed to record check-in payment: ${paymentError.message}` };
+    if (incidentalError) {
+      console.error("Check-in Addon Charges Error:", incidentalError);
+      return { error: `Failed to record check-in addon charges: ${incidentalError.message}` };
     }
   }
 
@@ -208,7 +353,10 @@ export async function checkInGuest(
       .from('bookings')
       .update({ 
         status: 'Checked In',
-        check_in_time: new Date().toISOString()
+        check_in_time: new Date().toISOString(),
+        id_verified: booking.id_verified || false,
+        id_photo_url: booking.id_photo_url || null,
+        signature_url: booking.signature_url || null
       })
       .in('id', bookingIds),
     supabaseAdmin
@@ -234,7 +382,8 @@ export async function checkInGuest(
       processedCount: bookingsToProcess.length,
       paymentRecorded: !!paymentDetails,
       paymentAmount: paymentDetails?.amount,
-      paymentMethod: paymentDetails?.method
+      paymentMethod: paymentDetails?.method,
+      addonCharges
     },
     userId: user.id
   });
@@ -451,7 +600,7 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
   // 1. FOLIO AUDIT (The Financial Blockade)
   const { data: booking, error: bookingErr } = await supabaseAdmin
     .from('bookings')
-    .select('amount, property_id, guest_name')
+    .select('amount, discount_amount, property_id, guest_name, is_monthly, monthly_rate')
     .eq('id', bookingId)
     .single();
 
@@ -466,22 +615,34 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
     ?.filter(item => item.description?.startsWith('Daily Room Charge'))
     ?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
 
-  const roomAmount = Math.max(0, Number(booking.amount) - dailyRoomChargesSum);
-  const totalIncidentals = incidentals?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
+  const discountAmount = Number((booking as any).discount_amount || 0);
+  const isMonthly = (booking as any).is_monthly;
+  const monthlyRate = Number((booking as any).monthly_rate || 0);
+
+  const roomAmount = isMonthly
+    ? Math.max(0, monthlyRate - discountAmount)
+    : Math.max(0, Number(booking.amount) - discountAmount - dailyRoomChargesSum);
+
+  let totalIncidentals = incidentals?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
+  if (isMonthly && Number(booking.amount) > 0) {
+    totalIncidentals += Number(booking.amount);
+  }
 
   const { data: payments } = await supabaseAdmin
     .from('payments')
-    .select('amount')
+    .select('amount, is_void')
     .eq('booking_id', bookingId);
 
-  const totalPayments = payments?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
+  const totalPayments = payments
+    ?.filter(item => !item.is_void)
+    ?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
 
   // Calculate the Balance Due
   const totalCharges = roomAmount + totalIncidentals;
   const balanceDue = totalCharges - totalPayments;
 
-  // 2. ENFORCE ZERO BALANCE
-  if (Math.abs(balanceDue) > 0.01) {
+  // 2. ENFORCE ZERO BALANCE (Allow checkout if balance due is zero or negative/overpaid)
+  if (balanceDue > 0.01) {
     return { 
       error: `Folio has a non-zero balance. Settle the ₹${balanceDue.toFixed(2)} balance before departure.` 
     };
@@ -692,4 +853,71 @@ export async function updateCheckInTime(bookingId: string, checkInTime: string) 
 
   return { success: true };
 }
+
+/**
+ * Applies a discount to the room tariff on a booking prior to checkout
+ */
+export async function applyBookingDiscount(bookingId: string, discountAmount: number, reason: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { error: 'Unauthorized. Only logged-in agents can authorize discounts.' };
+  }
+
+  if (discountAmount < 0) {
+    return { error: 'Discount amount cannot be negative.' };
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // Fetch current booking amount
+  const { data: booking, error: fetchErr } = await supabaseAdmin
+    .from('bookings')
+    .select('amount, property_id, guest_name')
+    .eq('id', bookingId)
+    .single();
+
+  if (fetchErr || !booking) {
+    return { error: 'Booking not found.' };
+  }
+
+  if (discountAmount > Number(booking.amount)) {
+    return { error: `Discount cannot exceed the total room tariff of ₹${booking.amount}` };
+  }
+
+  // Update booking record
+  const { error: updateErr } = await supabaseAdmin
+    .from('bookings')
+    .update({
+      discount_amount: discountAmount,
+      discount_reason: reason.trim() || null
+    })
+    .eq('id', bookingId);
+
+  if (updateErr) {
+    console.error("Discount Application Error:", updateErr);
+    return { error: `Failed to apply discount: ${updateErr.message}` };
+  }
+
+  // Record an audit log
+  await logAction({
+    propertyId: booking.property_id,
+    action: 'BOOKING_DISCOUNT_APPLIED',
+    details: {
+      bookingId,
+      guestName: booking.guest_name,
+      originalTariff: booking.amount,
+      discountAmount,
+      netTariff: Number(booking.amount) - discountAmount,
+      reason
+    },
+    userId: user.id
+  });
+
+  revalidatePath('/dashboard/front-office');
+  revalidatePath('/dashboard/front-office', 'page');
+  return { success: true, netAmount: Number(booking.amount) - discountAmount };
+}
+
 

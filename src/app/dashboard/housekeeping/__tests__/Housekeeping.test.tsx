@@ -20,7 +20,8 @@ vi.mock('lucide-react', () => ({
   Wrench: () => <span>Wrench</span>,
   AlertTriangle: () => <span>AlertTriangle</span>,
   Play: () => <span>Play</span>,
-  ShieldCheck: () => <span>ShieldCheck</span>
+  ShieldCheck: () => <span>ShieldCheck</span>,
+  Moon: () => <span>Moon</span>
 }));
 
 // Mock localStorage to prevent crashes in the component

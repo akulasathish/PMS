@@ -83,6 +83,7 @@ export async function postPayment(formData: FormData) {
   const amountStr = formData.get('amount') as string;
   const method = formData.get('method') as string;
   const transactionId = formData.get('transactionId') as string | null;
+  const customBusinessDate = formData.get('businessDate') as string | null;
 
   if (!bookingId || !propertyId || !amountStr || !method) {
     return { error: 'Missing required fields.' };
@@ -95,13 +96,16 @@ export async function postPayment(formData: FormData) {
 
   const supabaseAdmin = getSupabaseAdmin();
   
-  // Fetch current business_date from app_settings
-  const { data: settings } = await supabaseAdmin
-    .from('app_settings')
-    .select('value')
-    .eq('key', 'business_date')
-    .single();
-  const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+  let businessDate = customBusinessDate;
+  if (!businessDate) {
+    // Fetch current business_date from app_settings
+    const { data: settings } = await supabaseAdmin
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'business_date')
+      .single();
+    businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+  }
   
   // Insert the payment securely
   const { data, error } = await supabaseAdmin
@@ -127,7 +131,7 @@ export async function postPayment(formData: FormData) {
   await logAction({
     propertyId,
     action: 'PAYMENT_RECEIVED',
-    details: { bookingId, amount, method, transactionId, paymentId: data.id },
+    details: { bookingId, amount, method, transactionId, paymentId: data.id, businessDate },
     userId: user.id
   });
 
@@ -146,7 +150,7 @@ export async function getFolioSummary(bookingId: string) {
   // 1. Fetch base booking details
   const { data: booking, error: bookingErr } = await supabaseAdmin
     .from('bookings')
-    .select('id, amount, status, property_id, check_in, check_out, check_in_time, check_out_time, guest_name, guest_email, guest_phone, room_id')
+    .select('id, amount, discount_amount, discount_reason, status, property_id, check_in, check_out, check_in_time, check_out_time, guest_name, guest_email, guest_phone, room_id, is_monthly, monthly_rate, created_at')
     .eq('id', bookingId)
     .single();
 
@@ -175,11 +179,26 @@ export async function getFolioSummary(bookingId: string) {
     .single();
 
   // 3. Fetch incidental charges (including is_automated and waiver fields)
-  const { data: incidentals, error: incErr } = await supabaseAdmin
+  const { data: rawIncidentals, error: incErr } = await supabaseAdmin
     .from('incidental_charges')
     .select('id, amount, description, created_at, business_date, is_automated, waiver_reason')
     .eq('booking_id', bookingId)
     .order('created_at', { ascending: true });
+
+  const incidentals = rawIncidentals ? [...rawIncidentals] : [];
+
+  // Append security deposit as a virtual incidental charge for monthly bookings
+  if (booking.is_monthly && Number(booking.amount) > 0) {
+    incidentals.unshift({
+      id: 'security-deposit-charge',
+      amount: Number(booking.amount),
+      description: 'Security Deposit / Advance',
+      created_at: booking.check_in_time || booking.created_at || new Date().toISOString(),
+      business_date: booking.check_in,
+      is_automated: true,
+      waiver_reason: null
+    });
+  }
 
   // 4. Fetch payments
   const { data: payments, error: payErr } = await supabaseAdmin
@@ -193,14 +212,20 @@ export async function getFolioSummary(bookingId: string) {
     ?.filter(item => item.description.startsWith('Daily Room Charge'))
     ?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
 
-  // The base room amount shown on the folio is the booking total minus already-posted daily charges
-  const roomAmount = Math.max(0, Number(booking.amount) - dailyRoomChargesSum);
+  const discountAmount = Number((booking as any).discount_amount || 0);
+  const discountReason = (booking as any).discount_reason || null;
+
+  // The base room amount shown on the folio is the booking total minus discount minus already-posted daily charges
+  const roomAmount = booking.is_monthly
+    ? Math.max(0, Number(booking.monthly_rate || 0) - discountAmount)
+    : Math.max(0, Number(booking.amount) - discountAmount - dailyRoomChargesSum);
 
   const totalCharges = roomAmount + (incidentals?.reduce((sum, item) => sum + Number(item.amount), 0) || 0);
   const totalPayments = payments
     ?.filter(item => !item.is_void)
     ?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
   const balanceDue = totalCharges - totalPayments;
+
 
   // 5. Evaluate proposed fees
   let proposedLateCheckoutFee = 0;
@@ -261,10 +286,20 @@ export async function getFolioSummary(bookingId: string) {
     }
   }
 
+  // Fetch current business_date from app_settings to default the payment logging date
+  const { data: settings } = await supabaseAdmin
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'business_date')
+    .single();
+  const activeBusinessDate = settings?.value || new Date().toISOString().substring(0, 10);
+
   return {
     success: true,
     data: {
       bookingId: booking.id,
+      businessDate: activeBusinessDate,
+      isMonthly: !!booking.is_monthly,
       roomAmount,
       bookingStatus: booking.status,
       checkIn: booking.check_in,
@@ -288,6 +323,8 @@ export async function getFolioSummary(bookingId: string) {
       balanceDue,
       proposedLateCheckoutFee,
       proposedEarlyCheckinFee,
+      discountAmount,
+      discountReason,
       standardHours: property ? {
         checkIn: property.standard_checkin_time,
         checkOut: property.standard_checkout_time
@@ -439,4 +476,179 @@ export async function voidPayment(paymentId: string, propertyId: string, reason:
   revalidatePath('/dashboard/front-office');
   return { success: true };
 }
+
+/**
+ * Server action to delete an existing incidental charge
+ */
+export async function deleteIncidentalCharge(chargeId: string, propertyId: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) return { error: 'Unauthorized.' };
+
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // Fetch the charge description/details first to audit
+  const { data: chargeData, error: fetchError } = await supabaseAdmin
+    .from('incidental_charges')
+    .select('booking_id, amount, description')
+    .eq('id', chargeId)
+    .single();
+
+  if (fetchError || !chargeData) {
+    return { error: 'Incidental charge not found.' };
+  }
+
+  // Delete the charge
+  const { error } = await supabaseAdmin
+    .from('incidental_charges')
+    .delete()
+    .eq('id', chargeId);
+
+  if (error) {
+    console.error("Delete Incidental Error:", error.message);
+    return { error: `Failed to delete charge: ${error.message}` };
+  }
+
+  // Audit the deletion
+  await logAction({
+    propertyId,
+    action: 'INCIDENTAL_CHARGE_DELETED',
+    details: { chargeId, bookingId: chargeData.booking_id, amount: chargeData.amount, description: chargeData.description },
+    userId: user.id
+  });
+
+  revalidatePath('/dashboard/front-office');
+  return { success: true };
+}
+
+/**
+ * Server action to delete/clear the security deposit (advance payment amount) on the booking
+ */
+export async function deleteSecurityDeposit(bookingId: string, propertyId: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) return { error: 'Unauthorized.' };
+
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // Set booking amount to 0 (Security Deposit / Advance is stored in bookings.amount for monthly bookings)
+  const { error } = await supabaseAdmin
+    .from('bookings')
+    .update({ amount: 0 })
+    .eq('id', bookingId);
+
+  if (error) {
+    console.error("Delete Security Deposit Error:", error.message);
+    return { error: `Failed to delete security deposit: ${error.message}` };
+  }
+
+  // Audit the deletion
+  await logAction({
+    propertyId,
+    action: 'SECURITY_DEPOSIT_DELETED',
+    details: { bookingId },
+    userId: user.id
+  });
+
+  revalidatePath('/dashboard/front-office');
+  return { success: true };
+}
+
+/**
+ * Force settle the folio to exactly ₹0.00 balance by posting an adjustment payment (if positive)
+ * or an adjustment charge (if negative).
+ */
+export async function forceSettleFolio(bookingId: string, propertyId: string) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) return { error: 'Unauthorized.' };
+
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // Fetch the folio summary first
+  const summaryRes = await getFolioSummary(bookingId);
+  if ('error' in summaryRes || !summaryRes.success) {
+    return { error: summaryRes.error || 'Failed to fetch folio summary.' };
+  }
+
+  const { balanceDue } = summaryRes.data;
+
+  if (Math.abs(balanceDue) <= 0.01) {
+    return { success: true, message: 'Folio is already settled.' };
+  }
+
+  // Fetch current business_date from app_settings
+  const { data: settings } = await supabaseAdmin
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'business_date')
+    .single();
+  const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+
+  if (balanceDue > 0) {
+    // Guest owes money. Post an adjustment payment to bring the balance to 0.
+    const { error: payError } = await supabaseAdmin
+      .from('payments')
+      .insert([{
+        booking_id: bookingId,
+        property_id: propertyId,
+        amount: balanceDue,
+        method: 'Adjustment / Write-off',
+        transaction_id: 'SYSTEM-FORCE-SETTLE',
+        created_by: user.id,
+        business_date: businessDate
+      }]);
+
+    if (payError) {
+      console.error("Force Settle Payment Error:", payError.message);
+      return { error: `Failed to post adjustment payment: ${payError.message}` };
+    }
+
+    // Log in Audit Trail
+    await logAction({
+      propertyId,
+      action: 'PAYMENT_RECEIVED',
+      details: { bookingId, amount: balanceDue, method: 'Adjustment / Write-off', transactionId: 'SYSTEM-FORCE-SETTLE', businessDate },
+      userId: user.id
+    });
+
+  } else {
+    // Guest overpaid / refund settled offline. Post an incidental charge to bring the balance to 0.
+    const adjustmentAmount = Math.abs(balanceDue);
+    const { error: chargeError } = await supabaseAdmin
+      .from('incidental_charges')
+      .insert([{
+        booking_id: bookingId,
+        property_id: propertyId,
+        amount: adjustmentAmount,
+        description: 'Folio Settlement Adjustment (Refunded/Settled Offline)',
+        created_by: user.id,
+        is_automated: true,
+        business_date: businessDate
+      }]);
+
+    if (chargeError) {
+      console.error("Force Settle Incidental Error:", chargeError.message);
+      return { error: `Failed to post adjustment charge: ${chargeError.message}` };
+    }
+
+    // Log in Audit Trail
+    await logAction({
+      propertyId,
+      action: 'INCIDENTAL_CHARGE_POSTED',
+      details: { bookingId, amount: adjustmentAmount, description: 'Folio Settlement Adjustment (Refunded/Settled Offline)' },
+      userId: user.id
+    });
+  }
+
+  revalidatePath('/dashboard/front-office');
+  revalidatePath('/dashboard/front-office', 'page');
+  
+  return { success: true };
+}
+
+
 

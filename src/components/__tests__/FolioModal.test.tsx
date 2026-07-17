@@ -14,7 +14,13 @@ vi.mock('lucide-react', () => ({
   ArrowRight: () => <span>Arrow</span>,
   ShieldCheck: () => <span>Shield</span>,
   Loader2: () => <span>Loader</span>,
-  AlertCircle: () => <span>Alert</span>
+  AlertCircle: () => <span>Alert</span>,
+  Percent: () => <span>Percent</span>,
+  Printer: () => <span>Printer</span>,
+  Trash2: () => <span>Trash2</span>,
+  Sparkles: () => <span>Sparkles</span>,
+  CalendarDays: () => <span>CalendarDays</span>,
+  FileText: () => <span>FileText</span>
 }));
 
 // Mock Next.js router

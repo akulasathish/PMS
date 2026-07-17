@@ -55,10 +55,10 @@ function LoginForm() {
     }
 
     // Successfully authenticated, route to dashboard
-
+    const redirectTo = searchParams.get('redirect_to') || '/dashboard';
 
     router.refresh(); // Crucial for middleware to see the new session
-    router.push('/dashboard');
+    router.push(redirectTo);
   };
 
   return (
@@ -78,8 +78,8 @@ function LoginForm() {
       >
         {/* Compact Logo Area */}
         <div className="flex flex-col items-center mb-6">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-3 shadow-[0_0_20px_rgba(16,185,129,0.1)]">
-            <Building2 size={20} />
+          <div className="w-16 h-16 rounded-2xl bg-transparent border border-white/10 flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(255,255,255,0.05)] overflow-hidden">
+            <img src="/logo.png" alt="StaySync Logo" className="w-full h-full object-contain" />
           </div>
           <h1 className="text-xl font-bold text-white tracking-tight">Owner Portal</h1>
           <p className="text-zinc-600 text-[9px] uppercase tracking-[0.2em] mt-1 font-bold">Secure Verification</p>

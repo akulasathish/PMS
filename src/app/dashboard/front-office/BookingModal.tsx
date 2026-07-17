@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { X, Loader2, Bed, Calendar, User, Mail, Phone, DollarSign, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import { X, Loader2, Bed, Calendar, User, Mail, Phone, DollarSign, ShieldAlert, CheckCircle2, Search } from 'lucide-react';
 import { createBooking } from '@/app/actions/booking';
 import { Room, Booking } from '@/lib/types';
 
@@ -13,9 +13,10 @@ interface BookingModalProps {
   propertyId: string;
   rooms: Room[];
   bookings: Booking[]; // Accept all bookings to check for overlaps
+  businessDate?: string;
 }
 
-export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, rooms, bookings }: BookingModalProps) {
+export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, rooms, bookings, businessDate }: BookingModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -28,17 +29,27 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
     return `${year}-${month}-${day}`;
   };
 
-  const todayStr = getLocalYYYYMMDD(new Date());
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = getLocalYYYYMMDD(tomorrow);
+  const todayStr = businessDate || getLocalYYYYMMDD(new Date());
+
+  const getTomorrowFromStr = (dateStr: string) => {
+    const parts = dateStr.split('-');
+    const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    d.setDate(d.getDate() + 1);
+    return getLocalYYYYMMDD(d);
+  };
+  const tomorrowStr = getTomorrowFromStr(todayStr);
 
   // Track the dates selected in the form to dynamically filter room availability
   const [selectedCheckIn, setSelectedCheckIn] = useState(todayStr);
   const [selectedCheckOut, setSelectedCheckOut] = useState(tomorrowStr);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [recordPrepaid, setRecordPrepaid] = useState(false);
 
   // Calculate truly available rooms based on physical state AND date overlap
   const availableRooms = rooms.filter(room => {
+    // Ensure the room is not strictly for monthly co-living
+    if (room.allowed_billing_type === 'monthly') return false;
+
     // 1. PHYSICAL BLOCK: A room MUST be 'Available' (Clean) right now to be assigned to a new Walk-In.
     // We cannot sell a 'Dirty', 'Occupied', or 'Blocked' room.
     if (room.status !== 'Available') return false;
@@ -121,21 +132,41 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
             <form action={handleSubmit} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Room Assignment (Select 1 or more for Group Booking)</label>
+                
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Search room number..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2 px-3 pl-9 text-white text-xs placeholder:text-zinc-600 focus:outline-none focus:border-azure-500/50 transition-all mb-2"
+                  />
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 -mt-1 text-zinc-500">
+                    <Search size={14} />
+                  </div>
+                </div>
+
                 <div className="max-h-40 overflow-y-auto border border-white/10 bg-black/50 rounded-xl p-3 space-y-2 no-scrollbar">
                   {availableRooms.length === 0 ? (
                     <div className="text-sm text-zinc-500 text-center py-2">NO ROOMS AVAILABLE FOR THESE DATES</div>
                   ) : (
-                    availableRooms.map(room => (
-                      <label key={room.id} className="flex items-center gap-3 text-white text-sm cursor-pointer hover:bg-white/5 p-2 rounded-lg transition-colors">
-                        <input
-                          type="checkbox"
-                          name="roomIds"
-                          value={room.id}
-                          className="w-4 h-4 rounded border-zinc-700 bg-zinc-800 text-azure-600 focus:ring-azure-500 focus:ring-offset-zinc-900 cursor-pointer"
-                        />
-                        <span className="font-bold text-zinc-100">Room {room.room_number} <span className="text-zinc-500 font-normal">({room.type})</span></span>
-                      </label>
-                    ))
+                    availableRooms.filter(room => room.room_number.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 ? (
+                      <div className="text-sm text-zinc-500 text-center py-2">NO MATCHING ROOMS FOUND</div>
+                    ) : (
+                      availableRooms
+                        .filter(room => room.room_number.toLowerCase().includes(searchQuery.toLowerCase()))
+                        .map(room => (
+                          <label key={room.id} className="flex items-center gap-3 text-white text-sm cursor-pointer hover:bg-white/5 p-2 rounded-lg transition-colors">
+                            <input
+                              type="checkbox"
+                              name="roomIds"
+                              value={room.id}
+                              className="w-4 h-4 rounded border-zinc-700 bg-zinc-800 text-azure-600 focus:ring-azure-500 focus:ring-offset-zinc-900 cursor-pointer"
+                            />
+                            <span className="font-bold text-zinc-100">Room {room.room_number} <span className="text-zinc-500 font-normal">({room.type})</span></span>
+                          </label>
+                        ))
+                    )
                   )}
                 </div>
               </div>
@@ -240,10 +271,10 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Total Amount ($)</label>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider pl-1">Total Amount (₹)</label>
                 <div className="relative">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500">
-                    <DollarSign size={16} />
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-mono text-xs">
+                    ₹
                   </div>
                   <input 
                     type="number" 
@@ -251,10 +282,63 @@ export default function BookingModal({ isOpen, onClose, onSuccess, propertyId, r
                     min="0"
                     step="0.01"
                     required
-                    placeholder="250.00"
-                    className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-azure-500/50"
+                    placeholder="2500.00"
+                    className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-8 pr-4 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-azure-500/50"
                   />
                 </div>
+              </div>
+
+              {/* Prepaid/Advance Payment Section */}
+              <div className="border border-white/5 bg-white/[0.02] p-4 rounded-xl space-y-3">
+                <label className="flex items-center gap-2 text-xs font-bold text-zinc-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={recordPrepaid}
+                    onChange={(e) => setRecordPrepaid(e.target.checked)}
+                    className="w-4 h-4 rounded border-zinc-700 bg-zinc-800 text-azure-600 focus:ring-azure-500 cursor-pointer"
+                  />
+                  <span>Record Advance / Prepaid Payment</span>
+                </label>
+
+                {recordPrepaid && (
+                  <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-white/5">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider pl-0.5">Amount (₹)</label>
+                      <input
+                        type="number"
+                        name="prepaidAmount"
+                        required
+                        min="0.01"
+                        step="0.01"
+                        placeholder="10000"
+                        className="w-full bg-black/50 border border-white/10 rounded-lg py-1.5 px-2 text-white text-xs placeholder:text-zinc-600 focus:outline-none focus:border-azure-500/50"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider pl-0.5">Method</label>
+                      <select
+                        name="prepaidMethod"
+                        required
+                        className="w-full bg-black/50 border border-white/10 rounded-lg py-1.5 px-2 text-white text-xs focus:outline-none focus:border-azure-500/50 cursor-pointer"
+                      >
+                        <option value="UPI">UPI</option>
+                        <option value="Cash">Cash</option>
+                        <option value="Card">Card</option>
+                        <option value="Bank Transfer">Bank Transfer</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider pl-0.5">Date</label>
+                      <input
+                        type="date"
+                        name="prepaidDate"
+                        required
+                        defaultValue={todayStr}
+                        className="w-full bg-black/50 border border-white/10 rounded-lg py-1.5 px-2 text-white text-xs focus:outline-none focus:border-azure-500/50"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {error && (
