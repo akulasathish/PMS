@@ -672,40 +672,41 @@ export default function Dashboard() {
       <main className="flex-1 overflow-y-auto">
 
         {/* TOP BAR */}
-        <header className="sticky top-0 z-30 backdrop-blur-xl bg-[#08080a]/80 border-b border-white/[0.04] px-8 py-4">
-          <div className="flex justify-between items-center">
-            <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}>
-              <div className="flex items-center gap-3">
-                <h2 className="text-xl font-bold text-white tracking-tight">Owner Overview</h2>
-                <span className="text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+        <header className="sticky top-0 z-30 backdrop-blur-xl bg-[#08080a]/80 border-b border-white/[0.04] px-4 md:px-8 py-4">
+          <div className="flex justify-between items-center gap-3">
+            <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="min-w-0">
+              <div className="flex items-center gap-2 md:gap-3">
+                <h2 className="text-lg md:text-xl font-bold text-white tracking-tight truncate">Owner Overview</h2>
+                <span className="text-[9px] md:text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 md:px-2.5 md:py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 md:gap-1.5 shrink-0">
+                  <span className="w-1 md:w-1.5 h-1 md:h-1.5 bg-emerald-500 rounded-full animate-pulse" />
                   Live
                 </span>
               </div>
-              <p className="text-[11px] text-zinc-600 mt-0.5">Real-time property intelligence &bull; {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+              <p className="text-[10px] md:text-[11px] text-zinc-600 mt-0.5 truncate">Real-time property intelligence &bull; {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
             </motion.div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 md:gap-3 shrink-0">
               <button 
                 onClick={() => {
                   setShowSubscriptionDrawer(true);
                 }}
-                className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-500/20 text-emerald-400 hover:text-white hover:border-emerald-500/40 px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all shadow-[0_0_15px_rgba(16,185,129,0.08)] active:scale-[0.97]"
+                className="flex items-center gap-1 md:gap-1.5 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-500/20 text-emerald-400 hover:text-white hover:border-emerald-500/40 px-2 py-2 md:px-3 md:py-2 rounded-xl text-[10px] md:text-[11px] font-black uppercase tracking-wider transition-all shadow-[0_0_15px_rgba(16,185,129,0.08)] active:scale-[0.97]"
               >
                 <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-                Free Access Active
+                <span className="hidden sm:inline">Free Access Active</span>
               </button>
 
-              <button className="p-2.5 rounded-xl border border-white/[0.06] text-zinc-500 cursor-not-allowed">
-                <Search size={16} />
+              <button className="p-2 md:p-2.5 rounded-xl border border-white/[0.06] text-zinc-500 cursor-not-allowed">
+                <Search size={15} />
               </button>
-              <button className="p-2.5 rounded-xl border border-white/[0.06] text-zinc-500 hover:text-white hover:bg-white/[0.04] transition-all relative">
-                <Bell size={16} />
-                <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-[#08080a]" />
+              <button className="p-2 md:p-2.5 rounded-xl border border-white/[0.06] text-zinc-500 hover:text-white hover:bg-white/[0.04] transition-all relative">
+                <Bell size={15} />
+                <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-rose-500 rounded-full border border-[#08080a]" />
               </button>
-              <button className="flex items-center gap-2 bg-white text-black px-5 py-2.5 rounded-xl text-[12px] font-bold hover:bg-zinc-200 transition-all shadow-[0_0_30px_rgba(255,255,255,0.06)] active:scale-[0.97]">
+
+              <button className="flex items-center gap-1.5 bg-white text-black p-2.5 md:px-5 md:py-2.5 rounded-xl text-[12px] font-bold hover:bg-zinc-200 transition-all shadow-[0_0_30px_rgba(255,255,255,0.06)] active:scale-[0.97]" title="Generate Report">
                 <BarChart3 size={14} />
-                Generate Report
+                <span className="hidden md:inline">Generate Report</span>
               </button>
             </div>
           </div>
@@ -824,8 +825,8 @@ export default function Dashboard() {
                   </button>
                 </div>
 
-                {/* Table Header */}
-                <div className="grid grid-cols-12 gap-4 text-[10px] text-zinc-500 uppercase tracking-[0.15em] font-bold pb-4 border-b border-white/[0.04] mb-2">
+                {/* Table Header - Hidden on mobile, shown on desktop */}
+                <div className="hidden md:grid grid-cols-12 gap-4 text-[10px] text-zinc-500 uppercase tracking-[0.15em] font-bold pb-4 border-b border-white/[0.04] mb-2">
                   <div className="col-span-4">Guest</div>
                   <div className="col-span-2">Room</div>
                   <div className="col-span-2">Status</div>
@@ -833,7 +834,7 @@ export default function Dashboard() {
                   <div className="col-span-2 text-right">Amount</div>
                 </div>
 
-                {/* Table Rows */}
+                {/* Table Rows - Flex layout on mobile, grid on desktop */}
                 <div className="space-y-1">
                   {isLoading ? (
                     <div className="py-20 flex justify-center"><Loader2 className="animate-spin text-indigo-500" size={24} /></div>
@@ -843,30 +844,36 @@ export default function Dashboard() {
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.3 + i * 0.06 }}
                       key={bk.id}
-                      className="grid grid-cols-12 gap-4 items-center py-4 rounded-xl hover:bg-white/[0.02] transition-all cursor-pointer group px-2"
+                      className="flex md:grid md:grid-cols-12 gap-4 items-center justify-between md:justify-normal py-4 rounded-xl hover:bg-white/[0.02] transition-all cursor-pointer group px-2"
                     >
-                      <div className="col-span-4 flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-zinc-800 to-zinc-700 border border-white/[0.06] flex items-center justify-center text-[11px] font-bold text-zinc-300 group-hover:from-indigo-600 group-hover:to-indigo-500 group-hover:text-white group-hover:border-indigo-500/30 transition-all duration-300">
+                      <div className="flex-1 md:flex-none md:col-span-4 flex items-center gap-3 min-w-0">
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-zinc-800 to-zinc-700 border border-white/[0.06] flex items-center justify-center text-[11px] font-bold text-zinc-300 group-hover:from-indigo-600 group-hover:to-indigo-500 group-hover:text-white group-hover:border-indigo-500/30 transition-all duration-300 shrink-0">
                           {bk.guest_name.split(' ').map((n: string) => n[0]).join('')}
                         </div>
-                        <div>
-                          <p className="text-[13px] font-semibold text-zinc-200 group-hover:text-white transition-colors">{bk.guest_name}</p>
-                          <p className="text-[10px] text-zinc-600">{bk.id.slice(0, 8)} &bull; {new Date(bk.check_in).toLocaleDateString()}</p>
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-semibold text-zinc-200 group-hover:text-white transition-colors truncate">{bk.guest_name}</p>
+                          <p className="text-[10px] text-zinc-600 truncate flex items-center gap-1.5 flex-wrap mt-0.5">
+                            <span className="font-bold text-zinc-400 md:hidden">R-{rooms.find((r: Room) => r.id === bk.room_id)?.room_number || 'N/A'}</span>
+                            <span className="md:hidden text-zinc-700">&bull;</span>
+                            <span>{new Date(bk.check_in).toLocaleDateString(undefined, {month:'short', day:'numeric'})}</span>
+                          </p>
                         </div>
                       </div>
-                      <div className="col-span-2">
+                      <div className="hidden md:block md:col-span-2">
                         <span className="text-[12px] text-zinc-400 font-medium">Room {rooms.find((r: Room) => r.id === bk.room_id)?.room_number || 'N/A'}</span>
                       </div>
-                      <div className="col-span-2">
-                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border ${statusStyles[bk.status] || ''}`}>
-                          {bk.status}
-                        </span>
-                      </div>
-                      <div className="col-span-2">
-                        <span className="text-[12px] text-zinc-500">Live</span>
-                      </div>
-                      <div className="col-span-2 text-right">
-                        <span className="text-[13px] font-bold text-white">₹{bk.amount}</span>
+                      <div className="flex items-center gap-3 md:gap-0 md:contents shrink-0">
+                        <div className="md:col-span-2 flex justify-end md:justify-start">
+                          <span className={`text-[9px] md:text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 md:px-2.5 md:py-1 rounded-full border shrink-0 ${statusStyles[bk.status] || ''}`}>
+                            {bk.status}
+                          </span>
+                        </div>
+                        <div className="hidden md:block md:col-span-2">
+                          <span className="text-[12px] text-zinc-500">Live</span>
+                        </div>
+                        <div className="md:col-span-2 text-right">
+                          <span className="text-[12px] md:text-[13px] font-bold text-white whitespace-nowrap">₹{bk.amount}</span>
+                        </div>
                       </div>
                     </motion.div>
                   ))}
