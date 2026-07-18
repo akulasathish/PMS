@@ -23,7 +23,10 @@ function SignupForm() {
   const [otpError, setOtpError] = useState('');
   const [resendTimer, setResendTimer] = useState(60);
   
-  const [bypassVerification, setBypassVerification] = useState(false); // Developer toggle!
+  const [bypassVerification, setBypassVerification] = useState(
+    typeof window !== 'undefined' && 
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ); // Developer toggle!
   
   const router = useRouter();
   const searchParams = useSearchParams();

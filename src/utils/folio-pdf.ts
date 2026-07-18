@@ -247,7 +247,7 @@ export async function generateGuestBillPDF(folio: FolioPDFData) {
     ? [['-', 'No payments recorded on ledger', '-', '-']]
     : activePayments.map((p, index) => [
         (index + 1).toString(),
-        p.method + (p.transaction_id ? ` (Txn: ${p.transaction_id})` : ''),
+        p.method + (p.transaction_id ? ` (Txn: ${p.transaction_id})` : '') + ((p as any).billing_period ? ` [Cycle: ${(p as any).billing_period}]` : ''),
         formatDate(p.business_date || p.created_at),
         `-Rs. ${Number(p.amount).toFixed(2)}`
       ]);

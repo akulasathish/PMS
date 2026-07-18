@@ -31,6 +31,7 @@ export async function createBooking(formData: FormData) {
   const monthlyRate = formData.get('monthlyRate') ? parseFloat(formData.get('monthlyRate') as string) : null;
 
   const prepaidAmount = formData.get('prepaidAmount') ? parseFloat(formData.get('prepaidAmount') as string) : 0;
+  const prepaidDepositAmount = formData.get('prepaidDepositAmount') ? parseFloat(formData.get('prepaidDepositAmount') as string) : 0;
   const prepaidMethod = formData.get('prepaidMethod') as string | null;
   const prepaidDate = formData.get('prepaidDate') as string | null;
 
@@ -133,19 +134,44 @@ export async function createBooking(formData: FormData) {
     return { error: `Failed to create booking: ${bookingError.message}` };
   }
 
-  // 1b. If a prepaid advance payment was provided, record it in the payments table
-  if (bookingData && bookingData.length > 0 && !isNaN(prepaidAmount) && prepaidAmount > 0) {
-    const prepaidPerRoom = prepaidAmount / bookingData.length;
-    const paymentsToInsert = bookingData.map(b => ({
-      booking_id: b.id,
-      property_id: propertyId,
-      amount: prepaidPerRoom,
-      method: prepaidMethod || 'Cash',
-      transaction_id: 'PREPAID-AT-CREATION',
-      created_by: user.id,
-      business_date: prepaidDate || checkIn // Use selected prepaid date, or default to check-in date
-    }));
+  // 1b. If prepaid payments were provided, record them in the payments table
+  const paymentsToInsert: any[] = [];
 
+  if (bookingData && bookingData.length > 0) {
+    if (!isNaN(prepaidAmount) && prepaidAmount > 0) {
+      const prepaidPerRoom = prepaidAmount / bookingData.length;
+      bookingData.forEach(b => {
+        paymentsToInsert.push({
+          booking_id: b.id,
+          property_id: propertyId,
+          amount: prepaidPerRoom,
+          method: prepaidMethod || 'Cash',
+          transaction_id: 'PREPAID-RENT-AT-CREATION',
+          created_by: user.id,
+          business_date: prepaidDate || checkIn,
+          allocation: 'Rent'
+        });
+      });
+    }
+
+    if (isMonthly && !isNaN(prepaidDepositAmount) && prepaidDepositAmount > 0) {
+      const prepaidDepositPerRoom = prepaidDepositAmount / bookingData.length;
+      bookingData.forEach(b => {
+        paymentsToInsert.push({
+          booking_id: b.id,
+          property_id: propertyId,
+          amount: prepaidDepositPerRoom,
+          method: prepaidMethod || 'Cash',
+          transaction_id: 'PREPAID-DEPOSIT-AT-CREATION',
+          created_by: user.id,
+          business_date: prepaidDate || checkIn,
+          allocation: 'Security Deposit'
+        });
+      });
+    }
+  }
+
+  if (paymentsToInsert.length > 0) {
     const { error: paymentInsertError } = await supabaseAdmin
       .from('payments')
       .insert(paymentsToInsert);
@@ -153,12 +179,19 @@ export async function createBooking(formData: FormData) {
     if (paymentInsertError) {
       console.error("Failed to insert prepaid payment at booking creation:", paymentInsertError.message);
     } else {
-      // Log the payment in Audit Trail
+      // Log the payments in Audit Trail
       for (const pay of paymentsToInsert) {
         await logAction({
           propertyId,
           action: 'PAYMENT_RECEIVED',
-          details: { bookingId: pay.booking_id, amount: pay.amount, method: pay.method, transactionId: pay.transaction_id, businessDate: pay.business_date },
+          details: { 
+            bookingId: pay.booking_id, 
+            amount: pay.amount, 
+            method: pay.method, 
+            transactionId: pay.transaction_id, 
+            businessDate: pay.business_date,
+            allocation: pay.allocation 
+          },
           userId: user.id
         });
       }

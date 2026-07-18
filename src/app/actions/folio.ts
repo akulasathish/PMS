@@ -84,6 +84,8 @@ export async function postPayment(formData: FormData) {
   const method = formData.get('method') as string;
   const transactionId = formData.get('transactionId') as string | null;
   const customBusinessDate = formData.get('businessDate') as string | null;
+  const allocation = (formData.get('allocation') as string) || 'Rent';
+  const billingPeriod = formData.get('billingPeriod') as string | null;
 
   if (!bookingId || !propertyId || !amountStr || !method) {
     return { error: 'Missing required fields.' };
@@ -117,7 +119,9 @@ export async function postPayment(formData: FormData) {
       method,
       transaction_id: transactionId,
       created_by: user.id,
-      business_date: businessDate
+      business_date: businessDate,
+      allocation,
+      billing_period: billingPeriod || null
     }])
     .select('id')
     .single();
@@ -185,25 +189,21 @@ export async function getFolioSummary(bookingId: string) {
     .eq('booking_id', bookingId)
     .order('created_at', { ascending: true });
 
-  const incidentals = rawIncidentals ? [...rawIncidentals] : [];
+  const allIncidentals = rawIncidentals ? [...rawIncidentals] : [];
 
-  // Append security deposit as a virtual incidental charge for monthly bookings
-  if (booking.is_monthly && Number(booking.amount) > 0) {
-    incidentals.unshift({
-      id: 'security-deposit-charge',
-      amount: Number(booking.amount),
-      description: 'Security Deposit / Advance',
-      created_at: booking.check_in_time || booking.created_at || new Date().toISOString(),
-      business_date: booking.check_in,
-      is_automated: true,
-      waiver_reason: null
-    });
-  }
+  // Split manual Security Deposit charges from Rent/Incidental charges for monthly bookings
+  const securityDepositCharges = booking.is_monthly
+    ? allIncidentals.filter(item => item.description.startsWith('Security Deposit'))
+    : [];
 
-  // 4. Fetch payments
+  const incidentals = booking.is_monthly
+    ? allIncidentals.filter(item => !item.description.startsWith('Security Deposit'))
+    : allIncidentals;
+
+  // 4. Fetch payments (including the new allocation column and billing period)
   const { data: payments, error: payErr } = await supabaseAdmin
     .from('payments')
-    .select('id, amount, method, created_at, business_date, transaction_id, is_void, void_reason, voided_at, voided_by')
+    .select('id, amount, method, created_at, business_date, transaction_id, is_void, void_reason, voided_at, voided_by, allocation, billing_period')
     .eq('booking_id', bookingId)
     .order('created_at', { ascending: true });
 
@@ -221,10 +221,35 @@ export async function getFolioSummary(bookingId: string) {
     : Math.max(0, Number(booking.amount) - discountAmount - dailyRoomChargesSum);
 
   const totalCharges = roomAmount + (incidentals?.reduce((sum, item) => sum + Number(item.amount), 0) || 0);
-  const totalPayments = payments
-    ?.filter(item => !item.is_void)
-    ?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
+  const totalPayments = booking.is_monthly
+    ? payments?.filter(item => !item.is_void && (item.allocation === 'Rent' || !item.allocation))?.reduce((sum, item) => sum + Number(item.amount), 0) || 0
+    : payments?.filter(item => !item.is_void)?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
   const balanceDue = totalCharges - totalPayments;
+
+  // Compute separate ledgers for monthly/co-living bookings
+  let securityDepositRequired = 0;
+  let securityDepositPaid = 0;
+  let rentChargesSum = 0;
+  let rentPaid = 0;
+
+  if (booking.is_monthly) {
+    const baseDepositRequired = Number(booking.amount || 0);
+    const postedDepositCharges = securityDepositCharges
+      ?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
+
+    securityDepositRequired = baseDepositRequired + postedDepositCharges;
+    securityDepositPaid = payments
+      ?.filter(item => !item.is_void && item.allocation === 'Security Deposit')
+      ?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
+
+    // Rent & Incidentals = Total charges
+    rentChargesSum = totalCharges;
+    rentPaid = totalPayments;
+  } else {
+    // For standard daily bookings, security deposit is not applicable
+    rentChargesSum = totalCharges;
+    rentPaid = totalPayments;
+  }
 
 
   // 5. Evaluate proposed fees
@@ -325,6 +350,11 @@ export async function getFolioSummary(bookingId: string) {
       proposedEarlyCheckinFee,
       discountAmount,
       discountReason,
+      securityDepositRequired,
+      securityDepositPaid,
+      securityDepositCharges: securityDepositCharges || [],
+      rentChargesSum,
+      rentPaid,
       standardHours: property ? {
         checkIn: property.standard_checkin_time,
         checkOut: property.standard_checkout_time
@@ -648,6 +678,91 @@ export async function forceSettleFolio(bookingId: string, propertyId: string) {
   revalidatePath('/dashboard/front-office', 'page');
   
   return { success: true };
+}
+
+/**
+ * Server action to update a monthly co-living guest's room rent rate.
+ */
+export async function updateMonthlyRate(bookingId: string, propertyId: string, newRate: number) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) return { error: 'Unauthorized.' };
+
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // Update the monthly rate in the bookings table
+  const { error } = await supabaseAdmin
+    .from('bookings')
+    .update({ monthly_rate: newRate })
+    .eq('id', bookingId);
+
+  if (error) {
+    console.error("Update Monthly Rate Error:", error.message);
+    return { error: `Failed to update rent rate: ${error.message}` };
+  }
+
+  // Log audit action
+  await logAction({
+    propertyId,
+    action: 'MONTHLY_RATE_UPDATED',
+    details: { bookingId, newRate },
+    userId: user.id
+  });
+
+  revalidatePath('/dashboard/front-office');
+  return { success: true };
+}
+
+/**
+ * Server action to automatically sync operational business date setting to actual current calendar date
+ * if the operational date is in the past. Runs with admin service-role privileges.
+ */
+export async function syncBusinessDateToToday() {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) return { error: 'Unauthorized.' };
+
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // Fetch current business_date setting
+  const { data: setting, error: fetchError } = await supabaseAdmin
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'business_date')
+    .single();
+
+  if (fetchError && fetchError.code !== 'PGRST116') {
+    console.error("Fetch business date error:", fetchError.message);
+    return { error: `Failed to fetch business date setting: ${fetchError.message}` };
+  }
+
+  const todayLocal = new Date().toISOString().substring(0, 10);
+  const currentVal = setting?.value || '';
+
+  // If the setting is missing or the current business date is in the past, update it to today's date
+  if (!currentVal || new Date(currentVal) < new Date(todayLocal)) {
+    console.log(`[Auto-Sync] Syncing stale business date (${currentVal}) to today (${todayLocal})`);
+    
+    const { error: updateError } = await supabaseAdmin
+      .from('app_settings')
+      .upsert({ 
+        key: 'business_date', 
+        value: todayLocal,
+        description: 'The active operational business date of the property management system'
+      });
+
+    if (updateError) {
+      console.error("Upsert business date error:", updateError.message);
+      return { error: `Failed to update business date setting: ${updateError.message}` };
+    }
+
+    revalidatePath('/dashboard/front-office');
+    return { success: true, syncedDate: todayLocal };
+  }
+
+  return { success: false, syncedDate: currentVal };
 }
 
 

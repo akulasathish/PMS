@@ -5,6 +5,7 @@ import { AlertTriangle, X, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { usePathname } from 'next/navigation';
+import { syncBusinessDateToToday } from '@/app/actions/folio';
 
 export default function NightAuditReminder() {
   const pathname = usePathname();
@@ -61,6 +62,15 @@ export default function NightAuditReminder() {
 
           // If database business date is behind today's local date, audit is pending
           const isPending = settings.value < localDateStr;
+
+          if (isPending) {
+            console.log(`[NightAuditReminder] Auto-syncing stale business date ${settings.value} to today ${localDateStr}...`);
+            const syncRes = await syncBusinessDateToToday();
+            if (syncRes && syncRes.success) {
+              window.location.reload();
+              return;
+            }
+          }
 
           if (isPending && shouldBlock) {
             // Condition 1: Hard Blocker (After 4:00 AM)

@@ -21,6 +21,7 @@ import CoLivingBookingModal from './CoLivingBookingModal';
 import FolioModal from '@/components/FolioModal';
 import RoomBlockModal from '@/components/RoomBlockModal';
 import { checkInGuest, checkOutGuest, updateGuestNotes, upgradeRoom, issueRefund, cancelBooking, resetGuestIdentity, updateCheckInTime } from '@/app/actions/booking';
+import { syncBusinessDateToToday } from '@/app/actions/folio';
 import { Property, Room, Booking, UserProfile } from '@/lib/types';
 
 
@@ -554,9 +555,26 @@ export default function FrontOfficeTerminal() {
         }
 
         const bDate = settingsRes.data?.value || '2026-06-21';
-        setBusinessDate(bDate);
-        setSelectedLedgerDate(bDate);
-        setNewExpenseDate(bDate);
+        const todayLocal = new Date().toISOString().substring(0, 10);
+
+        if (bDate !== todayLocal && new Date(bDate) < new Date(todayLocal)) {
+          console.log(`[Auto-Sync] Stale business date ${bDate} detected. Syncing to today ${todayLocal} via server...`);
+          syncBusinessDateToToday().then((res) => {
+            if (res.success && res.syncedDate) {
+              setBusinessDate(res.syncedDate);
+              setSelectedLedgerDate(res.syncedDate);
+              setNewExpenseDate(res.syncedDate);
+            } else {
+              setBusinessDate(bDate);
+              setSelectedLedgerDate(bDate);
+              setNewExpenseDate(bDate);
+            }
+          });
+        } else {
+          setBusinessDate(bDate);
+          setSelectedLedgerDate(bDate);
+          setNewExpenseDate(bDate);
+        }
 
         if (!roomsRes.data || roomsRes.data.length === 0) {
             console.error("🚨 EMERGENCY TRUTH LOG: ZERO ROOMS FETCHED FOR PROPERTY!", activeId);
