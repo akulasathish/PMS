@@ -231,3 +231,51 @@ export async function updatePropertyGST(propertyId: string, gstNumber: string, s
   revalidatePath('/dashboard');
   return { success: true };
 }
+
+export async function updateProperty(propertyId: string, propertyData: {
+  name: string;
+  address: string;
+  city: string;
+  country: string;
+  gst_number?: string;
+  state_code?: string;
+}) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { success: false, error: 'Unauthorized.' };
+  }
+
+  // Verify the user is the owner of this property
+  const { data: property, error: propertyCheckError } = await supabase
+    .from('properties')
+    .select('owner_user_id')
+    .eq('id', propertyId)
+    .single();
+
+  if (propertyCheckError || !property || property.owner_user_id !== user.id) {
+    return { success: false, error: 'Unauthorized or Property not found.' };
+  }
+
+  const { error } = await supabase
+    .from('properties')
+    .update({
+      name: propertyData.name,
+      address: propertyData.address,
+      city: propertyData.city,
+      country: propertyData.country,
+      gst_number: propertyData.gst_number || null,
+      state_code: propertyData.state_code || null,
+    })
+    .eq('id', propertyId);
+
+  if (error) {
+    console.error("Failed to update property:", error);
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath('/dashboard');
+  return { success: true };
+}
+
