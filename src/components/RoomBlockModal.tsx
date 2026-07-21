@@ -15,6 +15,8 @@ interface RoomBlockModalProps {
 export function RoomBlockModal({ room, onClose, onSuccess }: RoomBlockModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [selectedReason, setSelectedReason] = useState('Plumbing');
+  const [customReason, setCustomReason] = useState('');
 
   // If the room is already blocked, we show the Resolution UI
   const isCurrentlyBlocked = room.status === 'Blocked';
@@ -27,6 +29,15 @@ export function RoomBlockModal({ room, onClose, onSuccess }: RoomBlockModalProps
     const formData = new FormData(e.currentTarget);
     formData.append('roomId', room.id);
     formData.append('propertyId', room.property_id);
+
+    if (selectedReason === 'Custom') {
+      if (!customReason.trim()) {
+        setError('Please specify a custom reason.');
+        setLoading(false);
+        return;
+      }
+      formData.set('reason', customReason.trim());
+    }
 
     const res = await createRoomBlock(formData);
     
@@ -141,15 +152,36 @@ export function RoomBlockModal({ room, onClose, onSuccess }: RoomBlockModalProps
 
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Reason / Issue</label>
-                <select name="reason" required className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all appearance-none">
+                <select 
+                  name="reason" 
+                  value={selectedReason}
+                  onChange={(e) => setSelectedReason(e.target.value)}
+                  required 
+                  className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all appearance-none"
+                >
                   <option value="Plumbing">Plumbing</option>
                   <option value="Electrical">Electrical</option>
                   <option value="HVAC / AC">HVAC / Air Conditioning</option>
                   <option value="Deep Cleaning">Deep Cleaning</option>
                   <option value="Staff Use">Staff Use</option>
-                  <option value="Other">Other</option>
+                  <option value="VIP / GM Sir Hold">VIP / GM Sir Hold</option>
+                  <option value="Custom">Custom Reason (Specify below)</option>
                 </select>
               </div>
+
+              {selectedReason === 'Custom' && (
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Custom Reason</label>
+                  <input 
+                    type="text"
+                    required
+                    placeholder="e.g. Painting, Marriage Hold, Owner Stay"
+                    value={customReason}
+                    onChange={(e) => setCustomReason(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all"
+                  />
+                </div>
+              )}
 
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Additional Notes (Optional)</label>

@@ -91,3 +91,47 @@ This file tracks all major development tracks for the project, updated to reflec
 - **Stripe SaaS Subscription Billing (`saas_billing_20260331`):** **Removed** — Removed billing screen gating and trial expirations.
 - **Staff Architect & Granular RBAC (`staff_architect_20260331`):** **Removed** — Replaced by standard flat user access to their own workspace.
 - **Tier 2/3 Feature Parity (`tier_parity_20260331`):** **Integrated** — All capabilities natively consolidated into the unified PMS dashboard.
+
+---
+
+## 7. Pending Operational Backlog & Feature Pipeline (Future Tasks)
+
+### 👥 Staff Manager & Granular Operational Permissions
+- **ID:** `staff_management_activation`
+- **Goal:** Implement the missing `/dashboard/staff` page and invite modal with role template selectors. Implement the `addStaff` and `revokeStaffAccess` server actions to fully utilize Supabase's pre-seeded role templates.
+- **Status:** **Pending / Backlog**
+
+### 🎒 Checkout Alerts & Shifts Handover Traces (Opera PMS Style)
+- **ID:** `checkout_alerts_and_traces`
+- **Goal:** Build the `booking_alerts` table in Supabase. Intercept the Front Office checkout button clicks to prompt the cashier with unresolved handover tasks (e.g., luggage returns, corporate vouchers, keycards, and deposit audits).
+- **Status:** **Pending / Backlog**
+
+### 🔒 Guarded Operational UI Elements (Visible but Blocked)
+- **ID:** `guarded_operational_ui`
+- **Goal:** Keep operational actions (e.g. check-in, checkout, discounts, rates, and refunds) visible in the UI for all roles, but guard them with check rules that trigger a custom authorization alert popup upon unauthorized click.
+- **Status:** **Pending / Backlog**
+
+### 🏢 Extended Property Registration Metadata & Taxation (GST Onboarding)
+- **ID:** `extended_property_metadata`
+- **Goal:** Expand the property registration database columns and `/dashboard/property-setup` onboarding wizard to collect official GSTIN, 2-digit GST state codes, legal entity name, check-in/out hours, and lobby WiFi credentials.
+- **Status:** **Pending / Backlog**
+
+### 🚦 Night Audit Operations Guardrails (Pre-Close Safety Scan)
+- **ID:** `night_audit_guardrails`
+- **Goal:** Scan database bookings prior to completing the EOD close. Detect any checked-in rooms past their checkout dates or un-resolved "Confirmed" bookings today (No-Shows) and require manual resolution before advancing the date.
+- **Status:** **Pending / Backlog**
+
+### 🗺️ Interactive Visual Floor Map Grid
+- **ID:** `visual_floor_map`
+- **Goal:** Create X/Y layout columns on the rooms table and construct an interactive, bird's-eye CSS Grid in the UI, styled with real-time Supabase status colors to support direct tap-to-checkout and drag-and-drop bookings.
+- **Status:** **Pending / Backlog**
+
+### 📜 Co-Living Agreement Expiry & Renewal Alerts
+- **ID:** `coliving_agreement_expiry`
+- **Goal:** Track lease and agreement expiry dates for monthly co-living residents. Flag any bookings expiring in the next 14 days, prompting the desk to process renewals or prep for checkout/cleaning.
+- **Status:** **Pending / Backlog**
+
+### 🔀 One-Click Bed Swap (Room Transfer)
+- **ID:** `coliving_bed_swap`
+- **Goal:** Build the transfer backend server action to swap a guest from one room/bed to another in a single click, instantly moving their active ledger, contract terms, and historical postings to the new bed slot.
+- **Status:** **Pending / Backlog**

@@ -1150,8 +1150,7 @@ export default function Dashboard() {
                     alert(`Access Restricted: The ${item.label} module requires higher authorization.`);
                   } else if (item.label === 'Settings') {
                     e.preventDefault();
-                    setCheckoutStep('details');
-                    setShowSubscriptionDrawer(true);
+                    router.push('/dashboard/property-setup');
                   }
                 }}
                 className={`flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl transition-all duration-300 ${

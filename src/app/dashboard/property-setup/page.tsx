@@ -87,7 +87,7 @@ export default function PropertySetupPage() {
     loadData();
   }, []);
 
-  const handleSelectProperty = (prop: Property) => {
+  const handleSelectProperty = async (prop: Property) => {
     setSelectedProperty(prop);
     setIsCreatingNew(false);
     setPropertyName(prop.name || '');
@@ -96,6 +96,22 @@ export default function PropertySetupPage() {
     setPropertyCountry(prop.country || '');
     setGstNumber(prop.gst_number || '');
     setStateCode(prop.state_code || '');
+
+    // Persist active property selection locally
+    localStorage.setItem('pms_active_property', prop.id);
+
+    try {
+      // Sync selected property ID to user's database profile for route-level middleware alignment
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase
+          .from('profiles')
+          .update({ property_id: prop.id })
+          .eq('id', user.id);
+      }
+    } catch (err) {
+      console.error('Failed to sync active property to profiles table:', err);
+    }
   };
 
   const handleNewPropertyToggle = () => {

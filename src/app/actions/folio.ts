@@ -742,7 +742,11 @@ export async function syncBusinessDateToToday() {
   const currentVal = setting?.value || '';
 
   // If the setting is missing or the current business date is in the past, update it to today's date
-  if (!currentVal || new Date(currentVal) < new Date(todayLocal)) {
+  // SAFETY: Auto-sync is restricted to local development only. Production MUST perform manual Night Audits.
+  const dbUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const isProduction = process.env.NODE_ENV === 'production' || dbUrl.includes('supabase.co');
+
+  if (!isProduction && (!currentVal || new Date(currentVal) < new Date(todayLocal))) {
     console.log(`[Auto-Sync] Syncing stale business date (${currentVal}) to today (${todayLocal})`);
     
     const { error: updateError } = await supabaseAdmin

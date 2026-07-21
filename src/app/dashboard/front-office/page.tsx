@@ -3358,54 +3358,54 @@ export default function FrontOfficeTerminal() {
 
     return (
       <div className="space-y-6">
-        {/* STATS OVERVIEW CARDS */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {/* Card 1 */}
-          <div className="relative overflow-hidden bg-zinc-900/40 border border-white/[0.06] p-6 rounded-[2rem] hover:border-indigo-500/30 transition-all duration-300 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.15)]">
-              <Building2 size={20} />
+        {/* COMPACT HORIZONTAL METRICS STRIP */}
+        <div className="bg-[#121215]/40 backdrop-blur-md border border-white/[0.06] p-4 rounded-3xl flex flex-wrap items-center justify-around gap-4 text-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+              <Building2 size={15} />
             </div>
             <div>
-              <p className="text-[9px] font-black text-zinc-555 uppercase tracking-widest">Co-Living Rooms</p>
-              <h3 className="text-2xl font-black text-white mt-0.5">{monthlyRooms.length}</h3>
+              <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Co-Living Rooms</p>
+              <h4 className="font-black text-white text-sm mt-0.5">{monthlyRooms.length}</h4>
             </div>
-            <div className="absolute right-[-10px] bottom-[-10px] text-[70px] font-black text-white/[0.01] pointer-events-none select-none font-sans italic">ROOMS</div>
           </div>
+          
+          <div className="h-6 w-px bg-white/10 hidden sm:block" />
 
-          {/* Card 2 */}
-          <div className="relative overflow-hidden bg-zinc-900/40 border border-white/[0.06] p-6 rounded-[2rem] hover:border-emerald-500/30 transition-all duration-300 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.15)]">
-              <UserCheck size={20} />
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+              <UserCheck size={15} />
             </div>
             <div>
-              <p className="text-[9px] font-black text-zinc-555 uppercase tracking-widest">Occupied Beds</p>
-              <h3 className="text-2xl font-black text-white mt-0.5">{occupiedBeds} <span className="text-xs text-zinc-500 font-medium">of {totalBeds}</span></h3>
+              <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Occupied Beds</p>
+              <h4 className="font-black text-white text-sm mt-0.5">{occupiedBeds} <span className="text-[10px] text-zinc-500 font-medium">of {totalBeds}</span></h4>
             </div>
-            <div className="absolute right-[-10px] bottom-[-10px] text-[70px] font-black text-white/[0.01] pointer-events-none select-none font-sans italic">BEDS</div>
           </div>
 
-          {/* Card 3 */}
-          <div className="relative overflow-hidden bg-zinc-900/40 border border-white/[0.06] p-6 rounded-[2rem] hover:border-amber-500/30 transition-all duration-300 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.15)]">
-              <Bed size={20} />
+          <div className="h-6 w-px bg-white/10 hidden md:block" />
+
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+              <Bed size={15} />
             </div>
             <div>
-              <p className="text-[9px] font-black text-zinc-555 uppercase tracking-widest">Vacant Beds</p>
-              <h3 className="text-2xl font-black text-white mt-0.5">{vacantBeds} <span className="text-xs text-zinc-500 font-medium">available</span></h3>
+              <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Vacant Beds</p>
+              <h4 className="font-black text-white text-sm mt-0.5">{vacantBeds} <span className="text-[10px] text-zinc-500 font-medium font-sans">free</span></h4>
             </div>
-            <div className="absolute right-[-10px] bottom-[-10px] text-[70px] font-black text-white/[0.01] pointer-events-none select-none font-sans italic">FREE</div>
           </div>
 
-          {/* Card 4 */}
-          <div className="relative overflow-hidden bg-zinc-900/40 border border-white/[0.06] p-6 rounded-[2rem] hover:border-rose-500/30 transition-all duration-300 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.15)] font-black text-md">
+          <div className="h-6 w-px bg-white/10 hidden lg:block" />
+
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 font-bold text-xs">
               ₹
             </div>
             <div>
-              <p className="text-[9px] font-black text-zinc-555 uppercase tracking-widest">Total Monthly Dues</p>
-              <h3 className="text-xl font-black text-white mt-0.5">₹{totalMonthlyDues.toLocaleString(`en-IN`, { maximumFractionDigits: 0 })}</h3>
+              <p className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Total Monthly Dues</p>
+              <h4 className={`font-black text-sm mt-0.5 ${totalMonthlyDues > 0.01 ? 'text-rose-450' : 'text-emerald-400'}`}>
+                ₹{totalMonthlyDues.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </h4>
             </div>
-            <div className="absolute right-[-10px] bottom-[-10px] text-[70px] font-black text-white/[0.01] pointer-events-none select-none font-sans italic">DUES</div>
           </div>
         </div>
 
@@ -3775,7 +3775,7 @@ export default function FrontOfficeTerminal() {
                     {!isExpanded ? (
                       /* Collapsed Compact View of Bed Slots */
                       <div className="py-1">
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="grid grid-cols-2 gap-2">
                           {Array.from({ length: capacity }).map((_, index) => {
                             const bedLetter = String.fromCharCode(65 + index);
                             const booking = activeRoomBookings[index];
@@ -3790,32 +3790,79 @@ export default function FrontOfficeTerminal() {
                               return (
                                 <div 
                                   key={index}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setExpandedRoomIds(prev => ({ ...prev, [room.id]: true }));
-                                  }}
-                                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[10px] font-bold cursor-pointer transition-all hover:bg-white/[0.02] ${
+                                  className={`flex flex-col justify-between p-2.5 rounded-xl border text-[10px] font-bold ${
                                     balanceDue > 0.01 
-                                      ? 'bg-rose-500/5 text-rose-450 border-rose-500/10' 
-                                      : 'bg-indigo-500/5 text-indigo-400 border-indigo-500/10'
+                                      ? 'bg-rose-500/[0.02] border-rose-500/10' 
+                                      : 'bg-indigo-500/[0.02] border-indigo-500/10'
                                   }`}
                                   title={`${booking.guest_name} - Rent: ₹${booking.monthly_rate} - Due: ₹${balanceDue}`}
                                 >
-                                  <span className={`w-3.5 h-3.5 rounded flex items-center justify-center text-[8px] font-black shrink-0 ${
-                                    balanceDue > 0.01 ? 'bg-rose-500/10' : 'bg-indigo-500/10'
-                                  }`}>{bedLetter}</span>
-                                  <span className="truncate max-w-[65px]">{booking.guest_name.split(' ')[0]}</span>
-                                  {balanceDue > 0.01 && <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shrink-0" />}
+                                  <div className="flex items-start justify-between gap-1">
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                      <span className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-black shrink-0 ${
+                                        balanceDue > 0.01 ? 'bg-rose-500/10 text-rose-450' : 'bg-indigo-500/10 text-indigo-400'
+                                      }`}>{bedLetter}</span>
+                                      <span className="truncate text-white text-[10px] font-bold">
+                                        {booking.guest_name.split(' ')[0]}
+                                      </span>
+                                    </div>
+                                    {balanceDue > 0.01 && <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse shrink-0 mt-1.5" />}
+                                  </div>
+                                  
+                                  <div className="mt-2 pt-1.5 border-t border-white/[0.03] flex items-center justify-between text-[9px]">
+                                    <span className={balanceDue > 0.01 ? 'text-rose-400 font-mono font-bold' : 'text-emerald-450 font-bold'}>
+                                      {balanceDue > 0.01 ? `₹${Math.round(balanceDue)}` : 'Paid'}
+                                    </span>
+                                    <div className="flex items-center gap-1 bg-black/40 rounded border border-white/5 overflow-hidden shrink-0">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setActiveCheckoutBooking({
+                                            bookingId: booking.id,
+                                            roomId: booking.room_id,
+                                            guestName: booking.guest_name,
+                                            amount: booking.amount
+                                          });
+                                        }}
+                                        className="p-1 hover:bg-indigo-600 hover:text-white text-zinc-500 transition-colors"
+                                        title="Collect Payment / Checkout"
+                                      >
+                                        <Banknote size={10} />
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedBooking(booking);
+                                        }}
+                                        className="p-1 hover:bg-white/10 text-zinc-500 hover:text-white border-l border-white/5 transition-colors"
+                                        title="Booking Options"
+                                      >
+                                        <Settings size={10} />
+                                      </button>
+                                    </div>
+                                  </div>
                                 </div>
                               );
                             } else {
                               return (
                                 <div 
                                   key={index}
-                                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-dashed border-white/5 bg-white/[0.01] text-zinc-550 text-[10px] font-bold"
+                                  className="flex flex-col justify-between p-2.5 rounded-xl border border-dashed border-white/5 bg-white/[0.01] text-zinc-500 text-[10px] font-bold"
                                 >
-                                  <span className="w-3.5 h-3.5 rounded bg-zinc-800 border border-white/5 flex items-center justify-center text-[8px] font-black text-zinc-500 shrink-0">{bedLetter}</span>
-                                  <span>Vacant</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="w-5 h-5 rounded bg-zinc-805 border border-white/5 flex items-center justify-center text-[9px] font-black text-zinc-400 shrink-0">{bedLetter}</span>
+                                    <span className="text-[9px] text-zinc-500 uppercase tracking-wider font-bold">Vacant</span>
+                                  </div>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedCoLivingRoomId(room.id);
+                                      setShowCoLivingModal(true);
+                                    }}
+                                    className="w-full mt-2 py-1 bg-emerald-500/15 hover:bg-emerald-500 hover:text-black text-emerald-450 rounded text-[8px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1"
+                                  >
+                                    <Plus size={9} /> Allocate
+                                  </button>
                                 </div>
                               );
                             }
