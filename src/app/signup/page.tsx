@@ -13,7 +13,23 @@ function SignupForm() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setErrorState] = useState('');
+  const setError = (errVal: any) => {
+    if (!errVal) {
+      setErrorState('');
+    } else if (typeof errVal === 'string') {
+      setErrorState(errVal);
+    } else if (errVal?.message && typeof errVal.message === 'string') {
+      setErrorState(errVal.message);
+    } else {
+      try {
+        const str = JSON.stringify(errVal);
+        setErrorState(str === '{}' ? 'An account with this email already exists or registration failed. Please log in instead.' : str);
+      } catch {
+        setErrorState('Registration error occurred.');
+      }
+    }
+  };
   const [message, setMessage] = useState('');
   
   // OTP Verification States
