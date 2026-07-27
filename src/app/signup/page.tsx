@@ -17,18 +17,31 @@ function SignupForm() {
   const setError = (errVal: any) => {
     if (!errVal) {
       setErrorState('');
-    } else if (typeof errVal === 'string') {
-      setErrorState(errVal);
+      return;
+    }
+
+    let msg = '';
+    if (typeof errVal === 'string') {
+      msg = errVal;
     } else if (errVal?.message && typeof errVal.message === 'string') {
-      setErrorState(errVal.message);
+      msg = errVal.message;
+    } else if (errVal?.error && typeof errVal.error === 'string') {
+      msg = errVal.error;
     } else {
       try {
-        const str = JSON.stringify(errVal);
-        setErrorState(str === '{}' ? 'An account with this email already exists or registration failed. Please log in instead.' : str);
+        msg = JSON.stringify(errVal);
       } catch {
-        setErrorState('Registration error occurred.');
+        msg = 'Registration error occurred.';
       }
     }
+
+    if (!msg || msg === '{}' || msg === '[]' || msg === '[object Object]') {
+      msg = 'Unable to create account. An account with this email may already exist, or registration failed.';
+    } else if (msg.includes('fetch failed') || msg.includes('EHOSTUNREACH') || msg.includes('ECONNREFUSED')) {
+      msg = 'Authentication server is unreachable. Please check your network connection or try again later.';
+    }
+
+    setErrorState(msg);
   };
   const [message, setMessage] = useState('');
   
