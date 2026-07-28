@@ -28,6 +28,8 @@ export async function createProperty(propertyData: {
   address: string;
   city: string;
   country: string;
+  property_category?: 'PG' | 'Hotel' | 'Hybrid';
+  total_capital_investment?: number;
 }) {
   try {
     const supabase = createSSRClient();
@@ -58,6 +60,8 @@ export async function createProperty(propertyData: {
           address: propertyData.address,
           city: propertyData.city,
           country: propertyData.country,
+          property_category: propertyData.property_category || 'Hybrid',
+          total_capital_investment: propertyData.total_capital_investment || 0,
         }
       ])
       .select()
@@ -278,4 +282,70 @@ export async function updateProperty(propertyId: string, propertyData: {
   revalidatePath('/dashboard');
   return { success: true };
 }
+
+/**
+ * Save or update custom partner capital investments and recalculate percentage shares
+ */
+export async function savePartnerInvestments(
+  propertyId: string, 
+  totalCapital: number, 
+  partners: { partner_name: string; investment_amount: number; partner_phone?: string }[]
+) {
+  try {
+    const supabase = createSSRClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { success: false, error: 'Unauthorized.' };
+    }
+
+    // 1. Update Property Total Capital Investment
+    const { error: propErr } = await supabase
+      .from('properties')
+      .update({ total_capital_investment: totalCapital })
+      .eq('id', propertyId);
+
+    if (propErr) {
+      console.error('Failed to update total property capital:', propErr);
+      return { success: false, error: propErr.message };
+    }
+
+    // 2. Clear existing partner shares if custom partners are supplied
+    if (partners && partners.length > 0) {
+      await supabase
+        .from('partner_investments')
+        .delete()
+        .eq('property_id', propertyId);
+
+      // Insert new partners with dynamic percentage calculation
+      const payload = partners.map(p => {
+        const amt = Number(p.investment_amount) || 0;
+        const sharePct = totalCapital > 0 && amt > 0 ? Math.round((amt / totalCapital) * 10000) / 100 : 0;
+        return {
+          property_id: propertyId,
+          partner_name: p.partner_name,
+          investment_amount: amt,
+          share_percentage: sharePct,
+          partner_phone: p.partner_phone || null
+        };
+      });
+
+      const { error: insertErr } = await supabase
+        .from('partner_investments')
+        .insert(payload);
+
+      if (insertErr) {
+        console.error('Failed to insert partner investments:', insertErr);
+        return { success: false, error: insertErr.message };
+      }
+    }
+
+    revalidatePath('/dashboard');
+    return { success: true };
+  } catch (err: any) {
+    console.error('Error saving partner investments:', err);
+    return { success: false, error: err.message };
+  }
+}
+
 

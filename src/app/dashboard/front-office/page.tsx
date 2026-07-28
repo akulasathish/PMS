@@ -10,7 +10,7 @@ import {
   Plus, Loader2, Building2, LayoutDashboard,
   DoorOpen, Activity, Users, Settings, LogOut,
   ChevronsUpDown, Lock, Brush, CheckCircle2, ClipboardCheck, RefreshCw, RotateCcw, Printer, XCircle, Link2, Camera, X, ShieldCheck, AlertCircle, Phone, Mail, Eye,
-  Trash2, IndianRupee, Moon, Banknote, Smartphone, CreditCard, Clock, TrendingDown, Download, Wallet, FileText,
+  Trash2, IndianRupee, Moon, Banknote, Smartphone, CreditCard, Clock, TrendingDown, Download, Wallet, FileText, Receipt,
   Home, UserPlus, User, LayoutGrid, List
 } from 'lucide-react';
 import Link from 'next/link';
@@ -3417,6 +3417,13 @@ export default function FrontOfficeTerminal() {
           </div>
           
           <div className="flex items-center gap-2.5 flex-wrap w-full md:w-auto">
+            <Link
+              href="/dashboard/partner-report"
+              className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs font-semibold transition-all shadow-sm"
+            >
+              <Receipt size={14} /> Partner Report & Profit Engine
+            </Link>
+
             {/* View Mode Toggle: Grid vs List */}
             <div className="flex items-center bg-black/40 border border-white/10 rounded-xl p-1 text-[10px] font-bold mr-1">
               <button

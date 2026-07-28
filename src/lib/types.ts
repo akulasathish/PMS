@@ -2,6 +2,8 @@ export interface Property {
   id: string;
   name: string;
   status: 'Active' | 'Suspended';
+  property_category?: 'PG' | 'Hotel' | 'Hybrid';
+  total_capital_investment?: number;
   wifi_network?: string;
   wifi_password?: string;
   created_at?: string;

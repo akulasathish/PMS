@@ -8,7 +8,7 @@ import {
   Loader2, Home, MapPin, Building, Flag, Sparkles, LogOut, 
   ArrowLeft, HelpCircle, CheckCircle, Send, Save, Plus, Settings, Info
 } from 'lucide-react';
-import { createProperty, updateProperty } from '@/app/actions/property';
+import { createProperty, updateProperty, savePartnerInvestments } from '@/app/actions/property';
 
 interface Property {
   id: string;
@@ -34,6 +34,15 @@ export default function PropertySetupPage() {
   const [propertyCountry, setPropertyCountry] = useState('');
   const [gstNumber, setGstNumber] = useState('');
   const [stateCode, setStateCode] = useState('');
+  const [propertyCategory, setPropertyCategory] = useState<'PG' | 'Hotel' | 'Hybrid'>('Hybrid');
+  const [totalCapital, setTotalCapital] = useState<number>(5400000);
+  const [customPartners, setCustomPartners] = useState<{ partner_name: string; investment_amount: number }[]>([
+    { partner_name: 'Rajesh (Person 1)', investment_amount: 2000000 },
+    { partner_name: 'Sathish (Person 2)', investment_amount: 1500000 },
+    { partner_name: 'Anil (Person 3)', investment_amount: 1000000 },
+    { partner_name: 'Partner 4', investment_amount: 500000 },
+    { partner_name: 'Partner 5', investment_amount: 400000 },
+  ]);
   
   // Feedback Form State
   const [feedbackTitle, setFeedbackTitle] = useState('');
@@ -147,6 +156,8 @@ export default function PropertySetupPage() {
           address: propertyAddress,
           city: propertyCity,
           country: propertyCountry,
+          property_category: propertyCategory,
+          total_capital_investment: totalCapital
         });
 
         if (!result.success || !result.data) {
@@ -155,6 +166,12 @@ export default function PropertySetupPage() {
         }
 
         const newProp = result.data as Property;
+        
+        // Save partner investments if provided
+        if (totalCapital > 0 && customPartners.length > 0) {
+          await savePartnerInvestments(newProp.id, totalCapital, customPartners);
+        }
+
         setPropertiesList([...propertiesList, newProp]);
         handleSelectProperty(newProp);
         setSuccessMessage('Property created successfully!');
@@ -173,6 +190,11 @@ export default function PropertySetupPage() {
         if (!result.success) {
           setError(result.error || 'Failed to update property.');
           return;
+        }
+
+        // Save partner investments if provided
+        if (totalCapital > 0 && customPartners.length > 0) {
+          await savePartnerInvestments(selectedProperty.id, totalCapital, customPartners);
         }
 
         // Update list state
@@ -442,6 +464,31 @@ export default function PropertySetupPage() {
                           className="w-full bg-black/60 border border-white/[0.05] rounded-xl py-2.5 pl-10 pr-4 text-white text-sm focus:outline-none focus:border-indigo-500/40 transition-all"
                         />
                       </div>
+                    </div>
+                  </div>
+
+                  {/* PROPERTY CATEGORY MODE SELECTION */}
+                  <div className="pt-4 border-t border-white/5 space-y-2">
+                    <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Property Category & Operations Mode</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {[
+                        { id: 'PG', title: '🏢 PG (Co-Living Mode)', desc: 'Monthly Tenant Directory, Bed-sharing (2-5), No Night Audits required.' },
+                        { id: 'Hotel', title: '🏨 Hotel (Daily Mode)', desc: 'Daily room tariffs, Check-in/out, Folios, Nightly Audit engine.' },
+                        { id: 'Hybrid', title: '🏨🏢 Hotel & PG (Hybrid)', desc: 'Dual-mode: Switch seamlessly between daily guests and monthly residents.' }
+                      ].map(cat => (
+                        <div
+                          key={cat.id}
+                          onClick={() => setPropertyCategory(cat.id as any)}
+                          className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
+                            propertyCategory === cat.id
+                              ? 'bg-indigo-500/10 border-indigo-500/40 text-white shadow-md'
+                              : 'bg-black/40 border-white/[0.05] text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          <p className="text-xs font-bold">{cat.title}</p>
+                          <p className="text-[10px] text-zinc-500 mt-1">{cat.desc}</p>
+                        </div>
+                      ))}
                     </div>
                   </div>
 
