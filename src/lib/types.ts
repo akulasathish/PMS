@@ -46,7 +46,75 @@ export interface UserProfile {
   id: string;
   full_name: string;
   email?: string;
+  role?: 'super_admin' | 'owner' | 'admin' | 'partner' | 'user';
   property_id: string | null;
   created_at?: string;
 }
+
+export interface PartnerInvestment {
+  id: string;
+  property_id: string;
+  partner_name: string;
+  partner_email?: string;
+  partner_id?: string;
+  investment_amount: number;
+  share_percentage: number;
+  created_at?: string;
+}
+
+export interface TimestampedExpense {
+  id: string;
+  property_id: string;
+  title: string;
+  category: string;
+  amount: number;
+  payment_method: 'Cash' | 'UPI' | 'Bank Transfer';
+  expense_timestamp: string;
+  business_date: string;
+  receipt_url?: string;
+  logged_by?: string;
+}
+
+export interface StaffPayroll {
+  id: string;
+  property_id: string;
+  staff_name: string;
+  role: 'Chef' | 'Helper' | 'Housekeeping' | 'Security' | 'Manager';
+  monthly_salary: number;
+  payment_status: 'Pending' | 'Paid' | 'Partial';
+  paid_amount: number;
+  paid_date?: string;
+  payment_method?: 'Cash' | 'UPI' | 'Bank Transfer';
+  business_month: string;
+}
+
+export interface PGTenant {
+  id: string;
+  property_id: string;
+  room_id?: string;
+  bed_number?: string;
+  sharing_capacity: number;
+  full_name: string;
+  phone: string;
+  monthly_rent: number;
+  security_deposit: number;
+  deposit_status: 'Held' | 'Refunded' | 'Adjusted';
+  rent_due_day: number;
+  status: 'Active' | 'Vacated' | 'Notice';
+  created_at?: string;
+}
+
+export interface DailyClosingSnapshot {
+  id: string;
+  property_id: string;
+  snapshot_date: string;
+  total_cash_collected: number;
+  total_upi_collected: number;
+  total_expenses_cash: number;
+  total_expenses_upi: number;
+  net_cash_in_hand: number;
+  net_daily_profit: number;
+  closed_by?: string;
+}
+
 
