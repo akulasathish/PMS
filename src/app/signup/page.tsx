@@ -97,45 +97,32 @@ function SignupForm() {
       const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
       const redirectUrl = `${origin}/auth/callback`;
 
-      if (bypassVerification) {
-        // DEV BYPASS: Auto-verify instantly via Admin API
-        const result = await registerUserWithoutVerification(email, password, plan || 'free_trial');
+      // Create user account via robust server action (auto-healing unconfirmed users if needed)
+      const result = await registerUserWithoutVerification(email, password, plan || 'free_trial');
 
-        if (!result.success) {
-          setError(result.error || 'Failed to create account.');
-          setIsLoading(false);
-          return;
-        }
-
-        const { error: loginError } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
-        if (loginError) {
-          setError('Account created, but auto-login failed. Try manually.');
-          setIsLoading(false);
-          return;
-        }
-
-        setMessage('Account created! Logging you in...');
-        router.refresh();
-        setTimeout(() => {
-          router.push('/dashboard/property-setup');
-        }, 1000);
-      } else {
-        // PRODUCTION MODE: Standard sign up (sends 6-digit OTP confirmation to email)
-        const result = await registerUserWithVerification(email, password, redirectUrl);
-
-        if (!result.success) {
-          setError(result.error || 'Failed to trigger signup.');
-          setIsLoading(false);
-          return;
-        }
-
-        setIsVerificationSent(true);
-        setResendTimer(60);
+      if (!result.success) {
+        setError(result.error || 'Failed to create account.');
+        setIsLoading(false);
+        return;
       }
+
+      // Auto-login the user
+      const { error: loginError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (loginError) {
+        setError('Account created! Please log in with your credentials.');
+        setIsLoading(false);
+        return;
+      }
+
+      setMessage('Account created! Logging you in...');
+      router.refresh();
+      setTimeout(() => {
+        router.push('/dashboard/property-setup');
+      }, 1000);
 
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred.');
