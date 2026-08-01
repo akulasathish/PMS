@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { createClient as createSSRClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { logAction } from './audit';
+import { getTodayLocalYYYYMMDD } from '@/lib/types';
 
 /**
  * Create a new booking for a room
@@ -23,15 +24,23 @@ export async function createBooking(formData: FormData) {
   const guestPhone = formData.get('guestPhone') as string;
   const checkIn = formData.get('checkIn') as string;
   const checkOut = formData.get('checkOut') as string;
-  const amount = parseFloat(formData.get('amount') as string);
-  const status = 'Confirmed';
+  
+  const rawAmount = formData.get('amount') as string;
+  const amount = rawAmount ? (parseFloat(rawAmount) || 0) : 0;
+  const status = (formData.get('status') as string) || 'Confirmed';
 
   const isMonthly = formData.get('isMonthly') === 'true';
-  const billingCycleDate = formData.get('billingCycleDate') ? parseInt(formData.get('billingCycleDate') as string, 10) : null;
-  const monthlyRate = formData.get('monthlyRate') ? parseFloat(formData.get('monthlyRate') as string) : null;
+  const billingCycleDate = formData.get('billingCycleDate') ? parseInt(formData.get('billingCycleDate') as string, 10) : 1;
+  
+  const rawMonthlyRate = formData.get('monthlyRate') as string;
+  const monthlyRate = rawMonthlyRate ? (parseFloat(rawMonthlyRate) || 0) : 0;
 
-  const prepaidAmount = formData.get('prepaidAmount') ? parseFloat(formData.get('prepaidAmount') as string) : 0;
-  const prepaidDepositAmount = formData.get('prepaidDepositAmount') ? parseFloat(formData.get('prepaidDepositAmount') as string) : 0;
+  const rawPrepaidAmount = formData.get('prepaidAmount') as string;
+  const prepaidAmount = rawPrepaidAmount ? (parseFloat(rawPrepaidAmount) || 0) : 0;
+
+  const rawPrepaidDepositAmount = formData.get('prepaidDepositAmount') as string;
+  const prepaidDepositAmount = rawPrepaidDepositAmount ? (parseFloat(rawPrepaidDepositAmount) || 0) : 0;
+  
   const prepaidMethod = formData.get('prepaidMethod') as string | null;
   const prepaidDate = formData.get('prepaidDate') as string | null;
 
@@ -55,7 +64,7 @@ export async function createBooking(formData: FormData) {
     // Fetch room details first
     const { data: rm, error: rmError } = await supabaseAdmin
       .from('rooms')
-      .select('room_number, sharing_capacity, allowed_billing_type')
+      .select('room_number, sharing_capacity')
       .eq('id', rid)
       .single();
 
@@ -76,17 +85,26 @@ export async function createBooking(formData: FormData) {
       return { error: `Cannot book Room ${rm.room_number}. It is scheduled for maintenance (${blocks[0].reason}) during these dates.` };
     }
 
-    // OVERLAP CHECK: Prevent double-booking a room that already has a guest
+    // OVERLAP & DUPLICATE RESIDENT CHECK: Prevent double-booking or assigning multiple beds to same resident
     const { data: existingBookings } = await supabaseAdmin
       .from('bookings')
-      .select('guest_name')
+      .select('guest_name, guest_phone')
       .eq('room_id', rid)
       .in('status', ['Confirmed', 'Checked In'])
       .lte('check_in', checkOut)
       .gte('check_out', checkIn);
 
     if (existingBookings && existingBookings.length > 0) {
-      const isCoLiving = isMonthly || rm.allowed_billing_type === 'monthly';
+      // Prevent enrolling the same resident twice into the same room
+      const isDuplicateGuest = existingBookings.some(b => 
+        b.guest_name && b.guest_name.toLowerCase().trim() === guestName.toLowerCase().trim()
+      );
+
+      if (isDuplicateGuest) {
+        return { error: `Resident '${guestName}' is already checked in to Room ${rm.room_number}. Cannot allocate multiple beds to the same guest.` };
+      }
+
+      const isCoLiving = isMonthly || (rm.sharing_capacity && rm.sharing_capacity > 1);
       const capacity = rm.sharing_capacity || 1;
 
       if (isCoLiving) {
@@ -105,7 +123,7 @@ export async function createBooking(formData: FormData) {
 
   const bookingsToInsert = roomIds.map(rid => {
     const customRate = formData.get(`roomRate_${rid}`);
-    const roomAmount = customRate ? parseFloat(customRate as string) : (amount / roomIds.length);
+    const roomAmount = customRate ? parseFloat(customRate as string) : (amount || 0 / roomIds.length);
     
     return {
       property_id: propertyId,
@@ -115,12 +133,12 @@ export async function createBooking(formData: FormData) {
       guest_phone: guestPhone,
       check_in: checkIn,
       check_out: checkOut,
-      amount: roomAmount,
+      total_amount: isNaN(roomAmount) ? 0 : roomAmount,
       status: status,
-      group_id: groupId,
       is_monthly: isMonthly,
-      billing_cycle_date: isMonthly ? billingCycleDate : null,
-      monthly_rate: isMonthly ? (monthlyRate ? (monthlyRate / roomIds.length) : null) : null
+      rent_due_day: isMonthly ? (billingCycleDate || 1) : null,
+      monthly_rent: isMonthly ? (monthlyRate ? (monthlyRate / roomIds.length) : 0) : 0,
+      security_deposit: isMonthly ? (amount ? (amount / roomIds.length) : 0) : 0
     };
   });
 
@@ -145,11 +163,9 @@ export async function createBooking(formData: FormData) {
           booking_id: b.id,
           property_id: propertyId,
           amount: prepaidPerRoom,
-          method: prepaidMethod || 'Cash',
+          payment_method: prepaidMethod || 'Cash',
           transaction_id: 'PREPAID-RENT-AT-CREATION',
-          created_by: user.id,
-          business_date: prepaidDate || checkIn,
-          allocation: 'Rent'
+          business_date: prepaidDate || checkIn
         });
       });
     }
@@ -161,11 +177,9 @@ export async function createBooking(formData: FormData) {
           booking_id: b.id,
           property_id: propertyId,
           amount: prepaidDepositPerRoom,
-          method: prepaidMethod || 'Cash',
+          payment_method: prepaidMethod || 'Cash',
           transaction_id: 'PREPAID-DEPOSIT-AT-CREATION',
-          created_by: user.id,
-          business_date: prepaidDate || checkIn,
-          allocation: 'Security Deposit'
+          business_date: prepaidDate || checkIn
         });
       });
     }
@@ -275,7 +289,7 @@ export async function checkInGuest(
     .select('value')
     .eq('key', 'business_date')
     .single();
-  const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+  const businessDate = settings?.value || getTodayLocalYYYYMMDD();
 
   // Insert split payments based on outstanding dues if details are provided
   if (paymentDetails && paymentDetails.amount > 0) {
@@ -633,11 +647,14 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
   // 1. FOLIO AUDIT (The Financial Blockade)
   const { data: booking, error: bookingErr } = await supabaseAdmin
     .from('bookings')
-    .select('amount, discount_amount, property_id, guest_name, is_monthly, monthly_rate')
+    .select('total_amount, property_id, guest_name, is_monthly, monthly_rent, security_deposit')
     .eq('id', bookingId)
     .single();
 
-  if (bookingErr || !booking) return { error: 'Booking not found.' };
+  if (bookingErr || !booking) {
+    console.error("checkOutGuest error:", bookingErr);
+    return { error: 'Booking not found.' };
+  }
 
   const { data: incidentals } = await supabaseAdmin
     .from('incidental_charges')
@@ -650,24 +667,20 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
 
   const discountAmount = Number((booking as any).discount_amount || 0);
   const isMonthly = (booking as any).is_monthly;
-  const monthlyRate = Number((booking as any).monthly_rate || 0);
+  const monthlyRate = Number((booking as any).monthly_rent || (booking as any).total_amount || 0);
 
   const roomAmount = isMonthly
     ? Math.max(0, monthlyRate - discountAmount)
-    : Math.max(0, Number(booking.amount) - discountAmount - dailyRoomChargesSum);
+    : Math.max(0, Number(booking.total_amount || 0) - discountAmount - dailyRoomChargesSum);
 
   let totalIncidentals = incidentals?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
-  if (isMonthly && Number(booking.amount) > 0) {
-    totalIncidentals += Number(booking.amount);
-  }
 
   const { data: payments } = await supabaseAdmin
     .from('payments')
-    .select('amount, is_void')
+    .select('amount')
     .eq('booking_id', bookingId);
 
   const totalPayments = payments
-    ?.filter(item => !item.is_void)
     ?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
 
   // Calculate the Balance Due
@@ -685,8 +698,7 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
   const { error: bookingError } = await supabaseAdmin
     .from('bookings')
     .update({ 
-      status: 'Checked Out',
-      check_out_time: new Date().toISOString()
+      status: 'Checked Out'
     })
     .eq('id', bookingId);
 
@@ -797,8 +809,7 @@ export async function undoCheckOutGuest(bookingId: string, roomId: string) {
   const { error: bookingError } = await supabaseAdmin
     .from('bookings')
     .update({ 
-      status: 'Checked In',
-      check_out_time: null
+      status: 'Checked In'
     })
     .eq('id', bookingId);
 

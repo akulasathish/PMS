@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { 
   Loader2, Home, MapPin, Building, Flag, Sparkles, LogOut, 
-  ArrowLeft, HelpCircle, CheckCircle, Send, Save, Plus, Settings, Info
+  ArrowLeft, HelpCircle, CheckCircle, Send, Save, Plus, Settings, Info, Lock, X
 } from 'lucide-react';
 import { createProperty, updateProperty, savePartnerInvestments } from '@/app/actions/property';
 
@@ -34,7 +34,8 @@ export default function PropertySetupPage() {
   const [propertyCountry, setPropertyCountry] = useState('');
   const [gstNumber, setGstNumber] = useState('');
   const [stateCode, setStateCode] = useState('');
-  const [propertyCategory, setPropertyCategory] = useState<'PG' | 'Hotel' | 'Hybrid'>('Hybrid');
+  const [propertyCategory, setPropertyCategory] = useState<'PG' | 'Hotel/PG'>('Hotel/PG');
+  const [ownershipType, setOwnershipType] = useState<'single' | 'partnership'>('single');
   const [totalCapital, setTotalCapital] = useState<number>(5400000);
   const [customPartners, setCustomPartners] = useState<{ partner_name: string; investment_amount: number }[]>([
     { partner_name: 'Rajesh (Person 1)', investment_amount: 2000000 },
@@ -44,6 +45,13 @@ export default function PropertySetupPage() {
     { partner_name: 'Partner 5', investment_amount: 400000 },
   ]);
   
+  // Partner Editing Unlock & Security States
+  const [isEditingPartners, setIsEditingPartners] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+
   // Feedback Form State
   const [feedbackTitle, setFeedbackTitle] = useState('');
   const [feedbackCategory, setFeedbackCategory] = useState('Feature Request');
@@ -60,6 +68,41 @@ export default function PropertySetupPage() {
   const router = useRouter();
   const supabase = createClient();
 
+  const handleVerifyPasswordToEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setAuthError('');
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || !user.email) {
+        setAuthError('User session expired. Please log in.');
+        setAuthLoading(false);
+        return;
+      }
+
+      const { error: verifyErr } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: authPassword,
+      });
+
+      if (verifyErr) {
+        setAuthError('Security Verification Failed: Incorrect password.');
+        setAuthLoading(false);
+        return;
+      }
+
+      // Password verified -> unlock editing mode!
+      setShowPasswordModal(false);
+      setIsEditingPartners(true);
+      setAuthPassword('');
+    } catch (err: any) {
+      setAuthError('Authentication error: ' + err.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   useEffect(() => {
     async function loadData() {
       setIsLoading(true);
@@ -71,17 +114,26 @@ export default function PropertySetupPage() {
           return;
         }
 
-        // Fetch user profile and properties they own
-        const [profileRes, propertiesRes] = await Promise.all([
-          supabase.from('profiles').select('*').eq('id', user.id).single(),
-          supabase.from('properties').select('*').eq('owner_user_id', user.id)
-        ]);
+        // Fetch user profile
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+        
+        let props: Property[] = [];
+        if (profile?.property_id) {
+          const { data: userProp } = await supabase.from('properties').select('*').eq('id', profile.property_id).maybeSingle();
+          if (userProp) {
+            props = [userProp];
+          }
+        }
 
-        const props = propertiesRes.data || [];
+        if (props.length === 0) {
+          const { data: allProps } = await supabase.from('properties').select('*');
+          props = allProps || [];
+        }
+
         setPropertiesList(props);
 
         if (props.length > 0) {
-          const activeId = profileRes.data?.property_id || props[0].id;
+          const activeId = profile?.property_id || props[0].id;
           const active = props.find((p: any) => p.id === activeId) || props[0];
           handleSelectProperty(active);
         } else {
@@ -103,8 +155,9 @@ export default function PropertySetupPage() {
     setPropertyAddress(prop.address || '');
     setPropertyCity(prop.city || '');
     setPropertyCountry(prop.country || '');
-    setGstNumber(prop.gst_number || '');
-    setStateCode(prop.state_code || '');
+    setGstNumber((prop as any).gstin || (prop as any).gst_number || '');
+    setPropertyCategory((prop as any).property_category || 'PG');
+    setTotalCapital((prop as any).total_capital_investment || 0);
 
     // Persist active property selection locally
     localStorage.setItem('pms_active_property', prop.id);
@@ -118,8 +171,24 @@ export default function PropertySetupPage() {
           .update({ property_id: prop.id })
           .eq('id', user.id);
       }
+
+      // Fetch existing partner investments from database
+      const { data: existingPartners } = await supabase
+        .from('partner_investments')
+        .select('*')
+        .eq('property_id', prop.id);
+
+      if (existingPartners && existingPartners.length > 1) {
+        setOwnershipType('partnership');
+        setCustomPartners(existingPartners);
+      } else {
+        setOwnershipType('single');
+        setCustomPartners([
+          { partner_name: 'Primary Owner', investment_amount: (prop as any).total_capital_investment || 0 }
+        ]);
+      }
     } catch (err) {
-      console.error('Failed to sync active property to profiles table:', err);
+      console.error('Failed to sync active property or load partners:', err);
     }
   };
 
@@ -185,6 +254,7 @@ export default function PropertySetupPage() {
           country: propertyCountry,
           gst_number: gstNumber,
           state_code: stateCode,
+          property_category: propertyCategory,
         });
 
         if (!result.success) {
@@ -200,7 +270,7 @@ export default function PropertySetupPage() {
         // Update list state
         const updatedList = propertiesList.map(p => 
           p.id === selectedProperty.id 
-            ? { ...p, name: propertyName, address: propertyAddress, city: propertyCity, country: propertyCountry, gst_number: gstNumber, state_code: stateCode }
+            ? { ...p, name: propertyName, address: propertyAddress, city: propertyCity, country: propertyCountry, gst_number: gstNumber, state_code: stateCode, property_category: propertyCategory }
             : p
         );
         setPropertiesList(updatedList);
@@ -470,27 +540,240 @@ export default function PropertySetupPage() {
                   {/* PROPERTY CATEGORY MODE SELECTION */}
                   <div className="pt-4 border-t border-white/5 space-y-2">
                     <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Property Category & Operations Mode</label>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {[
-                        { id: 'PG', title: '🏢 PG (Co-Living Mode)', desc: 'Monthly Tenant Directory, Bed-sharing (2-5), No Night Audits required.' },
-                        { id: 'Hotel', title: '🏨 Hotel (Daily Mode)', desc: 'Daily room tariffs, Check-in/out, Folios, Nightly Audit engine.' },
-                        { id: 'Hybrid', title: '🏨🏢 Hotel & PG (Hybrid)', desc: 'Dual-mode: Switch seamlessly between daily guests and monthly residents.' }
-                      ].map(cat => (
-                        <div
-                          key={cat.id}
-                          onClick={() => setPropertyCategory(cat.id as any)}
-                          className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
-                            propertyCategory === cat.id
-                              ? 'bg-indigo-500/10 border-indigo-500/40 text-white shadow-md'
-                              : 'bg-black/40 border-white/[0.05] text-zinc-400 hover:text-zinc-200'
-                          }`}
-                        >
-                          <p className="text-xs font-bold">{cat.title}</p>
-                          <p className="text-[10px] text-zinc-500 mt-1">{cat.desc}</p>
-                        </div>
-                      ))}
+                        { id: 'PG', title: '🏢 PG (Co-Living Mode)', desc: 'Monthly Tenant Directory, Bed-sharing, Fixed Due Dates, Tenant Ledgers.' },
+                        { id: 'Hotel/PG', title: '🏨🏢 Hotel/PG Mode', desc: 'Hotel operations with dedicated PG section & co-living resident management.' }
+                      ].map(cat => {
+                        const isSelected = propertyCategory === cat.id;
+                        return (
+                          <div
+                            key={cat.id}
+                            onClick={() => setPropertyCategory(cat.id as any)}
+                            className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-start gap-3 relative overflow-hidden ${
+                              isSelected
+                                ? 'bg-gradient-to-r from-indigo-500/20 via-indigo-500/10 to-transparent border-indigo-500 text-white shadow-[0_0_20px_rgba(99,102,241,0.2)]'
+                                : 'bg-black/40 border-white/[0.06] text-zinc-400 hover:border-white/20 hover:text-zinc-200'
+                            }`}
+                          >
+                            <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 transition-all ${
+                              isSelected ? 'border-indigo-400 bg-indigo-500 text-white' : 'border-zinc-700 bg-zinc-900'
+                            }`}>
+                              {isSelected && <CheckCircle size={12} className="stroke-[3]" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <h4 className="text-xs font-bold text-white tracking-tight">{cat.title}</h4>
+                                {isSelected && (
+                                  <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shrink-0">
+                                    Active Mode
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-zinc-400 mt-1 leading-relaxed">{cat.desc}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
+
+                  {/* OWNERSHIP STRUCTURE SELECTION */}
+                  <div className="pt-4 border-t border-white/5 space-y-2">
+                    <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Ownership Structure</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div
+                        onClick={() => {
+                          setOwnershipType('single');
+                          setCustomPartners([{ partner_name: 'Primary Owner', investment_amount: totalCapital }]);
+                        }}
+                        className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-start gap-3 relative overflow-hidden ${
+                          ownershipType === 'single'
+                            ? 'bg-gradient-to-r from-emerald-500/20 via-emerald-500/10 to-transparent border-emerald-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.2)]'
+                            : 'bg-black/40 border-white/[0.06] text-zinc-400 hover:border-white/20 hover:text-zinc-200'
+                        }`}
+                      >
+                        <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 transition-all ${
+                          ownershipType === 'single' ? 'border-emerald-400 bg-emerald-500 text-black' : 'border-zinc-700 bg-zinc-900'
+                        }`}>
+                          {ownershipType === 'single' && <CheckCircle size={12} className="stroke-[3]" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <h4 className="text-xs font-bold text-white tracking-tight">👤 Single Owner (100% Sole Ownership)</h4>
+                            {ownershipType === 'single' && (
+                              <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0">
+                                Active Structure
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-zinc-400 mt-1 leading-relaxed">Single owner property. 100% revenue entitlement with zero external partner reports.</p>
+                        </div>
+                      </div>
+
+                      <div
+                        onClick={() => setOwnershipType('partnership')}
+                        className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-start gap-3 relative overflow-hidden ${
+                          ownershipType === 'partnership'
+                            ? 'bg-gradient-to-r from-indigo-500/20 via-indigo-500/10 to-transparent border-indigo-500 text-white shadow-[0_0_20px_rgba(99,102,241,0.2)]'
+                            : 'bg-black/40 border-white/[0.06] text-zinc-400 hover:border-white/20 hover:text-zinc-200'
+                        }`}
+                      >
+                        <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 transition-all ${
+                          ownershipType === 'partnership' ? 'border-indigo-400 bg-indigo-500 text-white' : 'border-zinc-700 bg-zinc-900'
+                        }`}>
+                          {ownershipType === 'partnership' && <CheckCircle size={12} className="stroke-[3]" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <h4 className="text-xs font-bold text-white tracking-tight">🤝 Multi-Partner Investment (Partnership)</h4>
+                            {ownershipType === 'partnership' && (
+                              <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shrink-0">
+                                Active Structure
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-zinc-400 mt-1 leading-relaxed">Multiple financial partners with equity percentage shares & monthly dividend reports.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* PARTNER CAPITAL ALLOCATION SETUP (Only shown if Partnership is selected) */}
+                  {ownershipType === 'partnership' && (
+                    <div className="pt-6 border-t border-white/10 space-y-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-emerald-500/10 via-zinc-900 to-indigo-500/10 border border-emerald-500/20 p-4 rounded-2xl">
+                      <div>
+                        <label className="text-[11px] font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-1.5">
+                          🤝 PG Capital & Partner Profit-Sharing Summary
+                        </label>
+                        <p className="text-xs text-zinc-400 mt-0.5">Total Property Investment: <strong className="text-white font-mono">₹{totalCapital.toLocaleString('en-IN')}</strong></p>
+                      </div>
+
+                      {!isEditingPartners ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowPasswordModal(true)}
+                          className="bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 active:scale-95"
+                        >
+                          <Lock size={14} />
+                          <span>Unlock Edit Shares</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingPartners(false)}
+                          className="bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0"
+                        >
+                          <CheckCircle size={14} />
+                          <span>Lock Summary View</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* READ-ONLY PREMIUM PARTNER CARDS VIEW */}
+                    {!isEditingPartners ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {customPartners.map((partner, idx) => {
+                          const sharePct = totalCapital > 0 && partner.investment_amount > 0 
+                            ? Math.round((partner.investment_amount / totalCapital) * 10000) / 100 
+                            : 0;
+
+                          return (
+                            <div key={idx} className="bg-black/40 border border-white/[0.06] p-4 rounded-2xl space-y-3 relative overflow-hidden group hover:border-emerald-500/30 transition-all">
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <h4 className="text-sm font-bold text-white tracking-tight">{partner.partner_name}</h4>
+                                  <p className="text-xs font-mono text-zinc-400 mt-0.5">Capital: <strong className="text-emerald-400">₹{Number(partner.investment_amount).toLocaleString('en-IN')}</strong></p>
+                                </div>
+                                <span className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold px-2.5 py-1 rounded-full font-mono">
+                                  {sharePct}% Share
+                                </span>
+                              </div>
+                              {/* Visual Equity Progress Bar */}
+                              <div className="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
+                                <div 
+                                  className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full transition-all duration-500" 
+                                  style={{ width: `${Math.min(100, sharePct)}%` }} 
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      /* EDITING MODE INPUTS */
+                      <div className="space-y-4 bg-black/40 border border-indigo-500/30 p-4 rounded-2xl">
+                        <div className="space-y-1.5">
+                          <label className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Total PG Capital Investment (₹)</label>
+                          <input
+                            type="number"
+                            placeholder="e.g. 5400000 (54 Lakhs)"
+                            value={totalCapital || ''}
+                            onChange={(e) => setTotalCapital(Number(e.target.value))}
+                            className="w-full bg-black/60 border border-white/10 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-emerald-500/40 transition-all font-mono"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Partner Shares List</span>
+                            <button
+                              type="button"
+                              onClick={() => setCustomPartners([...customPartners, { partner_name: `Partner ${customPartners.length + 1}`, investment_amount: 0 }])}
+                              className="text-xs font-semibold text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
+                            >
+                              <Plus size={12} /> Add Partner
+                            </button>
+                          </div>
+
+                          {customPartners.map((partner, idx) => {
+                            const sharePct = totalCapital > 0 && partner.investment_amount > 0 
+                              ? Math.round((partner.investment_amount / totalCapital) * 10000) / 100 
+                              : 0;
+
+                            return (
+                              <div key={idx} className="flex items-center gap-3 bg-black/60 border border-white/10 p-2.5 rounded-xl">
+                                <input
+                                  type="text"
+                                  placeholder="Partner Name"
+                                  value={partner.partner_name}
+                                  onChange={(e) => {
+                                    const updated = [...customPartners];
+                                    updated[idx].partner_name = e.target.value;
+                                    setCustomPartners(updated);
+                                  }}
+                                  className="bg-black/60 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-white flex-1 focus:outline-none focus:border-emerald-500"
+                                />
+                                <input
+                                  type="number"
+                                  placeholder="Amount (₹)"
+                                  value={partner.investment_amount || ''}
+                                  onChange={(e) => {
+                                    const updated = [...customPartners];
+                                    updated[idx].investment_amount = Number(e.target.value);
+                                    setCustomPartners(updated);
+                                  }}
+                                  className="bg-black/60 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-white font-mono w-32 focus:outline-none focus:border-emerald-500"
+                                />
+                                <span className="text-xs font-mono font-bold text-emerald-400 w-16 text-right">
+                                  {sharePct}%
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setCustomPartners(customPartners.filter((_, i) => i !== idx))}
+                                  className="text-zinc-500 hover:text-rose-400 text-xs px-1"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  )}
 
                   <div className="pt-4 border-t border-white/5 flex justify-end gap-3">
                     {propertiesList.length > 0 && isCreatingNew && (
@@ -668,6 +951,76 @@ export default function PropertySetupPage() {
             </motion.div>
           )}
         </AnimatePresence>
+      {/* 🔒 SECURITY PASSWORD VERIFICATION MODAL */}
+      <AnimatePresence>
+        {showPasswordModal && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-zinc-900 border border-emerald-500/30 rounded-3xl max-w-md w-full p-6 text-white shadow-2xl space-y-5"
+            >
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm uppercase tracking-wider">
+                  <Lock size={16} /> Security Check Required
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPasswordModal(false)}
+                  className="text-zinc-500 hover:text-white transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div>
+                <h3 className="text-base font-bold text-white tracking-tight">Unlock Partner Share Editing</h3>
+                <p className="text-xs text-zinc-400 mt-1">
+                  Enter your account password to authorize changing partner capital investments and equity percentages.
+                </p>
+              </div>
+
+              {authError && (
+                <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-xs font-semibold">
+                  {authError}
+                </div>
+              )}
+
+              <form onSubmit={handleVerifyPasswordToEdit} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Account Password</label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Enter your login password"
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    className="w-full bg-black/60 border border-zinc-700 rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-emerald-500 transition-all"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswordModal(false)}
+                    className="px-4 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 hover:text-white text-xs font-bold transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20"
+                  >
+                    {authLoading ? <Loader2 size={14} className="animate-spin" /> : 'Authorize & Unlock'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
       </main>
     </div>
   );

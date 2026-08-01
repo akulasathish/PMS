@@ -28,7 +28,7 @@ export async function createProperty(propertyData: {
   address: string;
   city: string;
   country: string;
-  property_category?: 'PG' | 'Hotel' | 'Hybrid';
+  property_category?: 'PG' | 'Hotel/PG';
   total_capital_investment?: number;
 }) {
   try {
@@ -55,12 +55,10 @@ export async function createProperty(propertyData: {
       .insert([
         { 
           name: propertyData.name, 
-          owner_user_id: user.id,
-          status: 'Active',
           address: propertyData.address,
           city: propertyData.city,
           country: propertyData.country,
-          property_category: propertyData.property_category || 'Hybrid',
+          property_category: propertyData.property_category || 'Hotel/PG',
           total_capital_investment: propertyData.total_capital_investment || 0,
         }
       ])
@@ -69,7 +67,7 @@ export async function createProperty(propertyData: {
 
     if (propertyError || !newProperty) {
       console.error("-> FAILED to create property:", propertyError);
-      return { success: false, error: 'Failed to create property in the database.' };
+      return { success: false, error: propertyError?.message || 'Failed to create property in the database.' };
     }
     console.log("-> Property Inserted:", newProperty.id);
 
@@ -120,17 +118,6 @@ export async function togglePropertyStatus(propertyId: string, currentStatus: st
     return { success: false, error: 'Unauthorized.' };
   }
 
-  // Verify the user is the owner of this property
-  const { data: property, error: propertyCheckError } = await supabase
-    .from('properties')
-    .select('owner_user_id')
-    .eq('id', propertyId)
-    .single();
-
-  if (propertyCheckError || !property || property.owner_user_id !== user.id) {
-    return { success: false, error: 'Unauthorized or Property not found.' };
-  }
-
   const newStatus = currentStatus === 'Active' ? 'Suspended' : 'Active';
 
   const { error } = await supabase
@@ -163,17 +150,6 @@ export async function deleteProperty(propertyId: string) {
     return { success: false, error: 'Unauthorized.' };
   }
 
-  // Verify the user is the owner of this property
-  const { data: property, error: propertyCheckError } = await supabase
-    .from('properties')
-    .select('owner_user_id')
-    .eq('id', propertyId)
-    .single();
-
-  if (propertyCheckError || !property || property.owner_user_id !== user.id) {
-    return { success: false, error: 'Unauthorized or Property not found.' };
-  }
-
   // Delete the Property. Assuming RLS and CASCADE DELETE are configured in the DB
   // for dependent tables like rooms, bookings, etc.
   const { error: deletePropError } = await supabase
@@ -203,7 +179,7 @@ export async function deleteProperty(propertyId: string) {
   return { success: true };
 }
 
-export async function updatePropertyGST(propertyId: string, gstNumber: string, stateCode: string) {
+export async function updatePropertyGST(propertyId: string, gstNumber: string) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -211,20 +187,9 @@ export async function updatePropertyGST(propertyId: string, gstNumber: string, s
     return { success: false, error: 'Unauthorized.' };
   }
 
-  // Verify the user is the owner of this property
-  const { data: property, error: propertyCheckError } = await supabase
-    .from('properties')
-    .select('owner_user_id')
-    .eq('id', propertyId)
-    .single();
-
-  if (propertyCheckError || !property || property.owner_user_id !== user.id) {
-    return { success: false, error: 'Unauthorized or Property not found.' };
-  }
-
   const { error } = await supabase
     .from('properties')
-    .update({ gst_number: gstNumber, state_code: stateCode })
+    .update({ gstin: gstNumber })
     .eq('id', propertyId);
 
   if (error) {
@@ -242,24 +207,15 @@ export async function updateProperty(propertyId: string, propertyData: {
   city: string;
   country: string;
   gst_number?: string;
+  gstin?: string;
   state_code?: string;
+  property_category?: 'PG' | 'Hotel/PG';
 }) {
   const supabase = createSSRClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return { success: false, error: 'Unauthorized.' };
-  }
-
-  // Verify the user is the owner of this property
-  const { data: property, error: propertyCheckError } = await supabase
-    .from('properties')
-    .select('owner_user_id')
-    .eq('id', propertyId)
-    .single();
-
-  if (propertyCheckError || !property || property.owner_user_id !== user.id) {
-    return { success: false, error: 'Unauthorized or Property not found.' };
+    return { success: false, error: 'Unauthorized. Please log in.' };
   }
 
   const { error } = await supabase
@@ -269,8 +225,8 @@ export async function updateProperty(propertyId: string, propertyData: {
       address: propertyData.address,
       city: propertyData.city,
       country: propertyData.country,
-      gst_number: propertyData.gst_number || null,
-      state_code: propertyData.state_code || null,
+      gstin: propertyData.gst_number || propertyData.gstin || null,
+      property_category: propertyData.property_category || 'Hotel/PG',
     })
     .eq('id', propertyId);
 

@@ -1,4 +1,5 @@
 "use client";
+import { useRouter } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
 // Dynamically imported inline to avoid SSR pre-rendering failures
 
@@ -20,6 +21,7 @@ import BookingModal from './BookingModal';
 import CoLivingBookingModal from './CoLivingBookingModal';
 import FolioModal from '@/components/FolioModal';
 import RoomBlockModal from '@/components/RoomBlockModal';
+import EditRoomTypeModal from './EditRoomTypeModal';
 import { checkInGuest, checkOutGuest, updateGuestNotes, upgradeRoom, issueRefund, cancelBooking, resetGuestIdentity, updateCheckInTime } from '@/app/actions/booking';
 import { syncBusinessDateToToday } from '@/app/actions/folio';
 import { Property, Room, Booking, UserProfile } from '@/lib/types';
@@ -50,10 +52,14 @@ const generateDaysFromDate = (baseDateStr: string) => {
 };
 
 const getLocalYYYYMMDDStatic = (d: Date) => {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+  } catch (e) {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
 };
 
 const toLocalDatetimeString = (isoString?: string) => {
@@ -178,6 +184,7 @@ const compressImage = (file: File, maxWidth = 1600, maxHeight = 1600, quality = 
 
 
 export default function FrontOfficeTerminal() {
+  const router = useRouter();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -189,7 +196,13 @@ export default function FrontOfficeTerminal() {
   const [showBookingModal, setShowBookingModal] = useState(false);
   
   // Tabs State
-  const [activeTab, setActiveTab] = useState<'tape' | 'arrivals' | 'departures' | 'house' | 'all' | 'balances' | 'expenses' | 'monthly' | 'reports'>('tape');
+  const [activeTab, setActiveTab] = useState<'tape' | 'arrivals' | 'departures' | 'house' | 'all' | 'balances' | 'expenses' | 'monthly' | 'reports'>('monthly');
+
+  React.useEffect(() => {
+    if (property?.property_category === 'PG') {
+      setActiveTab('monthly');
+    }
+  }, [property?.property_category]);
   const [showCoLivingModal, setShowCoLivingModal] = useState(false);
   const [selectedCoLivingRoomId, setSelectedCoLivingRoomId] = useState<string | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState('');
@@ -203,11 +216,11 @@ export default function FrontOfficeTerminal() {
   const [newExpenseCategory, setNewExpenseCategory] = useState('Utility');
   const [newExpenseAmount, setNewExpenseAmount] = useState('');
   const [newExpensePaymentMethod, setNewExpensePaymentMethod] = useState<'Cash' | 'UPI'>('Cash');
-  const [newExpenseDate, setNewExpenseDate] = useState(new Date().toISOString().substring(0, 10));
+  const [newExpenseDate, setNewExpenseDate] = useState(getLocalYYYYMMDDStatic(new Date()));
   const [newExpenseQuantity, setNewExpenseQuantity] = useState(1);
   const [openingCashInput, setOpeningCashInput] = useState('');
   const [isSavingExpense, setIsSavingExpense] = useState(false);
-  const [selectedLedgerDate, setSelectedLedgerDate] = useState(new Date().toISOString().substring(0, 10));
+  const [selectedLedgerDate, setSelectedLedgerDate] = useState(getLocalYYYYMMDDStatic(new Date()));
   const [reservationFilter, setReservationFilter] = useState('Confirmed');
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
@@ -258,6 +271,7 @@ export default function FrontOfficeTerminal() {
   const [isIdentityMenuOpen, setIsIdentityMenuOpen] = useState(false);
   const [activeCheckoutBooking, setActiveCheckoutBooking] = useState<{bookingId: string, roomId: string, guestName: string, amount: number} | null>(null);
   const [activeBlockRoom, setActiveBlockRoom] = useState<Room | null>(null);
+  const [editingRoomType, setEditingRoomType] = useState<Room | null>(null);
   const [selectedBeds, setSelectedBeds] = useState<{ [roomId: string]: number }>({});
   const [monthlyFilter, setMonthlyFilter] = useState<'all' | 'vacancy' | 'occupied' | 'dues'>('all');
   const [coLivingViewMode, setCoLivingViewMode] = useState<'grid' | 'list'>('grid');
@@ -514,9 +528,9 @@ export default function FrontOfficeTerminal() {
 
         let finalRoomsQuery;
         if (currentActiveId && currentActiveId !== 'undefined' && currentActiveId !== 'null') {
-           finalRoomsQuery = supabase.from('rooms').select('*').eq('property_id', currentActiveId).or('is_deleted.eq.false,is_deleted.is.null').order('room_number');
+           finalRoomsQuery = supabase.from('rooms').select('*').eq('property_id', currentActiveId).order('room_number');
         } else {
-           finalRoomsQuery = supabase.from('rooms').select('*').or('is_deleted.eq.false,is_deleted.is.null').order('room_number');
+           finalRoomsQuery = supabase.from('rooms').select('*').order('room_number');
         }
 
         let bookingsQuery = supabase.from('bookings').select('*').eq('property_id', currentActiveId || '00000000-0000-0000-0000-000000000000');
@@ -554,10 +568,10 @@ export default function FrontOfficeTerminal() {
           setProperty(propRes.data);
         }
 
-        const bDate = settingsRes.data?.value || '2026-06-21';
-        const todayLocal = new Date().toISOString().substring(0, 10);
+        const todayLocal = getLocalYYYYMMDDStatic(new Date());
+        const bDate = settingsRes.data?.value || todayLocal;
 
-        if (bDate !== todayLocal && new Date(bDate) < new Date(todayLocal)) {
+        if (bDate !== todayLocal && bDate < todayLocal) {
           console.log(`[Auto-Sync] Stale business date ${bDate} detected. Syncing to today ${todayLocal} via server...`);
           syncBusinessDateToToday().then((res) => {
             if (res.success && res.syncedDate) {
@@ -604,7 +618,10 @@ export default function FrontOfficeTerminal() {
         setBookings(bookingsRes.data || []);
         setIncidentals(incidentalsRes.data || []);
         setPayments(paymentsRes.data || []);
-        setExpenses(expensesRes.data || []);
+        setExpenses((expensesRes.data || []).map((e: any) => ({
+          ...e,
+          date: e.business_date || e.date || (e.created_at ? e.created_at.substring(0, 10) : '')
+        })));
         setDailyCashBalances(cashBalancesRes.data || []);
       }
     } catch (err) {
@@ -1032,6 +1049,34 @@ export default function FrontOfficeTerminal() {
     setActionLoading(false);
   };
 
+  const getNextRentDueDateStr = (b: Booking) => {
+    if (!b.check_in) return 'N/A';
+    
+    // Day of month when rent is due (defaults to joining date day of month)
+    const checkInDate = new Date(b.check_in);
+    const dueDay = b.rent_due_day || checkInDate.getDate();
+    const now = new Date();
+    
+    let dueYear = now.getFullYear();
+    let dueMonth = now.getMonth();
+    
+    // If today's day is greater than dueDay, due date is next month
+    if (now.getDate() > dueDay) {
+      dueMonth += 1;
+      if (dueMonth > 11) {
+        dueMonth = 0;
+        dueYear += 1;
+      }
+    }
+    
+    // Bound dueDay to maximum days in target month
+    const daysInTargetMonth = new Date(dueYear, dueMonth + 1, 0).getDate();
+    const actualDueDay = Math.min(dueDay, daysInTargetMonth);
+    
+    const dueDate = new Date(dueYear, dueMonth, actualDueDay);
+    return dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
   const openActionDrawer = (booking: Booking) => {
     setSelectedBooking(booking);
     setNotesInput(booking.notes || '');
@@ -1094,7 +1139,8 @@ export default function FrontOfficeTerminal() {
 
     const excludedChargesTotal = totalCharges - cardChargesTotal;
     const cardPaid = Math.max(0, totalPaid - excludedChargesTotal);
-    const cardBalanceDue = Math.max(0, cardChargesTotal - cardPaid);
+    const cardBalanceDueRaw = cardChargesTotal - cardPaid;
+    const cardBalanceDue = isNaN(cardBalanceDueRaw) ? 0 : Math.max(0, cardBalanceDueRaw);
     
     const hasDues = cardBalanceDue > 0.01;
 
@@ -1178,10 +1224,13 @@ export default function FrontOfficeTerminal() {
   };
 
   const calculateNights = (inDate: string, outDate: string) => {
+    if (!inDate || !outDate) return 1;
     const d1 = new Date(inDate);
     const d2 = new Date(outDate);
+    if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return 1;
     const diff = d2.getTime() - d1.getTime();
-    return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+    const nights = Math.ceil(diff / (1000 * 60 * 60 * 24));
+    return isNaN(nights) || nights < 1 ? 1 : nights;
   };
 
   const getPaymentDateStr = (p: any) => {
@@ -1284,14 +1333,15 @@ export default function FrontOfficeTerminal() {
 
   const getLedgerTotalsForDate = (dateStr: string) => {
     const openingCash = getOpeningCashForDate(dateStr);
+    const getMethod = (p: any) => (p.payment_method || p.method || 'Cash').toUpperCase();
     const cashPayments = payments
-      .filter(p => !p.is_void && p.method === 'Cash' && getPaymentDateStr(p) === dateStr)
+      .filter(p => !p.is_void && getMethod(p) === 'CASH' && getPaymentDateStr(p) === dateStr)
       .reduce((sum, p) => sum + Number(p.amount), 0);
     const upiPayments = payments
-      .filter(p => !p.is_void && p.method === 'UPI' && getPaymentDateStr(p) === dateStr)
+      .filter(p => !p.is_void && (getMethod(p) === 'UPI' || getMethod(p).includes('UPI')) && getPaymentDateStr(p) === dateStr)
       .reduce((sum, p) => sum + Number(p.amount), 0);
     const otherPayments = payments
-      .filter(p => !p.is_void && !['Cash', 'UPI'].includes(p.method) && getPaymentDateStr(p) === dateStr)
+      .filter(p => !p.is_void && getMethod(p) !== 'CASH' && !getMethod(p).includes('UPI') && getPaymentDateStr(p) === dateStr)
       .reduce((sum, p) => sum + Number(p.amount), 0);
     const cashExpenses = expenses
       .filter(e => e.payment_method === 'Cash' && e.date === dateStr)
@@ -1457,7 +1507,7 @@ export default function FrontOfficeTerminal() {
           category: newExpenseCategory,
           amount: amountVal,
           payment_method: newExpensePaymentMethod,
-          date: newExpenseDate
+          business_date: newExpenseDate
         });
       if (error) {
         alert("Error saving expense: " + error.message);
@@ -2680,15 +2730,13 @@ export default function FrontOfficeTerminal() {
       if (!selectedReportType) return [];
       if (selectedReportType === 'checkins') {
         return bookings.filter(b => {
-          if (b.is_monthly) return false;
           const cInTimeStr = b.check_in_time ? getLocalYYYYMMDD(new Date(b.check_in_time)) : '';
           const cInDateStr = b.check_in ? b.check_in.substring(0, 10) : '';
           const actDate = cInTimeStr || cInDateStr;
-          return actDate === selectedLedgerDate && ['Checked In', 'Checked Out'].includes(b.status);
+          return (actDate === selectedLedgerDate || property?.property_category === 'PG') && ['Checked In', 'Checked Out'].includes(b.status);
         });
       } else if (selectedReportType === 'checkouts') {
         return bookings.filter(b => {
-          if (b.is_monthly) return false;
           const cOutTimeStr = b.check_out_time ? getLocalYYYYMMDD(new Date(b.check_out_time)) : '';
           const cOutDateStr = b.check_out ? b.check_out.substring(0, 10) : '';
           const actDate = cOutTimeStr || cOutDateStr;
@@ -2696,7 +2744,6 @@ export default function FrontOfficeTerminal() {
         });
       } else if (selectedReportType === 'inhouse') {
         return bookings.filter(b => {
-          if (b.is_monthly) return false;
           const checkInDate = b.check_in_time ? getLocalYYYYMMDD(new Date(b.check_in_time)) : (b.check_in ? b.check_in.substring(0, 10) : '');
           const checkOutDate = b.check_out_time ? getLocalYYYYMMDD(new Date(b.check_out_time)) : (b.check_out ? b.check_out.substring(0, 10) : '');
           
@@ -2710,22 +2757,23 @@ export default function FrontOfficeTerminal() {
         });
       } else if (selectedReportType === 'pending') {
         return bookings.filter(b => {
-          if (b.is_monthly) return false;
-          if (b.status !== 'Checked In') return false;
+          if (b.status !== 'Checked In' && b.status !== 'Confirmed') return false;
           const bookingIncidentals = incidentals.filter(i => i.booking_id === b.id);
           const bookingPayments = payments.filter(p => p.booking_id === b.id && !p.is_void);
           const dailyRoomChargesSum = bookingIncidentals
             .filter(item => item.description?.startsWith('Daily Room Charge'))
             .reduce((sum, item) => sum + Number(item.amount), 0);
           const roomAmount = b.is_monthly
-            ? Number(b.monthly_rate || 0)
+            ? Number(b.monthly_rent || b.monthly_rate || 0)
             : Math.max(0, Number(b.amount) - dailyRoomChargesSum);
-          const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0) + (b.is_monthly ? Number(b.amount) : 0);
+          const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0) + (b.is_monthly ? Number(b.security_deposit || 0) : 0);
           const totalCharges = roomAmount + incidentalsAmount;
           const totalPaid = bookingPayments.reduce((sum, item) => sum + Number(item.amount), 0);
           const balanceDue = totalCharges - totalPaid;
           return balanceDue > 0.01;
         });
+      } else if (selectedReportType === 'deposits') {
+        return bookings.filter(b => b.status !== 'Cancelled' && Number(b.security_deposit || 0) > 0);
       }
       return [];
     };
@@ -2771,78 +2819,111 @@ export default function FrontOfficeTerminal() {
             </div>
           </div>
           <div className="flex flex-wrap gap-3 w-full lg:w-auto">
-            <button
-              onClick={() => setSelectedReportType(selectedReportType === 'checkins' ? null : 'checkins')}
-              className={`flex-1 sm:flex-initial px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
-                selectedReportType === 'checkins' 
-                  ? 'bg-indigo-600 text-white border border-indigo-500' 
-                  : 'bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20'
-              }`}
-            >
-              <Eye size={14} />
-              Check-Ins Report
-            </button>
-            <button
-              onClick={() => setSelectedReportType(selectedReportType === 'inhouse' ? null : 'inhouse')}
-              className={`flex-1 sm:flex-initial px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
-                selectedReportType === 'inhouse' 
-                  ? 'bg-indigo-600 text-white border border-indigo-500' 
-                  : 'bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20'
-              }`}
-            >
-              <Eye size={14} />
-              In-House Report
-            </button>
-            <button
-              onClick={() => setSelectedReportType(selectedReportType === 'checkouts' ? null : 'checkouts')}
-              className={`flex-1 sm:flex-initial px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
-                selectedReportType === 'checkouts' 
-                  ? 'bg-indigo-600 text-white border border-indigo-500' 
-                  : 'bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20'
-              }`}
-            >
-              <Eye size={14} />
-              Check-Outs Report
-            </button>
-            <button
-              onClick={() => setSelectedReportType(selectedReportType === 'pending' ? null : 'pending')}
-              className={`flex-1 sm:flex-initial px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
-                selectedReportType === 'pending' 
-                  ? 'bg-indigo-600 text-white border border-indigo-500' 
-                  : 'bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20'
-              }`}
-            >
-              <Eye size={14} />
-              Dues Report
-            </button>
-            <button
-              onClick={generateReconciliationPDFReport}
-              className="w-full sm:w-auto bg-emerald-500/10 hover:bg-emerald-500 hover:text-black text-emerald-400 border border-emerald-500/20 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-            >
-              <FileText size={14} />
-              Shift Handover Report
-            </button>
-            <button
-              onClick={generateNightAuditPDFReport}
-              className="w-full sm:w-auto bg-amber-500/10 hover:bg-amber-500 hover:text-black text-amber-400 border border-amber-500/20 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-            >
-              <Moon size={14} />
-              Night Audit Report
-            </button>
-            <button
-              onClick={generateMonthlyPaymentsPDFReport}
-              className="w-full sm:w-auto bg-indigo-500/10 hover:bg-indigo-500 hover:text-black text-indigo-400 border border-indigo-500/20 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-            >
-              <Users size={14} />
-              Monthly Payments Report
-            </button>
-            <button
-              onClick={generateCentralPaymentsPDFReport}
-              className="w-full sm:w-auto bg-emerald-500/10 hover:bg-emerald-500 hover:text-black text-emerald-400 border border-emerald-500/20 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-            >
-              <ClipboardCheck size={14} />
-              Central Payments Report
-            </button>
+            {property?.property_category === 'PG' ? (
+              <>
+                <button
+                  onClick={() => setSelectedReportType(selectedReportType === 'checkins' ? null : 'checkins')}
+                  className={`flex-1 sm:flex-initial px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
+                    selectedReportType === 'checkins' 
+                      ? 'bg-amber-600 text-white border border-amber-500' 
+                      : 'bg-amber-600/10 hover:bg-amber-600 text-amber-400 hover:text-white border border-amber-500/20'
+                  }`}
+                >
+                  <Eye size={14} />
+                  Resident Joinings Report
+                </button>
+                <button
+                  onClick={() => setSelectedReportType(selectedReportType === 'deposits' ? null : 'deposits')}
+                  className={`flex-1 sm:flex-initial px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
+                    selectedReportType === 'deposits' 
+                      ? 'bg-indigo-600 text-white border border-indigo-500' 
+                      : 'bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20'
+                  }`}
+                >
+                  <ShieldCheck size={14} />
+                  Security Deposits Audit
+                </button>
+                <button
+                  onClick={() => setSelectedReportType(selectedReportType === 'pending' ? null : 'pending')}
+                  className={`flex-1 sm:flex-initial px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
+                    selectedReportType === 'pending' 
+                      ? 'bg-rose-600 text-white border border-rose-500' 
+                      : 'bg-rose-600/10 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/20'
+                  }`}
+                >
+                  <Eye size={14} />
+                  Rent Dues Report
+                </button>
+                <button
+                  onClick={() => router.push('/dashboard/partner-report')}
+                  className="w-full sm:w-auto bg-indigo-500/10 hover:bg-indigo-500 hover:text-white text-indigo-400 border border-indigo-500/20 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                >
+                  <Users size={14} />
+                  Fee & Expense P&L Report
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => setSelectedReportType(selectedReportType === 'checkins' ? null : 'checkins')}
+                  className={`flex-1 sm:flex-initial px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
+                    selectedReportType === 'checkins' 
+                      ? 'bg-indigo-600 text-white border border-indigo-500' 
+                      : 'bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20'
+                  }`}
+                >
+                  <Eye size={14} />
+                  Check-Ins Report
+                </button>
+                <button
+                  onClick={() => setSelectedReportType(selectedReportType === 'inhouse' ? null : 'inhouse')}
+                  className={`flex-1 sm:flex-initial px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
+                    selectedReportType === 'inhouse' 
+                      ? 'bg-indigo-600 text-white border border-indigo-500' 
+                      : 'bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20'
+                  }`}
+                >
+                  <Eye size={14} />
+                  In-House Report
+                </button>
+                <button
+                  onClick={() => setSelectedReportType(selectedReportType === 'checkouts' ? null : 'checkouts')}
+                  className={`flex-1 sm:flex-initial px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
+                    selectedReportType === 'checkouts' 
+                      ? 'bg-indigo-600 text-white border border-indigo-500' 
+                      : 'bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20'
+                  }`}
+                >
+                  <Eye size={14} />
+                  Check-Outs Report
+                </button>
+                <button
+                  onClick={() => setSelectedReportType(selectedReportType === 'pending' ? null : 'pending')}
+                  className={`flex-1 sm:flex-initial px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
+                    selectedReportType === 'pending' 
+                      ? 'bg-indigo-600 text-white border border-indigo-500' 
+                      : 'bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20'
+                  }`}
+                >
+                  <Eye size={14} />
+                  Dues Report
+                </button>
+                <button
+                  onClick={generateReconciliationPDFReport}
+                  className="w-full sm:w-auto bg-emerald-500/10 hover:bg-emerald-500 hover:text-black text-emerald-400 border border-emerald-500/20 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                >
+                  <FileText size={14} />
+                  Shift Handover Report
+                </button>
+                <button
+                  onClick={generateNightAuditPDFReport}
+                  className="w-full sm:w-auto bg-amber-500/10 hover:bg-amber-500 hover:text-black text-amber-400 border border-amber-500/20 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                >
+                  <Moon size={14} />
+                  Night Audit Report
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -2854,7 +2935,8 @@ export default function FrontOfficeTerminal() {
                   {selectedReportType === 'checkins' && 'Check-Ins'}
                   {selectedReportType === 'inhouse' && 'In-House'}
                   {selectedReportType === 'checkouts' && 'Check-Outs'}
-                  {selectedReportType === 'pending' && 'Pending Dues'} Report Entries ({reportEntries.length})
+                  {selectedReportType === 'pending' && 'Pending Dues'}
+                  {selectedReportType === 'deposits' && 'Refundable Security Deposits Audit'} Report Entries ({reportEntries.length})
                 </h4>
                 <p className="text-[10px] text-zinc-500 mt-1 uppercase tracking-widest font-semibold">
                   Ledger Date: {formatFriendlyDate(selectedLedgerDate)}
@@ -2881,7 +2963,9 @@ export default function FrontOfficeTerminal() {
                       <th className="py-3.5 px-4">Guest Name</th>
                       <th className="py-3.5 px-4">Contact Info</th>
                       <th className="py-3.5 px-4">Stay Dates</th>
-                      <th className="py-3.5 px-4 text-right">Charges / Balance</th>
+                      <th className="py-3.5 px-4 text-right">
+                        {selectedReportType === 'deposits' ? 'Security Deposit (Held)' : 'Charges / Balance'}
+                      </th>
                       <th className="py-3.5 px-4 text-center">Action</th>
                     </tr>
                   </thead>
@@ -2913,10 +2997,19 @@ export default function FrontOfficeTerminal() {
                             <div className="mt-0.5">Out: {new Date(b.check_out).toLocaleDateString()}</div>
                           </td>
                           <td className="py-4 px-4 text-right font-mono">
-                            <div className="text-zinc-400">Paid: ₹{totalPaid.toFixed(2)}</div>
-                            <div className={`mt-0.5 font-bold ${balanceDue > 0.01 ? 'text-red-400' : 'text-zinc-500'}`}>
-                              Due: ₹{balanceDue.toFixed(2)}
-                            </div>
+                            {selectedReportType === 'deposits' ? (
+                              <div>
+                                <div className="text-indigo-400 font-black text-sm">₹{Number(b.security_deposit || 0).toFixed(2)}</div>
+                                <div className="text-[9px] text-emerald-400 font-bold uppercase tracking-wider mt-0.5">Held in Trust</div>
+                              </div>
+                            ) : (
+                              <div>
+                                <div className="text-zinc-400">Paid: ₹{totalPaid.toFixed(2)}</div>
+                                <div className={`mt-0.5 font-bold ${balanceDue > 0.01 ? 'text-red-400' : 'text-zinc-500'}`}>
+                                  Due: ₹{balanceDue.toFixed(2)}
+                                </div>
+                              </div>
+                            )}
                           </td>
                           <td className="py-4 px-4 text-center">
                             <button
@@ -3277,9 +3370,9 @@ export default function FrontOfficeTerminal() {
       return (room as any).sharing_capacity || 2;
     };
 
-    // Filter rooms that are allowed for monthly co-living
+    // Filter rooms that are allowed for monthly co-living (In PG mode, all rooms are PG co-living rooms)
     const monthlyRooms = rooms.filter(
-      r => r.allowed_billing_type === 'monthly'
+      r => property?.property_category === 'PG' || r.allowed_billing_type === 'monthly' || (r as any).allowed_billing_type === 'both'
     ).sort((a, b) => a.room_number.localeCompare(b.room_number, undefined, { numeric: true, sensitivity: 'base' }));
 
     // Apply text search filter if any
@@ -3308,17 +3401,17 @@ export default function FrontOfficeTerminal() {
       });
     } else if (monthlyFilter === 'occupied') {
       filteredRooms = filteredMonthlyRooms.filter(r => {
-        const activeCount = bookings.filter(b => b.room_id === r.id && b.is_monthly === true && b.status !== 'Cancelled' && b.status !== 'Checked Out').length;
+        const activeCount = bookings.filter(b => b.room_id === r.id && (Boolean(b.is_monthly) || property?.property_category === 'PG') && b.status !== 'Cancelled' && b.status !== 'Checked Out').length;
         const cap = getRoomCapacity(r);
         return activeCount === cap;
       });
     } else if (monthlyFilter === 'dues') {
       filteredRooms = filteredMonthlyRooms.filter(r => {
-        const activeRoomBookings = bookings.filter(b => b.room_id === r.id && b.is_monthly === true && b.status !== 'Cancelled' && b.status !== 'Checked Out');
+        const activeRoomBookings = bookings.filter(b => b.room_id === r.id && (Boolean(b.is_monthly) || property?.property_category === 'PG') && b.status !== 'Cancelled' && b.status !== 'Checked Out');
         return activeRoomBookings.some(booking => {
           const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
           const guestPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
-          const totalCharged = Number(booking.monthly_rate || 0) + Number(booking.amount) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
+          const totalCharged = Number(booking.monthly_rate || 0) + Number(booking.total_amount || 0) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
           const totalPaid = guestPayments.reduce((sum, p) => sum + Number(p.amount), 0);
           return (totalCharged - totalPaid) > 0.01;
         });
@@ -3336,7 +3429,7 @@ export default function FrontOfficeTerminal() {
       
       const activeRoomBookings = bookings.filter(b => 
         b.room_id === room.id && 
-        b.is_monthly === true &&
+        (Boolean(b.is_monthly) || property?.property_category === 'PG') &&
         b.status !== 'Cancelled' && 
         b.status !== 'Checked Out'
       );
@@ -3345,7 +3438,7 @@ export default function FrontOfficeTerminal() {
       activeRoomBookings.forEach(booking => {
         const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
         const guestPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
-        const totalCharged = Number(booking.monthly_rate || 0) + Number(booking.amount) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
+        const totalCharged = Number(booking.monthly_rent || booking.monthly_rate || 0) + Number(booking.security_deposit || 0) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
         const totalPaid = guestPayments.reduce((sum, p) => sum + Number(p.amount), 0);
         const due = totalCharged - totalPaid;
         if (due > 0) {
@@ -3355,6 +3448,28 @@ export default function FrontOfficeTerminal() {
     });
 
     const vacantBeds = Math.max(0, totalBeds - occupiedBeds);
+
+    // Calculate Breakdown by Sharing Type (3-Sharing, 4-Sharing, 5-Sharing, etc.)
+    const sharingBreakdown: { [cap: number]: { totalBeds: number; occupiedBeds: number; vacantBeds: number; roomsCount: number } } = {};
+
+    monthlyRooms.forEach(room => {
+      const cap = getRoomCapacity(room);
+      if (!sharingBreakdown[cap]) {
+        sharingBreakdown[cap] = { totalBeds: 0, occupiedBeds: 0, vacantBeds: 0, roomsCount: 0 };
+      }
+      sharingBreakdown[cap].roomsCount += 1;
+      sharingBreakdown[cap].totalBeds += cap;
+
+      const activeCount = bookings.filter(b => 
+        b.room_id === room.id && 
+        (Boolean(b.is_monthly) || property?.property_category === 'PG') &&
+        b.status !== 'Cancelled' && 
+        b.status !== 'Checked Out'
+      ).length;
+
+      sharingBreakdown[cap].occupiedBeds += activeCount;
+      sharingBreakdown[cap].vacantBeds += Math.max(0, cap - activeCount);
+    });
 
     return (
       <div className="space-y-6">
@@ -3406,6 +3521,64 @@ export default function FrontOfficeTerminal() {
                 ₹{totalMonthlyDues.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
               </h4>
             </div>
+          </div>
+        </div>
+
+        {/* SEPARATE MOBILE-OPTIMIZED SHARING BED BREAKDOWN SECTION */}
+        <div className="bg-zinc-900/40 border border-white/[0.06] p-4 rounded-3xl space-y-2.5">
+          <div className="flex items-center justify-between px-1">
+            <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-1.5">
+              <Bed size={13} /> Sharing Capacity & Vacant Beds Breakdown
+            </span>
+            <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider hidden sm:inline">
+              Swipe ➔
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-1 pt-0.5 scroll-smooth">
+            {Object.keys(sharingBreakdown)
+              .map(Number)
+              .sort((a, b) => a - b)
+              .map(cap => {
+                const stats = sharingBreakdown[cap];
+                const occPct = Math.round((stats.occupiedBeds / stats.totalBeds) * 100) || 0;
+                return (
+                  <div 
+                    key={cap}
+                    className="bg-black/50 border border-white/[0.08] hover:border-indigo-500/30 p-3 rounded-2xl shrink-0 min-w-[155px] sm:min-w-[175px] space-y-2 transition-all shadow-lg"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black text-white bg-indigo-500/20 border border-indigo-500/30 px-2 py-0.5 rounded-lg uppercase tracking-wider">
+                        {cap}-Sharing
+                      </span>
+                      <span className="text-[9px] font-mono text-zinc-450 font-bold">
+                        {stats.roomsCount} Room{stats.roomsCount > 1 ? 's' : ''}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs font-bold pt-1">
+                      <div className="flex flex-col">
+                        <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Total</span>
+                        <span className="text-white text-sm font-black">{stats.totalBeds} <span className="text-[9px] font-normal text-zinc-500">beds</span></span>
+                      </div>
+                      <div className="flex flex-col text-right">
+                        <span className="text-[9px] text-emerald-400 font-bold uppercase tracking-wider">Vacant</span>
+                        <span className="text-emerald-400 text-sm font-black">{stats.vacantBeds} <span className="text-[9px] font-normal text-emerald-500">free</span></span>
+                      </div>
+                    </div>
+
+                    {/* Capacity Progress Bar */}
+                    <div className="w-full bg-zinc-950 h-1.5 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full transition-all duration-300 ${
+                          stats.vacantBeds === 0 ? 'bg-indigo-500' : 'bg-emerald-500'
+                        }`}
+                        style={{ width: `${occPct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
           </div>
         </div>
 
@@ -3504,11 +3677,11 @@ export default function FrontOfficeTerminal() {
                     const capacity = getRoomCapacity(room);
                     const activeRoomBookings = bookings.filter(b => 
                       b.room_id === room.id && 
-                      b.is_monthly === true &&
+                      (Boolean(b.is_monthly) || property?.property_category === 'PG') &&
                       b.status !== 'Cancelled' && 
                       b.status !== 'Checked Out'
                     );
-                    const isExpanded = expandedRoomIds[room.id] ?? false;
+                    const isExpanded = expandedRoomIds[room.id] ?? (activeRoomBookings.length > 0);
 
                     return (
                       <React.Fragment key={room.id}>
@@ -3522,9 +3695,18 @@ export default function FrontOfficeTerminal() {
                             </div>
                           </td>
                           <td className="py-4 px-5">
-                            <div className="flex flex-col gap-0.5">
-                              <span className="text-xs font-medium text-zinc-400">{room.type} Class</span>
-                              <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">{capacity}-Sharing</span>
+                            <div className="flex items-center gap-2">
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-xs font-medium text-zinc-400">{room.type} Class</span>
+                                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">{capacity}-Sharing</span>
+                              </div>
+                              <button
+                                onClick={() => setEditingRoomType(room)}
+                                className="p-1 rounded-lg hover:bg-white/10 text-zinc-500 hover:text-indigo-400 transition-colors"
+                                title="Change Sharing Type & Capacity"
+                              >
+                                <Settings size={13} />
+                              </button>
                             </div>
                           </td>
                           <td className="py-4 px-5">
@@ -3549,7 +3731,7 @@ export default function FrontOfficeTerminal() {
                                 if (booking) {
                                   const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
                                   const guestPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
-                                  const totalCharged = Number(booking.monthly_rate || 0) + Number(booking.amount) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
+                                  const totalCharged = Number(booking.monthly_rent || booking.monthly_rate || 0) + Number(booking.security_deposit || 0) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
                                   const totalPaid = guestPayments.reduce((sum, p) => sum + Number(p.amount), 0);
                                   const balanceDue = totalCharged - totalPaid;
 
@@ -3714,7 +3896,7 @@ export default function FrontOfficeTerminal() {
                 b.status !== 'Checked Out'
               );
 
-              const isExpanded = expandedRoomIds[room.id] ?? false;
+              const isExpanded = expandedRoomIds[room.id] ?? (activeRoomBookings.length > 0);
 
               return (
                 <div key={room.id} className="relative group bg-[#121215]/60 backdrop-blur-md border border-white/[0.06] hover:border-indigo-500/30 rounded-3xl overflow-hidden transition-all duration-300 hover:shadow-2xl hover:shadow-indigo-500/5 flex flex-col">
@@ -3750,9 +3932,21 @@ export default function FrontOfficeTerminal() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <span className="text-[8px] bg-zinc-800 text-zinc-400 border border-white/5 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                        {capacity}-Sharing
-                      </span>
+                      <div className="flex items-center justify-end gap-1">
+                        <span className="text-[8px] bg-zinc-800 text-zinc-400 border border-white/5 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                          {capacity}-Sharing
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingRoomType(room);
+                          }}
+                          className="p-1 rounded-lg hover:bg-white/10 text-zinc-500 hover:text-indigo-400 transition-colors"
+                          title="Change Sharing Type & Capacity"
+                        >
+                          <Settings size={12} />
+                        </button>
+                      </div>
                       <p className="text-[9px] text-zinc-450 mt-1 font-bold">
                         {activeRoomBookings.length}/{capacity} Occupied
                       </p>
@@ -3783,7 +3977,7 @@ export default function FrontOfficeTerminal() {
                               const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
                               const guestPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
                               
-                              const totalCharged = Number(booking.monthly_rate || 0) + Number(booking.amount) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
+                              const totalCharged = Number(booking.monthly_rent || booking.monthly_rate || 0) + Number(booking.security_deposit || 0) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
                               const totalPaid = guestPayments.reduce((sum, p) => sum + Number(p.amount), 0);
                               const balanceDue = totalCharged - totalPaid;
                               
@@ -3880,7 +4074,7 @@ export default function FrontOfficeTerminal() {
                             const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
                             const guestPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
                             
-                            const totalCharged = Number(booking.monthly_rate || 0) + Number(booking.amount) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
+                            const totalCharged = Number(booking.monthly_rent || booking.monthly_rate || 0) + Number(booking.security_deposit || 0) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
                             const totalPaid = guestPayments.reduce((sum, p) => sum + Number(p.amount), 0);
                             const balanceDue = totalCharged - totalPaid;
 
@@ -4382,7 +4576,12 @@ export default function FrontOfficeTerminal() {
         </div>
 
         <nav className="flex-1 px-3 space-y-1 mt-4">
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.filter(item => {
+            if (property?.property_category === 'PG') {
+              return item.label !== 'Night Audit' && item.label !== 'Housekeeping';
+            }
+            return item.label !== 'Partner Report';
+          }).map((item) => {
             const locked = !hasAccess(item.module);
             const isItemActive = item.label === "Daily Reports" 
               ? activeTab === 'reports' 
@@ -4441,11 +4640,18 @@ export default function FrontOfficeTerminal() {
             
             {activeTab !== 'reports' && canCreateBooking() && (
               <button 
-                onClick={() => setShowBookingModal(true)}
+                onClick={() => {
+                  if (property?.property_category === 'PG') {
+                    setSelectedCoLivingRoomId(undefined);
+                    setShowCoLivingModal(true);
+                  } else {
+                    setShowBookingModal(true);
+                  }
+                }}
                 className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg active:scale-95 text-xs sm:text-sm"
               >
                 <Plus size={18} />
-                New Walk-In
+                {property?.property_category === 'PG' ? '🏠 + Add Tenant to Room' : 'New Walk-In'}
               </button>
             )}
           </div>
@@ -4464,14 +4670,28 @@ export default function FrontOfficeTerminal() {
                   }}
                 className="w-full appearance-none bg-zinc-900 border border-white/10 rounded-2xl py-3.5 pl-4 pr-12 text-xs text-white font-bold uppercase tracking-wider focus:outline-none focus:border-indigo-500/50 cursor-pointer hover:bg-zinc-800 transition-all shadow-xl active:scale-[0.99]"
               >
-                <option value="tape" className="bg-[#0c0c0e] text-white">📅 Tape Chart</option>
-                <option value="arrivals" className="bg-[#0c0c0e] text-white">👤 Arrivals Today ({getArrivalsToday().length})</option>
-                <option value="departures" className="bg-[#0c0c0e] text-white">🚪 Departures Today</option>
-                <option value="house" className="bg-[#0c0c0e] text-white">🛏️ In-House ({bookings.filter(b => b.status === 'Checked In' && !b.is_monthly).length} Occupied)</option>
-                <option value="balances" className="bg-[#0c0c0e] text-white">💵 Pending Payments</option>
-                <option value="expenses" className="bg-[#0c0c0e] text-white">💸 Expenses & Cash Ledger</option>
-                <option value="all" className="bg-[#0c0c0e] text-white">🔍 Reservations</option>
-                <option value="monthly" className="bg-[#0c0c0e] text-white">🏢 Monthly Co-Living Hub</option>
+                {(property?.property_category === 'PG'
+                  ? [
+                      { id: 'monthly', label: '🏢 PG Resident Hub' },
+                      { id: 'balances', label: '💵 Pending Rent' },
+                      { id: 'expenses', label: '💸 Mess & Expenses' },
+                      { id: 'all', label: '🔍 Tenant History & All Joinings' },
+                      { id: 'reports', label: '📊 Daily Reports Terminal' },
+                    ]
+                  : [
+                      { id: 'tape', label: '📅 Tape Chart' },
+                      { id: 'arrivals', label: '🛬 Arrivals Today' },
+                      { id: 'departures', label: '🛫 Departures Today' },
+                      { id: 'house', label: '🛏️ In-House' },
+                      { id: 'balances', label: '💵 Pending Payments' },
+                      { id: 'expenses', label: '💸 Expenses & Cash' },
+                      { id: 'all', label: '🔍 Reservations' },
+                      { id: 'monthly', label: '🏢 PG Resident Hub' },
+                      { id: 'reports', label: '📊 Daily Reports Terminal' },
+                    ]
+                ).map(opt => (
+                  <option key={opt.id} value={opt.id} className="bg-[#0c0c0e] text-white">{opt.label}</option>
+                ))}
               </select>
               <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-400">
                 <ChevronsUpDown size={14} />
@@ -4480,16 +4700,25 @@ export default function FrontOfficeTerminal() {
 
             {/* Desktop Row Tabs */}
             <div className="hidden md:flex items-center gap-1 bg-white/[0.02] border border-white/[0.05] p-1 rounded-2xl w-fit overflow-x-auto no-scrollbar scroll-smooth">
-              {[
-                { id: 'tape', label: 'Tape Chart', icon: Calendar },
-                { id: 'arrivals', label: 'Arrivals Today', icon: UserCheck },
-                { id: 'departures', label: 'Departures Today', icon: LogOut },
-                { id: 'house', label: 'In-House', icon: Bed },
-                { id: 'balances', label: 'Pending Payments', icon: IndianRupee },
-                { id: 'expenses', label: 'Expenses & Cash', icon: TrendingDown },
-                { id: 'all', label: 'Reservations', icon: Search },
-                { id: 'monthly', label: 'Monthly Co-Living', icon: Home },
-              ].map((tab) => (
+              {(property?.property_category === 'PG'
+                ? [
+                    { id: 'monthly', label: 'PG Resident Hub', icon: Home },
+                    { id: 'balances', label: 'Pending Rent', icon: IndianRupee },
+                    { id: 'expenses', label: 'Mess & Expenses', icon: TrendingDown },
+                    { id: 'all', label: 'Tenant History', icon: Search },
+                    { id: 'reports', label: 'Daily Reports', icon: FileText },
+                  ]
+                : [
+                    { id: 'tape', label: 'Tape Chart', icon: Calendar },
+                    { id: 'arrivals', label: 'Arrivals Today', icon: UserCheck },
+                    { id: 'departures', label: 'Departures Today', icon: LogOut },
+                    { id: 'house', label: 'In-House', icon: Bed },
+                    { id: 'balances', label: 'Pending Payments', icon: IndianRupee },
+                    { id: 'expenses', label: 'Expenses & Cash', icon: TrendingDown },
+                    { id: 'all', label: 'Reservations', icon: Search },
+                    { id: 'monthly', label: 'PG Resident Hub', icon: Home },
+                  ]
+              ).map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => {
@@ -4923,8 +5152,123 @@ export default function FrontOfficeTerminal() {
 
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6 space-y-8">
-                {/* Physical Check-In / Out Timestamps */}
+              {property?.property_category === 'PG' ? (
+                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                  {/* 1. TENANT OVERVIEW & NEXT RENT DUE DATE */}
+                  <div className="p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl space-y-2">
+                    <div className="flex justify-between items-center text-xs font-bold">
+                      <span className="text-zinc-400">Monthly Rent:</span>
+                      <span className="text-white font-mono">₹{Number(selectedBooking.monthly_rent || selectedBooking.monthly_rate || 0).toLocaleString('en-IN')}/mo</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs font-bold">
+                      <span className="text-zinc-400">Joining Date:</span>
+                      <span className="text-emerald-400 font-mono">{new Date(selectedBooking.check_in).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs font-bold pt-2 border-t border-white/5">
+                      <span className="text-amber-400">Next Rent Due Date:</span>
+                      <span className="text-amber-400 font-mono font-black">{getNextRentDueDateStr(selectedBooking)}</span>
+                    </div>
+                  </div>
+
+                  {/* 2. LOG PAYMENT BUTTON WITH DUE DATE IN BRACKETS */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveCheckoutBooking({
+                        bookingId: selectedBooking.id,
+                        roomId: selectedBooking.room_id,
+                        guestName: selectedBooking.guest_name,
+                        amount: Number(selectedBooking.monthly_rent || selectedBooking.monthly_rate || 0)
+                      });
+                    }}
+                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 rounded-2xl text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg active:scale-95"
+                  >
+                    <Banknote size={16} />
+                    Log Payment (Due: {getNextRentDueDateStr(selectedBooking)})
+                  </button>
+
+                  {/* 3. SECURITY DEPOSIT STATUS */}
+                  {(() => {
+                    const guestPayments = payments.filter(p => p.booking_id === selectedBooking.id && !p.is_void);
+                    const depositPayments = guestPayments.filter(p => p.allocation === 'Security Deposit');
+                    const totalDepositPaid = depositPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+                    const depositRequired = Number(selectedBooking.security_deposit || selectedBooking.amount || 0);
+
+                    return (
+                      <div className="p-4 bg-white/[0.02] border border-white/[0.06] rounded-2xl space-y-3">
+                        <h3 className="text-xs font-bold text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+                          <ShieldCheck size={14} /> Security Deposit Status
+                        </h3>
+                        <div className="grid grid-cols-3 gap-2 text-center">
+                          <div className="p-2.5 bg-black/40 rounded-xl border border-white/5">
+                            <span className="text-[9px] text-zinc-500 font-bold uppercase block">Required</span>
+                            <span className="text-xs font-mono font-bold text-white">₹{depositRequired.toLocaleString('en-IN')}</span>
+                          </div>
+                          <div className="p-2.5 bg-black/40 rounded-xl border border-white/5">
+                            <span className="text-[9px] text-zinc-500 font-bold uppercase block">Paid</span>
+                            <span className="text-xs font-mono font-bold text-emerald-400">₹{totalDepositPaid.toLocaleString('en-IN')}</span>
+                          </div>
+                          <div className="p-2.5 bg-black/40 rounded-xl border border-white/5">
+                            <span className="text-[9px] text-zinc-500 font-bold uppercase block">Refundable</span>
+                            <span className="text-xs font-mono font-bold text-indigo-400">₹{totalDepositPaid.toLocaleString('en-IN')}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* 4. PAYMENT HISTORY WITH TIMESTAMPS & EXACT TIME */}
+                  <div className="p-4 bg-white/[0.02] border border-white/[0.06] rounded-2xl space-y-3">
+                    <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                      <Clock size={14} className="text-indigo-400" /> Payment History
+                    </h3>
+                    {(() => {
+                      const guestPayments = payments.filter(p => p.booking_id === selectedBooking.id && !p.is_void);
+                      if (guestPayments.length === 0) {
+                        return <p className="text-xs text-zinc-500 italic">No payments logged yet.</p>;
+                      }
+                      return (
+                        <div className="space-y-2">
+                          {guestPayments.map(p => (
+                            <div key={p.id} className="p-3 bg-black/40 border border-white/5 rounded-xl flex items-center justify-between">
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-bold text-white font-mono">₹{Number(p.amount).toLocaleString('en-IN')}</span>
+                                  <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">{p.method || 'Cash'}</span>
+                                  <span className="text-[9px] font-bold uppercase text-zinc-400">({p.allocation || 'Rent'})</span>
+                                </div>
+                                <p className="text-[9px] text-zinc-500 font-medium mt-1">
+                                  {new Date(p.created_at || p.business_date).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* 5. CHECKOUT TENANT OPTION */}
+                  <div className="pt-4 border-t border-rose-500/20 space-y-2">
+                    <button
+                      onClick={() => {
+                        setActiveCheckoutBooking({
+                          bookingId: selectedBooking.id,
+                          roomId: selectedBooking.room_id,
+                          guestName: selectedBooking.guest_name,
+                          amount: Number(selectedBooking.monthly_rent || selectedBooking.monthly_rate || 0)
+                        });
+                      }}
+                      disabled={actionLoading}
+                      className="w-full bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white border border-rose-500/20 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2"
+                    >
+                      <LogOut size={16} /> Checkout Tenant
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                  {/* Physical Check-In / Out Timestamps */}
                 {(selectedBooking.check_in_time || selectedBooking.check_out_time) && (
                   <div className="space-y-3 pb-6 border-b border-white/[0.04]">
                     <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
@@ -5580,7 +5924,8 @@ export default function FrontOfficeTerminal() {
                   {!canCancel() && <p className="text-[10px] text-rose-500 mt-2 flex items-center gap-1 justify-center"><Lock size={10} /> Cancellation restricted by your access level.</p>}
                 </div>
 
-              </div>
+                </div>
+              )}
             </motion.div>
           </>
         )}
@@ -5820,6 +6165,9 @@ export default function FrontOfficeTerminal() {
             setShowCoLivingModal(false);
             setSelectedCoLivingRoomId(undefined);
           }}
+          onSuccess={() => {
+            loadDashboardData();
+          }}
           propertyId={property?.id || ''} 
           rooms={rooms}
           bookings={bookings}
@@ -5867,6 +6215,7 @@ export default function FrontOfficeTerminal() {
         <FolioModal
           bookingId={activeCheckoutBooking.bookingId}
           propertyId={property.id}
+          propertyCategory={property.property_category}
           guestName={activeCheckoutBooking.guestName}
           roomId={activeCheckoutBooking.roomId}
           roomNumber={rooms.find(r => r.id === activeCheckoutBooking.roomId)?.room_number || ''}
@@ -5892,10 +6241,26 @@ export default function FrontOfficeTerminal() {
           }}
         />
       )}
+
+      {editingRoomType && (
+        <EditRoomTypeModal
+          room={editingRoomType}
+          onClose={() => setEditingRoomType(null)}
+          onSuccess={() => {
+            setEditingRoomType(null);
+            loadDashboardData();
+          }}
+        />
+      )}
       {/* Mobile Bottom Navigation Bar */}
       <div className="lg:hidden fixed bottom-0 left-0 w-full z-40 bg-[#0a0a0c]/85 backdrop-blur-xl border-t border-white/[0.05] shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
         <div className="flex items-center justify-around py-2 px-1 max-w-md mx-auto">
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.filter(item => {
+            if (property?.property_category === 'PG') {
+              return item.label !== 'Night Audit' && item.label !== 'Housekeeping';
+            }
+            return item.label !== 'Partner Report';
+          }).map((item) => {
             const locked = !hasAccess(item.module);
             const isItemActive = item.label === "Daily Reports" 
               ? activeTab === 'reports' 

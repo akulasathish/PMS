@@ -27,10 +27,14 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
   const [guestPhone, setGuestPhone] = useState('');
 
   const getLocalYYYYMMDD = (d: Date) => {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    try {
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+    } catch (e) {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
   };
 
   const todayStr = businessDate || getLocalYYYYMMDD(new Date());
@@ -59,8 +63,8 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
     }
   }, [isOpen, defaultRoomId]);
 
-  // Filter rooms to those that allow monthly billing
-  const monthlyRooms = rooms.filter(room => room.allowed_billing_type === 'monthly');
+  // Filter rooms (In PG mode, all rooms are available for monthly co-living)
+  const monthlyRooms = rooms;
 
   // Compute vacancy/occupancy for rooms to help selection
   const getRoomOccupancyInfo = (room: Room) => {
@@ -90,6 +94,7 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
   if (!isOpen) return null;
 
   const handleSubmit = async (formData: FormData) => {
+    if (isLoading) return;
     setIsLoading(true);
     setError('');
 
@@ -109,6 +114,7 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
     formData.append('propertyId', propertyId);
     formData.append('roomId', selectedRoomId);
     formData.append('isMonthly', 'true');
+    formData.append('status', 'Checked In');
 
     const result = await createBooking(formData);
 
@@ -123,8 +129,7 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
       setTimeout(() => {
         setSuccess(false);
         onClose();
-        window.location.reload();
-      }, 1500);
+      }, 1000);
     }
   };
 
@@ -138,7 +143,7 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
         <div className="flex justify-between items-center p-5 border-b border-white/5 bg-black/20">
           <h2 className="text-lg font-bold text-white flex items-center gap-2">
             <Bed size={18} className="text-indigo-400" />
-            Check-In Co-Living Guest
+            🏠 Add Tenant to Room
           </h2>
           <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors">
             <X size={20} />
@@ -232,6 +237,29 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
                       className="w-full bg-black/50 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-white text-sm placeholder:text-zinc-700 focus:outline-none focus:border-indigo-500/50"
                     />
                   </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center pl-1">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Government ID Proof</label>
+                    <span className="text-[9px] font-bold text-amber-400 uppercase tracking-wider bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">Max 150 KB</span>
+                  </div>
+                  <input 
+                    type="file" 
+                    accept="image/*,.pdf"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        if (file.size > 150 * 1024) {
+                          setError("ID Proof file size exceeds 150 KB limit. Please upload a compressed or smaller file (Max 150 KB).");
+                          e.target.value = "";
+                          return;
+                        }
+                        setError("");
+                      }
+                    }}
+                    className="w-full bg-black/50 border border-white/10 rounded-xl py-2 px-3 text-white text-xs file:mr-3 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-[10px] file:font-bold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer"
+                  />
                 </div>
 
                 <button
@@ -368,7 +396,6 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
                         <input
                           type="number"
                           name="monthlyRate"
-                          required={step === 3}
                           min="0"
                           step="0.01"
                           placeholder="13500.00"
@@ -382,11 +409,14 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
                       <input
                         type="number"
                         name="billingCycleDate"
-                        required={step === 3}
                         min="1"
                         max="31"
-                        placeholder="27"
-                        defaultValue={new Date(selectedCheckIn).getDate()}
+                        defaultValue={(() => {
+                          if (!selectedCheckIn) return 1;
+                          const parts = selectedCheckIn.split('-');
+                          const day = parts.length === 3 ? parseInt(parts[2], 10) : NaN;
+                          return isNaN(day) || day < 1 || day > 31 ? 1 : day;
+                        })()}
                         className="w-full bg-black/50 border border-white/10 rounded-xl py-2 px-3 text-white text-sm placeholder:text-zinc-700 focus:outline-none focus:border-indigo-500/50"
                       />
                     </div>
@@ -427,8 +457,7 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
                           name="amount"
                           min="0"
                           step="0.01"
-                          required={step === 3}
-                          placeholder="10000.00"
+                          placeholder="1000.00"
                           className="w-full bg-black/50 border border-white/10 rounded-xl py-2 pl-8 pr-4 text-white text-sm placeholder:text-zinc-700 focus:outline-none focus:border-indigo-500/50"
                         />
                       </div>

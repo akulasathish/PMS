@@ -228,14 +228,17 @@ export default function NightAuditPage() {
 
         if (propRes.data) setProperty(propRes.data);
 
-        const activeDate = settingsRes.data?.value || '2026-06-24';
+        const activeDate = settingsRes.data?.value || new Date().toISOString().substring(0, 10);
         setBusinessDate(activeDate);
 
         if (bookingsRes.data) setBookings(bookingsRes.data);
         if (roomsRes.data) setRooms(roomsRes.data);
         if (paymentsRes.data) setPayments(paymentsRes.data);
         if (incidentalsRes.data) setIncidentals(incidentalsRes.data);
-        if (expensesRes.data) setExpenses(expensesRes.data);
+        if (expensesRes.data) setExpenses(expensesRes.data.map((e: any) => ({
+          ...e,
+          date: e.business_date || e.date || (e.created_at ? e.created_at.substring(0, 10) : '')
+        })));
         if (balancesRes.data) setDailyCashBalances(balancesRes.data);
 
         // Pre-populate custom rates state with average daily rates
@@ -392,7 +395,7 @@ export default function NightAuditPage() {
           category: newExpCat,
           amount: amountVal,
           payment_method: newExpMethod,
-          date: businessDate
+          business_date: businessDate
         });
       if (error) {
         alert("Error saving expense: " + error.message);

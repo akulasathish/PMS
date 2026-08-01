@@ -12,15 +12,18 @@ import {
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { markRoomClean, markRoomDirty, bulkMarkRoomsClean, bulkMarkRoomsDirty } from '@/app/actions/housekeeping';
-import { Property, Room, Booking, UserProfile } from '@/lib/types';
+import { Property, Room, Booking, UserProfile, getTodayLocalYYYYMMDD } from '@/lib/types';
 
 interface RoomWithProfile extends Room {
   profiles?: { full_name: string };
   cleaning_started_at?: string;
 }
 
+import { Receipt } from 'lucide-react';
+
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Overview", href: "/dashboard", active: false, module: 'analytics' },
+  { icon: Receipt, label: "Partner Report", href: "/dashboard/partner-report", active: false, module: 'partner_report' },
   { icon: Activity, label: "Front Office", href: "/dashboard/front-office", active: false, module: 'front_office' },
   { icon: Brush, label: "Housekeeping", href: "/dashboard/housekeeping", active: true, module: 'housekeeping' },
   { icon: DoorOpen, label: "Inventory", href: "/dashboard/inventory", active: false, module: 'inventory' },
@@ -89,7 +92,7 @@ export default function HousekeepingTerminal() {
             setProperty(propRes.data);
           }
 
-          const activeDate = settingsRes.data?.value || '2026-06-21';
+          const activeDate = settingsRes.data?.value || getTodayLocalYYYYMMDD();
           setBusinessDate(activeDate);
 
           if (!roomsRes.data || roomsRes.data.length === 0) {
@@ -185,7 +188,7 @@ export default function HousekeepingTerminal() {
       };
     }
 
-    const today = businessDate || new Date().toISOString().substring(0, 10);
+    const today = businessDate || getTodayLocalYYYYMMDD();
     const booking = bookings.find(b => b.room_id === room.id);
     
     let label = 'Vacant';
@@ -312,7 +315,12 @@ export default function HousekeepingTerminal() {
         </div>
 
         <nav className="flex-1 px-3 space-y-1 mt-4">
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.filter(item => {
+            if (property?.property_category === 'PG') {
+              return item.label !== 'Night Audit';
+            }
+            return item.label !== 'Partner Report';
+          }).map((item) => {
             const locked = !hasAccess(item.module);
             return (
               <Link

@@ -159,6 +159,15 @@ export default function PartnerReportPage() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Configure Partner Capital Button */}
+          <Link
+            href="/dashboard/property-setup"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 hover:text-indigo-300 text-xs font-bold transition-all shadow-md active:scale-95"
+          >
+            <Building2 size={14} />
+            <span>Configure Capital & Partners</span>
+          </Link>
+
           {/* Read-Only Badge for Partners */}
           {isPartner ? (
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold">
@@ -181,28 +190,21 @@ export default function PartnerReportPage() {
             />
           </div>
 
-          {/* Print Button */}
-          <button
-            onClick={handlePrint}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition-all shadow-lg shadow-emerald-600/20"
-          >
-            <Printer size={14} /> Print Report
-          </button>
         </div>
       </div>
 
       {/* 📊 SUMMARY METRICS HEADER CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         
-        {/* Realized Income Card */}
+        {/* Operating Rent Revenue Card */}
         <div className="bg-zinc-900/60 backdrop-blur-xl border border-zinc-800/80 rounded-2xl p-5 relative overflow-hidden">
           <div className="flex justify-between items-start mb-3">
             <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
               <IndianRupee size={18} />
             </div>
-            <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">Realized Collections</span>
+            <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">Operating Revenue</span>
           </div>
-          <p className="text-[11px] text-zinc-500 uppercase font-semibold">Total Monthly Revenue</p>
+          <p className="text-[11px] text-zinc-500 uppercase font-semibold">Total Monthly Rent</p>
           <p className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mt-0.5">
             ₹{(report?.totalIncome || 0).toLocaleString('en-IN')}
           </p>
@@ -210,6 +212,23 @@ export default function PartnerReportPage() {
             <span>Cash: <strong className="text-zinc-200">₹{(report?.cashIncome || 0).toLocaleString('en-IN')}</strong></span>
             <span>UPI: <strong className="text-emerald-400">₹{(report?.upiIncome || 0).toLocaleString('en-IN')}</strong></span>
           </div>
+        </div>
+
+        {/* Security Deposits Held (Trust Fund) Card */}
+        <div className="bg-zinc-900/60 backdrop-blur-xl border border-indigo-500/20 rounded-2xl p-5 relative overflow-hidden">
+          <div className="flex justify-between items-start mb-3">
+            <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+              <ShieldCheck size={18} />
+            </div>
+            <span className="text-[10px] uppercase font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded">Refundable Liability</span>
+          </div>
+          <p className="text-[11px] text-zinc-500 uppercase font-semibold">Security Deposits Held</p>
+          <p className="text-2xl sm:text-3xl font-extrabold text-indigo-300 tracking-tight mt-0.5">
+            ₹{(report?.securityDepositsHeld || 0).toLocaleString('en-IN')}
+          </p>
+          <p className="text-[10px] text-zinc-500 mt-3 pt-3 border-t border-zinc-800">
+            Held in trust separately; excluded from operating revenue & profit.
+          </p>
         </div>
 
         {/* Expenses & Payroll Card */}
@@ -236,7 +255,7 @@ export default function PartnerReportPage() {
             <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
               <Wallet size={18} />
             </div>
-            <span className="text-[10px] uppercase font-bold text-emerald-300 bg-emerald-500/20 px-2 py-0.5 rounded">Net Shareable</span>
+            <span className="text-[10px] uppercase font-bold text-emerald-300 bg-emerald-500/20 px-2 py-0.5 rounded">Net Operating Profit</span>
           </div>
           <p className="text-[11px] text-zinc-400 uppercase font-semibold">Net Distributable Profit</p>
           <p className="text-2xl sm:text-3xl font-extrabold text-emerald-400 tracking-tight mt-0.5">

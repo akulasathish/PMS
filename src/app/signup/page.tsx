@@ -52,10 +52,13 @@ function SignupForm() {
   const [otpError, setOtpError] = useState('');
   const [resendTimer, setResendTimer] = useState(60);
   
-  const [bypassVerification, setBypassVerification] = useState(
-    typeof window !== 'undefined' && 
-    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ); // Developer toggle!
+  const [bypassVerification, setBypassVerification] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+      setBypassVerification(true);
+    }
+  }, []);
   
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -97,24 +100,35 @@ function SignupForm() {
       const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
       const redirectUrl = `${origin}/auth/callback`;
 
-      // Create user account via robust server action (auto-healing unconfirmed users if needed)
-      const result = await registerUserWithoutVerification(email, password, plan || 'free_trial');
+      const cleanEmail = email.trim().toLowerCase();
 
-      if (!result.success) {
-        setError(result.error || 'Failed to create account.');
-        setIsLoading(false);
-        return;
+      // 1. Standard Client SignUp using Anon Key (never throws Invalid API Key)
+      const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password,
+      });
+
+      if (signUpErr && !signUpErr.message.includes('already registered')) {
+        // Try server action fallback if client sign up hit an issue
+        const result = await registerUserWithoutVerification(cleanEmail, password, plan || 'free_trial');
+        if (!result.success) {
+          setError(result.error || signUpErr.message);
+          setIsLoading(false);
+          return;
+        }
       }
 
-      // Auto-login the user
+      // 2. Auto-login or redirect to Property Setup
       const { error: loginError } = await supabase.auth.signInWithPassword({
-        email,
+        email: cleanEmail,
         password,
       });
 
       if (loginError) {
-        setError('Account created! Please log in with your credentials.');
-        setIsLoading(false);
+        setMessage('Account created successfully! Redirecting to login...');
+        setTimeout(() => {
+          router.push('/login?registered=true');
+        }, 1200);
         return;
       }
 

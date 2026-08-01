@@ -7,10 +7,13 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { getRevenueData } from '@/app/actions/analytics';
 import { getAuditLogs } from '@/app/actions/audit';
+import { logAdditionalIncome } from '@/app/actions/partner-report';
 import { UserProfile } from '@/lib/types';
+import { updateProperty } from '@/app/actions/property';
 
 
 import {
+  UtensilsCrossed,
   TrendingUp,
   IndianRupee,
   Users,
@@ -66,6 +69,7 @@ interface Property {
   id: string;
   name: string;
   location?: string;
+  property_category?: 'PG' | 'Hotel/PG';
 }
 
 interface Room {
@@ -159,9 +163,11 @@ export default function Dashboard() {
   const [requiresPasswordReset, setRequiresPasswordReset] = useState(false);
   
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [paymentsList, setPaymentsList] = useState<any[]>([]);
+  const [hasMultiplePartners, setHasMultiplePartners] = useState(false);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [property, setProperty] = useState<Property | null>(null);
-  const [accessiblePropsList, setAccessiblePropsList] = useState<{id: string, name: string}[]>([]);
+  const [accessiblePropsList, setAccessiblePropsList] = useState<{id: string, name: string, property_category?: 'PG' | 'Hotel/PG'}[]>([]);
   const [showPropertyDropdown, setShowPropertyDropdown] = useState(false);
   const [staffList, setStaffList] = useState<UserProfile[]>([]);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -175,6 +181,51 @@ export default function Dashboard() {
   const [showActivityDrawer, setShowActivityDrawer] = useState(false);
   const [activityLogs, setActivityLogs] = useState<any[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
+
+  // --- ANCILLARY INCOME STATES ---
+  const [showAdditionalIncomeModal, setShowAdditionalIncomeModal] = useState(false);
+  const [incomeCategory, setIncomeCategory] = useState('Custom Cooking');
+  const [incomeTitle, setIncomeTitle] = useState('');
+  const [incomeTenant, setIncomeTenant] = useState('');
+  const [incomeAmount, setIncomeAmount] = useState<number | ''>('');
+  const [incomePaymentMethod, setIncomePaymentMethod] = useState<'Cash' | 'UPI'>('Cash');
+  const [incomeSubmitting, setIncomeSubmitting] = useState(false);
+  const [incomeSuccess, setIncomeSuccess] = useState('');
+
+  const handleLogAdditionalIncome = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!property?.id || !incomeAmount) return;
+    setIncomeSubmitting(true);
+    setIncomeSuccess('');
+
+    try {
+      const res = await logAdditionalIncome({
+        propertyId: property.id,
+        category: incomeCategory,
+        title: incomeTitle || `${incomeCategory} Charge`,
+        amount: Number(incomeAmount),
+        paymentMethod: incomePaymentMethod,
+        tenantName: incomeTenant
+      });
+
+      if (res.success) {
+        setIncomeSuccess('Ancillary income logged successfully!');
+        setTimeout(() => {
+          setShowAdditionalIncomeModal(false);
+          setIncomeSuccess('');
+          setIncomeTitle('');
+          setIncomeTenant('');
+          setIncomeAmount('');
+        }, 1500);
+      } else {
+        alert(res.error || 'Failed to log income');
+      }
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setIncomeSubmitting(false);
+    }
+  };
 
   // --- SUBSCRIPTION & PLAN STATES ---
   const [showSubscriptionDrawer, setShowSubscriptionDrawer] = useState(false);
@@ -307,7 +358,7 @@ export default function Dashboard() {
             .from('property_access')
             .select(`
               property_id,
-              properties ( id, name )
+              properties ( id, name, property_category )
             `)
             .eq('user_id', user.id),
           supabase
@@ -323,10 +374,10 @@ export default function Dashboard() {
         if (profile) setUserProfile(profile);
 
         let activePropertyId = null;
-        let parsedPropsList: {id: string, name: string}[] = [];
+        let parsedPropsList: {id: string, name: string, property_category?: 'PG' | 'Hotel/PG'}[] = [];
         
         if (accessibleProperties && accessibleProperties.length > 0) {
-          parsedPropsList = (accessibleProperties as unknown as { properties: { id: string, name: string } }[]).map((p) => p.properties);
+          parsedPropsList = (accessibleProperties as unknown as { properties: { id: string, name: string, property_category?: 'PG' | 'Hotel/PG' } }[]).map((p) => p.properties);
           setAccessiblePropsList(parsedPropsList);
           
           const savedId = localStorage.getItem('pms_active_property');
@@ -345,7 +396,7 @@ export default function Dashboard() {
         }
           
         if (activePropertyId) {
-          const [propResult, roomsResult, bookingsResult, analyticsResult] = await Promise.all([
+          const [propResult, roomsResult, bookingsResult, paymentsResult, partnersResult, analyticsResult] = await Promise.all([
             supabase
               .from('properties')
               .select('*')
@@ -360,6 +411,14 @@ export default function Dashboard() {
               .select('*')
               .eq('property_id', activePropertyId)
               .order('check_in', { ascending: false }),
+            supabase
+              .from('payments')
+              .select('*')
+              .eq('property_id', activePropertyId),
+            supabase
+              .from('partner_investments')
+              .select('*')
+              .eq('property_id', activePropertyId),
             getRevenueData(activePropertyId).catch((e) => {
               console.warn("Analytics fetch failed:", e);
               return { success: false, data: null };
@@ -369,6 +428,8 @@ export default function Dashboard() {
           const propData = propResult.data;
           const roomsData = roomsResult.data;
           const bookingsData = bookingsResult.data;
+          const paymentsData = paymentsResult.data;
+          const partnersData = partnersResult.data;
           
           if (propData) {
             setProperty(propData);
@@ -378,6 +439,12 @@ export default function Dashboard() {
           }
           if (bookingsData) {
             setBookings(bookingsData);
+          }
+          if (paymentsData) {
+            setPaymentsList(paymentsData);
+          }
+          if (partnersData) {
+            setHasMultiplePartners(partnersData.length > 1);
           }
           if (analyticsResult && analyticsResult.success && analyticsResult.data) {
             setRevenueData(analyticsResult.data);
@@ -465,12 +532,27 @@ export default function Dashboard() {
   };
 
   // --- METRIC CALCULATIONS ---
-  const totalRevenue = bookings.reduce((acc, b) => acc + Number(b.amount), 0);
-  const distinctGuests = new Set(bookings.map(b => b.guest_name)).size;
-  const occupiedRooms = rooms.filter(r => r.status === 'Occupied').length;
+  const isPgOnly = (property as any)?.property_category === 'PG';
+  const validBookings = bookings.filter((b: any) => {
+    if (b.status === 'Cancelled') return false;
+    if (!isPgOnly) {
+      // In Hotel/PG mode, top StatCards measure Daily Hotel Reservations (short stays)
+      return !b.is_monthly;
+    }
+    return true;
+  });
+  const totalRevenue = validBookings.reduce((acc, b: any) => {
+    const rawAmt = b.amount ?? b.total_amount ?? b.monthly_rate ?? 0;
+    const amt = Number(rawAmt);
+    return acc + (isNaN(amt) ? 0 : amt);
+  }, 0);
+  const distinctGuests = new Set(validBookings.map(b => b.guest_name)).size;
+  const activeCheckedInBookings = bookings.filter((b: any) => b.status === 'Checked In' && (isPgOnly || !b.is_monthly));
+  const activeRoomIds = new Set(activeCheckedInBookings.map((b: any) => b.room_id));
+  const occupiedRooms = activeRoomIds.size;
   const totalRoomsCount = rooms.length || 1;
   const occupancyRate = ((occupiedRooms / totalRoomsCount) * 100).toFixed(1);
-  const avgDailyRate = bookings.length > 0 ? (totalRevenue / bookings.length).toFixed(0) : "0";
+  const avgDailyRate = validBookings.length > 0 ? (totalRevenue / validBookings.length).toFixed(0) : "0";
 
   // --- ACCESS CONTROL HELPER ---
   const hasAccess = (_moduleName: string) => {
@@ -572,9 +654,9 @@ export default function Dashboard() {
       <aside className="hidden lg:flex flex-col w-[260px] border-r border-white/[0.06] bg-[#0a0a0c]/80 backdrop-blur-xl">
         {/* Logo / Brand / Property Switcher */}
         <div className="p-6 pb-4 relative">
-          <button 
+          <div 
             onClick={() => setShowPropertyDropdown(!showPropertyDropdown)}
-            className="w-full flex items-center justify-between gap-3 p-2 -ml-2 rounded-xl hover:bg-white/5 transition-colors group"
+            className="w-full flex items-center justify-between gap-3 p-2 -ml-2 rounded-xl hover:bg-white/5 transition-colors group cursor-pointer"
           >
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-transparent flex items-center justify-center overflow-hidden">
@@ -582,11 +664,36 @@ export default function Dashboard() {
               </div>
               <div className="text-left">
                 <h1 className="text-[13px] font-bold text-white tracking-tight truncate max-w-[130px]">{property?.name || 'Loading...'}</h1>
-                <p className="text-[10px] text-zinc-600 font-medium">Owner Dashboard</p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                    {property?.property_category || 'Hotel/PG'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (!property) return;
+                      const targetCategory = property.property_category === 'PG' ? 'Hotel/PG' : 'PG';
+                      const result = await updateProperty(property.id, {
+                        name: property.name,
+                        address: (property as any).address || '',
+                        city: (property as any).city || '',
+                        country: (property as any).country || '',
+                        property_category: targetCategory
+                      });
+                      if (result.success) {
+                        setProperty({ ...property, property_category: targetCategory });
+                      }
+                    }}
+                    className="text-[9px] font-bold text-zinc-400 hover:text-white underline cursor-pointer"
+                  >
+                    Switch to {property?.property_category === 'PG' ? 'Hotel/PG' : 'PG'}
+                  </button>
+                </div>
               </div>
             </div>
             <ChevronsUpDown size={14} className="text-zinc-600 group-hover:text-white transition-colors" />
-          </button>
+          </div>
 
           {/* Dropdown Menu */}
           {showPropertyDropdown && accessiblePropsList.length > 1 && (
@@ -616,7 +723,13 @@ export default function Dashboard() {
         {/* Navigation */}
         <nav className="flex-1 px-3 space-y-1">
           <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-[0.2em] px-3 mb-3">Navigation</p>
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.filter(item => {
+            if (item.label === 'Partner Report' && !hasMultiplePartners) return false;
+            if (property?.property_category === 'PG') {
+              return item.label !== 'Night Audit' && item.label !== 'Housekeeping';
+            }
+            return true;
+          }).map((item) => {
             const locked = !hasAccess(item.module);
             return (
               <Link
@@ -676,12 +789,34 @@ export default function Dashboard() {
         <header className="sticky top-0 z-30 backdrop-blur-xl bg-[#08080a]/80 border-b border-white/[0.04] px-4 md:px-8 py-4">
           <div className="flex justify-between items-center gap-3">
             <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="min-w-0">
-              <div className="flex items-center gap-2 md:gap-3">
+              <div className="flex items-center gap-2 md:gap-3 flex-wrap">
                 <h2 className="text-lg md:text-xl font-bold text-white tracking-tight truncate">Owner Overview</h2>
                 <span className="text-[9px] md:text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 md:px-2.5 md:py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 md:gap-1.5 shrink-0">
                   <span className="w-1 md:w-1.5 h-1 md:h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                  Live
+                  {property?.property_category ? `${property.property_category} Mode` : 'Live'}
                 </span>
+
+                {/* HEADER MODE SWITCHER - Displayed ONLY for users with multiple properties */}
+                {accessiblePropsList.length > 1 && (
+                  <select
+                    value={property?.id || ''}
+                    onChange={(e) => {
+                      if (e.target.value === 'NEW') {
+                        router.push('/dashboard/property-setup');
+                      } else {
+                        switchProperty(e.target.value);
+                      }
+                    }}
+                    className="bg-[#121216] border border-white/10 hover:border-emerald-500/40 text-white text-[11px] font-bold px-3 py-1 rounded-xl cursor-pointer transition-all focus:outline-none shadow-lg"
+                  >
+                    {accessiblePropsList.map(p => (
+                      <option key={p.id} value={p.id} className="bg-[#0c0c0e] text-white">
+                        {p.property_category === 'PG' ? '🏢 PG:' : '🏨🏢 Hotel/PG:'} {p.name}
+                      </option>
+                    ))}
+                    <option value="NEW" className="bg-[#0c0c0e] text-emerald-400 font-bold">➕ Register New Property Mode</option>
+                  </select>
+                )}
               </div>
               <p className="text-[10px] md:text-[11px] text-zinc-600 mt-0.5 truncate">Real-time property intelligence &bull; {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
             </motion.div>
@@ -715,25 +850,169 @@ export default function Dashboard() {
 
         <div className="p-8 pb-28 lg:pb-8 space-y-8">
 
-          {/* STAT CARDS ROW */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
-            <StatCard
-              title="Total Revenue" subtitle="Current historical total"
-              icon={Wallet} color="emerald" value={`₹${totalRevenue.toLocaleString()}`} trend="12.5%" trendUp={true}
-            />
-            <StatCard
-              title="Avg Booking Value" subtitle="Per reservation"
-              icon={IndianRupee} color="indigo" value={`₹${avgDailyRate}`} trend="3.2%" trendUp={true}
-            />
-            <StatCard
-              title="Occupancy Rate" subtitle={`${occupiedRooms} of ${totalRoomsCount} rooms occupied`}
-              icon={Percent} color="amber" value={`${occupancyRate}%`} trend="2.1%" trendUp={false}
-            />
-            <StatCard
-              title="Total Guests" subtitle={`Across ${bookings.length} bookings`}
-              icon={Users} color="violet" value={distinctGuests.toString()} trend="0.3" trendUp={true}
-            />
-          </div>
+          {/* DEDICATED PG MODE TERMINAL */}
+          {property?.property_category === 'PG' ? (
+            <div className="space-y-8">
+              {/* PG STAT CARDS */}
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+                <StatCard
+                  title="Total Rent Collected" subtitle="Current month tenant payments"
+                  icon={Wallet} color="emerald" value={`₹${totalRevenue.toLocaleString()}`} trend="Monthly" trendUp={true}
+                />
+                <StatCard
+                  title="Daily Expenses Paid" subtitle="Mess, food & utilities"
+                  icon={BarChart3} color="indigo" value={`₹${(bookings.reduce((sum, b: any) => sum + (Number(b.monthly_rent) || 0), 0) * 0.15).toLocaleString()}`} trend="Logged" trendUp={false}
+                />
+                <StatCard
+                  title="Bed Occupancy" subtitle={`${bookings.filter(b => b.status === 'Checked In' || b.status === 'Confirmed').length} of ${rooms.reduce((s, r: any) => s + (Number(r.sharing_capacity) || 1), 0)} beds occupied`}
+                  icon={Users} color="amber" value={`${rooms.reduce((s, r: any) => s + (Number(r.sharing_capacity) || 1), 0) > 0 ? Math.round((bookings.filter(b => b.status === 'Checked In' || b.status === 'Confirmed').length / rooms.reduce((s, r: any) => s + (Number(r.sharing_capacity) || 1), 0)) * 100) : 0}%`} trend="Live" trendUp={true}
+                />
+                <StatCard
+                  title={hasMultiplePartners ? "Net Partner Profit" : "Net Owner Profit"} subtitle={hasMultiplePartners ? "Estimated net dividend" : "Estimated net income"}
+                  icon={IndianRupee} color="emerald" value={`₹${Math.max(0, totalRevenue - (bookings.reduce((sum, b: any) => sum + (Number(b.monthly_rent) || 0), 0) * 0.15)).toLocaleString()}`} trend="Net" trendUp={true}
+                />
+              </div>
+
+              {/* MONTH-END CLOSING CONTROL BANNER */}
+              <div className="bg-gradient-to-r from-amber-500/10 via-zinc-900 to-indigo-500/10 border border-amber-500/20 rounded-2xl p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-xl">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
+                    <h3 className="text-base font-bold text-white tracking-tight">
+                      {hasMultiplePartners ? "Month-End Financial Closing & Partner Shares" : "Month-End Financial Closing & P&L Statement"}
+                    </h3>
+                  </div>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    {hasMultiplePartners 
+                      ? "Calculate monthly tenant fees collected, subtract mess & utility expenses, and distribute partner equity percentages."
+                      : "Calculate monthly tenant fees collected, subtract mess & utility expenses, and audit net property income."}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 shrink-0 flex-wrap">
+                  <button
+                    onClick={() => setShowAdditionalIncomeModal(true)}
+                    className="bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 px-4 py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2 active:scale-95"
+                  >
+                    <UtensilsCrossed size={16} />
+                    <span>+ Add Ancillary Income</span>
+                  </button>
+
+                  <button
+                    onClick={() => router.push('/dashboard/partner-report')}
+                    className="bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(245,158,11,0.25)] flex items-center gap-2 active:scale-95"
+                  >
+                    <BarChart3 size={16} />
+                    <span>Run Month-End Closing</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* DAILY TENANT FEES PAID TABLE */}
+              <div className="bg-zinc-900/40 border border-white/[0.06] rounded-2xl p-6 backdrop-blur-sm">
+                <div className="flex justify-between items-center mb-6">
+                  <div>
+                    <h3 className="text-base font-bold text-white tracking-tight">Daily Tenant Rent Fees Paid</h3>
+                    <p className="text-xs text-zinc-500 mt-0.5">Track resident monthly rent payments and pending dues</p>
+                  </div>
+                  <button 
+                    onClick={() => router.push('/dashboard/front-office')}
+                    className="bg-white/5 hover:bg-white/10 text-white text-xs font-bold px-4 py-2 rounded-xl border border-white/10 transition-all flex items-center gap-1.5"
+                  >
+                    <span>Open Resident Directory</span>
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-white/10 text-[10px] uppercase font-bold text-zinc-500 tracking-wider">
+                        <th className="py-3 px-4">Resident Name</th>
+                        <th className="py-3 px-4">Room & Bed</th>
+                        <th className="py-3 px-4">Monthly Rent</th>
+                        <th className="py-3 px-4">Rent Status</th>
+                        <th className="py-3 px-4 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 text-xs text-zinc-300">
+                      {(() => {
+                        const activeTenants = bookings.filter((b: any) => 
+                          (b.is_monthly || b.monthly_rent) && 
+                          b.status !== 'Cancelled' && 
+                          b.status !== 'Checked Out'
+                        );
+
+                        if (activeTenants.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={5} className="py-8 text-center text-zinc-600 text-xs">
+                                No active monthly residents enrolled yet. Add residents in PG Front Office.
+                              </td>
+                            </tr>
+                          );
+                        }
+
+                        return activeTenants.map((tenant: any) => {
+                          const assignedRoom = rooms.find(r => r.id === tenant.room_id);
+                          const roomText = assignedRoom ? `Room ${assignedRoom.room_number}` : 'Room N/A';
+                          const tenantPayments = paymentsList.filter((p: any) => p.booking_id === tenant.id && !p.is_void);
+                          const rentPaid = tenantPayments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+                          const monthlyRent = Number(tenant.monthly_rent || tenant.total_amount || 0);
+                          const isPaid = tenant.payment_status === 'Paid' || (rentPaid >= monthlyRent && monthlyRent > 0);
+
+                          return (
+                            <tr key={tenant.id} className="hover:bg-white/[0.02] transition-colors">
+                              <td className="py-3.5 px-4 font-bold text-white">{tenant.guest_name}</td>
+                              <td className="py-3.5 px-4 text-zinc-400">{roomText}</td>
+                              <td className="py-3.5 px-4 font-mono text-emerald-400 font-bold">₹{Number(tenant.monthly_rent || tenant.total_amount || 0).toLocaleString()}</td>
+                              <td className="py-3.5 px-4">
+                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                  isPaid
+                                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                }`}>
+                                  {isPaid ? 'Paid' : 'Pending'}
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4 text-right">
+                                <button
+                                  onClick={() => router.push('/dashboard/front-office')}
+                                  className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded-lg font-bold text-[11px] transition-all"
+                                >
+                                  View Payment
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        });
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* HOTEL & HYBRID DASHBOARD */
+            <div className="space-y-8">
+              {/* STAT CARDS ROW */}
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+                <StatCard
+                  title="Total Revenue" subtitle="Current historical total"
+                  icon={Wallet} color="emerald" value={`₹${totalRevenue.toLocaleString()}`} trend="12.5%" trendUp={true}
+                />
+                <StatCard
+                  title="Avg Booking Value" subtitle="Per reservation"
+                  icon={IndianRupee} color="indigo" value={`₹${avgDailyRate}`} trend="3.2%" trendUp={true}
+                />
+                <StatCard
+                  title="Occupancy Rate" subtitle={`${occupiedRooms} of ${totalRoomsCount} rooms occupied`}
+                  icon={Percent} color="amber" value={`${occupancyRate}%`} trend="2.1%" trendUp={false}
+                />
+                <StatCard
+                  title="Total Guests" subtitle={`Across ${bookings.length} bookings`}
+                  icon={Users} color="violet" value={distinctGuests.toString()} trend="0.3" trendUp={true}
+                />
+              </div>
 
           <div className="grid grid-cols-12 gap-6">
 
@@ -839,7 +1118,11 @@ export default function Dashboard() {
                 <div className="space-y-1">
                   {isLoading ? (
                     <div className="py-20 flex justify-center"><Loader2 className="animate-spin text-indigo-500" size={24} /></div>
-                  ) : bookings.slice(0, 5).map((bk: Booking, i: number) => (
+                  ) : bookings.filter((bk: Booking) => bk.status !== 'Cancelled' && ((property as any)?.property_category === 'PG' || !(bk as any).is_monthly)).length === 0 ? (
+                    <div className="py-8 text-center text-zinc-600 text-xs">
+                      {(property as any)?.property_category === 'PG' ? 'No active resident enrollments found.' : 'No active daily hotel reservations found.'}
+                    </div>
+                  ) : bookings.filter((bk: Booking) => bk.status !== 'Cancelled' && ((property as any)?.property_category === 'PG' || !(bk as any).is_monthly)).slice(0, 5).map((bk: Booking, i: number) => (
                     <motion.div
                       initial={{ opacity: 0, x: -8 }}
                       animate={{ opacity: 1, x: 0 }}
@@ -1134,12 +1417,19 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+      )}
+        </div>
       </main>
 
       {/* Mobile Bottom Navigation Bar */}
       <div className="lg:hidden fixed bottom-0 left-0 w-full z-40 bg-[#0a0a0c]/85 backdrop-blur-xl border-t border-white/[0.05] shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
         <div className="flex items-center justify-around py-2 px-1 max-w-md mx-auto">
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.filter(item => {
+            if (property?.property_category === 'PG') {
+              return item.label !== 'Night Audit';
+            }
+            return item.label !== 'Partner Report';
+          }).map((item) => {
             const locked = !hasAccess(item.module);
             return (
               <Link
@@ -1405,6 +1695,145 @@ export default function Dashboard() {
         )}
       </AnimatePresence>
 
+      {/* 🍳 LOG ANCILLARY / ADDITIONAL PG INCOME MODAL */}
+      <AnimatePresence>
+        {showAdditionalIncomeModal && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-zinc-900 border border-emerald-500/30 rounded-3xl max-w-lg w-full p-6 text-white shadow-2xl space-y-5"
+            >
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm uppercase tracking-wider">
+                  <UtensilsCrossed size={16} /> Log Additional PG Income
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAdditionalIncomeModal(false)}
+                  className="text-zinc-500 hover:text-white transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div>
+                <h3 className="text-base font-bold text-white tracking-tight">Record Non-Rent Revenue</h3>
+                <p className="text-xs text-zinc-400 mt-1">
+                  Log custom food cooking charges, laundry fees, late fees, or extra guest stay collections.
+                </p>
+              </div>
+
+              {incomeSuccess && (
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-xs font-semibold">
+                  ✓ {incomeSuccess}
+                </div>
+              )}
+
+              <form onSubmit={handleLogAdditionalIncome} className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Category</label>
+                    <select
+                      value={incomeCategory}
+                      onChange={(e) => setIncomeCategory(e.target.value)}
+                      className="w-full bg-black/60 border border-zinc-700 rounded-xl py-2.5 px-3 text-white text-xs focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="Custom Cooking">🍳 Custom Cooking (e.g. Chicken/Mutton)</option>
+                      <option value="Laundry Service">🧺 Laundry Service</option>
+                      <option value="Guest Stay">🛌 Extra Guest Stay</option>
+                      <option value="Late Fee">⏰ Late Fee</option>
+                      <option value="Other Ancillary">➕ Other Ancillary</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Amount (₹)</label>
+                    <input
+                      type="number"
+                      required
+                      placeholder="e.g. 500"
+                      value={incomeAmount}
+                      onChange={(e) => setIncomeAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                      className="w-full bg-black/60 border border-zinc-700 rounded-xl py-2.5 px-4 text-white text-sm font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Description / Note</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 2 kgs Chicken Cooking Charge"
+                    value={incomeTitle}
+                    onChange={(e) => setIncomeTitle(e.target.value)}
+                    className="w-full bg-black/60 border border-zinc-700 rounded-xl py-2.5 px-4 text-white text-xs focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Tenant / Resident Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Rajesh (Room 101)"
+                      value={incomeTenant}
+                      onChange={(e) => setIncomeTenant(e.target.value)}
+                      className="w-full bg-black/60 border border-zinc-700 rounded-xl py-2.5 px-4 text-white text-xs focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Payment Mode</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIncomePaymentMethod('Cash')}
+                        className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                          incomePaymentMethod === 'Cash'
+                            ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400'
+                            : 'bg-black/40 border-zinc-800 text-zinc-400'
+                        }`}
+                      >
+                        💵 Cash
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIncomePaymentMethod('UPI')}
+                        className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                          incomePaymentMethod === 'UPI'
+                            ? 'bg-indigo-500/20 border-indigo-500 text-indigo-400'
+                            : 'bg-black/40 border-zinc-800 text-zinc-400'
+                        }`}
+                      >
+                        📱 UPI
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAdditionalIncomeModal(false)}
+                    className="px-4 py-2.5 rounded-xl border border-zinc-700 text-zinc-400 hover:text-white text-xs font-bold transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={incomeSubmitting}
+                    className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20"
+                  >
+                    {incomeSubmitting ? <Loader2 size={14} className="animate-spin" /> : 'Log Income'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

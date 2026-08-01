@@ -20,57 +20,48 @@ export async function addRoom(formData: FormData) {
 
 
   const propertyId = formData.get('propertyId') as string;
-  const roomNumber = formData.get('number') as string;
-  const roomType = formData.get('type') as string;
+  const rawRoomNumber = formData.get('number') as string || '';
+  const roomNumber = rawRoomNumber.trim();
+  const roomType = (formData.get('type') as string || 'Standard').trim();
   const status = 'Available';
-  const allowedBillingType = (formData.get('allowedBillingType') as 'daily' | 'monthly' | 'both') || 'both';
   const sharingCapacity = parseInt(formData.get('sharingCapacity') as string || '2', 10);
 
   if (!propertyId || propertyId === 'undefined') {
     return { error: 'Property ID is required.' };
   }
 
-  // 1. Check for Duplicate or Deleted Room
-  const { data: existingRoom } = await supabaseAdmin
-    .from('rooms')
-    .select('id, is_deleted')
-    .eq('property_id', propertyId)
-    .eq('room_number', roomNumber)
-    .maybeSingle();
+  if (!roomNumber) {
+    return { error: 'Room number is required.' };
+  }
 
-  if (existingRoom) {
-    // 2. Restore Soft-Deleted Room
-    if (existingRoom.is_deleted === true) {
-      const { error: updateError } = await supabaseAdmin
-        .from('rooms')
-        .update({ 
-          is_deleted: false, 
-          type: roomType, 
-          status: status, 
-          allowed_billing_type: allowedBillingType,
-          sharing_capacity: sharingCapacity
-        })
-        .eq('id', existingRoom.id);
-        
-      if (updateError) return { error: `Restore Error: ${updateError.message}` };
-    } else {
-      // Room already exists and is active!
-      return { error: `Duplicate Room Error: Room ${roomNumber} already exists in this property!` };
-    }
-  } else {
-    // 3. Create Brand New Room
-    const { error: insertError } = await supabaseAdmin
-      .from('rooms')
-      .insert([{
-        property_id: propertyId,
-        room_number: roomNumber,
-        type: roomType,
-        status: status,
-        allowed_billing_type: allowedBillingType,
-        sharing_capacity: sharingCapacity
-      }]);
-      
-    if (insertError) return { error: `Database Error: ${insertError.message}` };
+  // 1. Strict Duplicate Check (Case-Insensitive & Trimmed)
+  const { data: existingRooms } = await supabase
+    .from('rooms')
+    .select('id, room_number')
+    .eq('property_id', propertyId);
+
+  const isDuplicate = (existingRooms || []).some(
+    r => r.room_number?.trim().toLowerCase() === roomNumber.toLowerCase()
+  );
+
+  if (isDuplicate) {
+    return { error: `Duplicate Room Error: Room "${roomNumber}" already exists in this property!` };
+  }
+
+  // 2. Insert New Room
+  const { error: insertError } = await supabase
+    .from('rooms')
+    .insert([{
+      property_id: propertyId,
+      room_number: roomNumber,
+      type: roomType,
+      status: status,
+      sharing_capacity: sharingCapacity
+    }]);
+
+  if (insertError) {
+    console.error("Failed to insert room:", insertError);
+    return { error: `Database Error: ${insertError.message}` };
   }
 
   // Audit Log
@@ -96,39 +87,46 @@ export async function deleteRoom(roomId: string) {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) return { error: 'Unauthorized. No session found.' };
-  
-  const supabaseAdmin = getSupabaseAdmin();
-
-  // Authenticated users can delete rooms
-
 
   // Safety check: Don't delete a room if it has active bookings!
-  const { data: activeBookings } = await supabaseAdmin
+  const { data: activeBookings } = await supabase
     .from('bookings')
     .select('id, property_id')
     .eq('room_id', roomId)
     .in('status', ['Confirmed', 'Checked In']);
     
   if (activeBookings && activeBookings.length > 0) {
-     return { error: 'Cannot delete this room because there are active reservations (Confirmed or Checked In) assigned to it. Please reassign the guests to another room first.' };
+     return { error: 'Cannot delete this room because there are active resident bookings (Confirmed or Checked In) assigned to it. Please check out or reassign the resident first.' };
   }
 
   // Fetch property_id and room_number for the audit log before deleting
-  const { data: roomData } = await supabaseAdmin
+  const { data: roomData } = await supabase
     .from('rooms')
     .select('property_id, room_number')
     .eq('id', roomId)
-    .single();
+    .maybeSingle();
 
-  // 3. SOFT DELETE: Never hard delete a room to protect historical folios
-  const { error } = await supabaseAdmin
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // Unlink past/inactive bookings so Foreign Key constraints don't block room deletion
+  await supabaseAdmin
+    .from('bookings')
+    .update({ room_id: null })
+    .eq('room_id', roomId);
+
+  // Delete room from database (using admin client to bypass RLS restrictions)
+  let { error } = await supabaseAdmin
     .from('rooms')
-    .update({ is_deleted: true })
+    .delete()
     .eq('id', roomId);
 
   if (error) {
-    console.error("Supabase Error deleting room:", error);
-    return { error: `Database Error: ${error.message}` };
+    console.warn("Supabase Admin delete failed, trying SSR client fallback...", error.message);
+    const { error: fallbackError } = await supabase
+      .from('rooms')
+      .delete()
+      .eq('id', roomId);
+    if (fallbackError) return { error: `Database Error: ${fallbackError.message}` };
   }
 
   // Audit Log
@@ -142,7 +140,6 @@ export async function deleteRoom(roomId: string) {
 
   revalidatePath('/dashboard/inventory');
   revalidatePath('/dashboard/front-office');
-  revalidatePath('/dashboard/housekeeping');
   
   return { success: true };
 }
@@ -339,9 +336,7 @@ export async function convertRoomCategory(roomId: string, targetType: 'daily' | 
     return { error: `Cannot convert room category because there are active or future bookings assigned to this room (Guests: ${names}).` };
   }
 
-  const updatePayload: any = {
-    allowed_billing_type: targetType
-  };
+  const updatePayload: any = {};
 
   if (targetType === 'monthly') {
     updatePayload.sharing_capacity = sharingCapacity || 2;
@@ -361,6 +356,51 @@ export async function convertRoomCategory(roomId: string, targetType: 'daily' | 
 
   revalidatePath('/dashboard/inventory');
   revalidatePath('/dashboard/front-office');
+  revalidatePath('/dashboard/housekeeping');
+
+  return { success: true };
+}
+
+/**
+ * Update a room's sharing type / capacity (e.g., 3-Sharing to 4-Sharing, 4-Sharing to 5-Sharing, etc.)
+ */
+export async function updateRoomType(roomId: string, newType: string, newCapacity: number) {
+  const supabase = createSSRClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) return { error: 'Unauthorized. No session found.' };
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // Validate active capacity vs occupied beds
+  const { data: activeBookings } = await supabaseAdmin
+    .from('bookings')
+    .select('id, guest_name')
+    .eq('room_id', roomId)
+    .in('status', ['Confirmed', 'Checked In']);
+
+  const currentOccupantsCount = activeBookings?.length || 0;
+  if (newCapacity < currentOccupantsCount) {
+    const activeNames = activeBookings?.map(b => b.guest_name).join(', ');
+    return { 
+      error: `Cannot reduce room capacity to ${newCapacity} beds because there are currently ${currentOccupantsCount} active residents in this room (${activeNames}). Please vacate or reassign a resident first.` 
+    };
+  }
+
+  const { error } = await supabaseAdmin
+    .from('rooms')
+    .update({ 
+      type: newType,
+      sharing_capacity: newCapacity
+    })
+    .eq('id', roomId);
+
+  if (error) {
+    console.error("Failed to update room type:", error);
+    return { error: `Database Error: ${error.message}` };
+  }
+
+  revalidatePath('/dashboard/front-office');
+  revalidatePath('/dashboard/inventory');
   revalidatePath('/dashboard/housekeeping');
 
   return { success: true };

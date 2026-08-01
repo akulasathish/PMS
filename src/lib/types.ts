@@ -2,7 +2,7 @@ export interface Property {
   id: string;
   name: string;
   status: 'Active' | 'Suspended';
-  property_category?: 'PG' | 'Hotel' | 'Hybrid';
+  property_category?: 'PG' | 'Hotel/PG';
   total_capital_investment?: number;
   wifi_network?: string;
   wifi_password?: string;
@@ -17,6 +17,7 @@ export interface Room {
   status: 'Available' | 'Occupied' | 'Dirty' | 'Blocked' | 'Cleaning' | 'Clean';
   created_at?: string;
   allowed_billing_type?: 'daily' | 'monthly' | 'both';
+  sharing_capacity?: number;
 }
 
 export interface Booking {
@@ -30,6 +31,7 @@ export interface Booking {
   check_in: string;
   check_out: string;
   amount: number;
+  total_amount?: number;
   status: 'Pending' | 'Confirmed' | 'Checked In' | 'Checked Out' | 'Cancelled';
   created_at?: string;
   id_verified?: boolean;
@@ -41,7 +43,12 @@ export interface Booking {
   group_id?: string;
   is_monthly?: boolean;
   billing_cycle_date?: number;
+  rent_due_day?: number;
   monthly_rate?: number;
+  monthly_rent?: number;
+  security_deposit?: number;
+  bed_assigned?: string;
+  payment_status?: string;
 }
 
 export interface UserProfile {
@@ -117,6 +124,18 @@ export interface DailyClosingSnapshot {
   net_cash_in_hand: number;
   net_daily_profit: number;
   closed_by?: string;
+}
+
+export function getTodayLocalYYYYMMDD(): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+  } catch (e) {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
 }
 
 

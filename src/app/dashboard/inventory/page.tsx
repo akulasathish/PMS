@@ -26,8 +26,11 @@ import { createClient } from '@/lib/supabase/client';
 import { addRoom, deleteRoom, convertRoomCategory } from '@/app/actions/inventory';
 import { Property, Room, UserProfile } from '@/lib/types';
 
+import { Receipt } from 'lucide-react';
+
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: "Overview", href: "/dashboard", active: false, module: 'analytics' },
+  { icon: Receipt, label: "Partner Report", href: "/dashboard/partner-report", active: false, module: 'partner_report' },
   { icon: Activity, label: "Front Office", href: "/dashboard/front-office", active: false, module: 'front_office' },
   { icon: Brush, label: "Housekeeping", href: "/dashboard/housekeeping", active: false, module: 'housekeeping' },
   { icon: DoorOpen, label: "Inventory", href: "/dashboard/inventory", active: true, module: 'inventory' },
@@ -107,8 +110,13 @@ export default function Inventory() {
             .single();
           if (profile?.property_id) activePropertyId = profile.property_id;
 
-          if (!activePropertyId || activePropertyId === 'undefined') activePropertyId = '63dad7aa-c5f9-4f0e-b21e-b0175397a42c';
-          if (activePropertyId) {
+          if (!activePropertyId || activePropertyId === 'undefined') {
+            const { data: firstProp } = await supabase.from('properties').select('id, name').limit(1).single();
+            if (firstProp) {
+              activePropertyId = firstProp.id;
+              setAccessiblePropsList([firstProp]);
+            }
+          } else {
             const { data: fallbackProp } = await supabase.from('properties').select('id, name').eq('id', activePropertyId).single();
             if (fallbackProp) {
               setAccessiblePropsList([fallbackProp]);
@@ -129,7 +137,6 @@ export default function Inventory() {
               .from('rooms')
               .select('*')
               .eq('property_id', activePropertyId)
-              .or('is_deleted.eq.false,is_deleted.is.null')
               .order('room_number', { ascending: true })
           ]);
 
@@ -204,12 +211,22 @@ export default function Inventory() {
   const handleDeleteRoom = async (roomId: string, roomNumber: string) => {
     if (!window.confirm(`CRITICAL WARNING: Are you absolutely sure you want to permanently delete Room ${roomNumber}? This action cannot be undone.`)) return;
     setActionLoading(true);
+    setActionError('');
     const result = await deleteRoom(roomId);
     if (result?.error) {
       alert(result.error);
+      setActionError(result.error);
       setActionLoading(false);
     } else {
       setRooms(prev => prev.filter(r => r.id !== roomId));
+      if (property?.id) {
+        const { data: latestRooms } = await supabase
+          .from('rooms')
+          .select('*')
+          .eq('property_id', property.id)
+          .order('room_number', { ascending: true });
+        if (latestRooms) setRooms(latestRooms);
+      }
       setActionLoading(false);
     }
   };
@@ -257,13 +274,21 @@ export default function Inventory() {
     const result = await addRoom(formData);
     if (result?.error) {
       setActionError(result.error);
+    } else {
+      const { data: newRooms } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('property_id', property.id)
+        .order('room_number', { ascending: true });
+      if (newRooms) setRooms(newRooms);
     }
     setActionLoading(false);
   };
 
   const filteredRooms = rooms.filter(room => {
-    if (inventoryFilter === 'all') return true;
-    return room.allowed_billing_type === inventoryFilter;
+    if ((inventoryFilter as string) === 'all') return true;
+    if (property?.property_category === 'PG') return true;
+    return (room.allowed_billing_type as string || 'both') === (inventoryFilter as string);
   });
 
   if (isLoading) return <div className="flex min-h-screen bg-[#08080a] items-center justify-center"><Loader2 size={32} className="animate-spin text-indigo-500" /></div>;
@@ -312,7 +337,12 @@ export default function Inventory() {
 
         <nav className="flex-1 px-3 space-y-1">
           <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-[0.2em] px-3 mb-3">Navigation</p>
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.filter(item => {
+            if (property?.property_category === 'PG') {
+              return item.label !== 'Night Audit' && item.label !== 'Housekeeping';
+            }
+            return item.label !== 'Partner Report';
+          }).map((item) => {
             const locked = !hasAccess(item.module);
             return (
               <Link
@@ -395,26 +425,28 @@ export default function Inventory() {
               </div>
 
               {/* List Filter Tabs */}
-              <div className="flex items-center gap-1 mb-6 bg-white/[0.02] border border-white/[0.05] p-1 rounded-xl w-fit">
-                {[
-                  { id: 'all', label: 'ALL' },
-                  { id: 'daily', label: 'Daily Inventory' },
-                  { id: 'monthly', label: 'Monthly Inventory' }
-                ].map(tab => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setInventoryFilter(tab.id as any)}
-                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${
-                      inventoryFilter === tab.id 
-                        ? 'bg-indigo-600 text-white shadow-md' 
-                        : 'text-zinc-400 hover:text-white hover:bg-white/[0.02]'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
+              {property?.property_category !== 'PG' && (
+                <div className="flex items-center gap-1 mb-6 bg-white/[0.02] border border-white/[0.05] p-1 rounded-xl w-fit">
+                  {[
+                    { id: 'all', label: 'ALL' },
+                    { id: 'daily', label: 'Daily Inventory' },
+                    { id: 'monthly', label: 'Monthly Inventory' }
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setInventoryFilter(tab.id as any)}
+                      className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${
+                        inventoryFilter === tab.id 
+                          ? 'bg-indigo-600 text-white shadow-md' 
+                          : 'text-zinc-400 hover:text-white hover:bg-white/[0.02]'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {filteredRooms.length === 0 ? (
                 <div className="py-20 text-center border-2 border-dashed border-white/5 rounded-2xl bg-white/[0.02]">
@@ -443,30 +475,23 @@ export default function Inventory() {
                           <h4 className="text-xl font-bold text-white tracking-tight mb-1">{room.room_number}</h4>
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <p className="text-[11px] font-medium text-zinc-500 uppercase tracking-widest">{room.type}</p>
-                            {room.allowed_billing_type && room.allowed_billing_type !== 'both' && (
-                              <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
-                                room.allowed_billing_type === 'monthly' ? 'bg-violet-500/10 text-violet-400 border border-violet-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                              }`}>
-                                {room.allowed_billing_type === 'monthly' ? 'Monthly Only' : 'Daily Only'}
-                              </span>
-                            )}
-                            {room.allowed_billing_type && room.allowed_billing_type !== 'daily' && (
-                              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-teal-500/10 text-teal-400 border border-teal-500/20">
-                                {(room as any).sharing_capacity || 2}-Sharing
-                              </span>
-                            )}
+                            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-teal-500/10 text-teal-400 border border-teal-500/20">
+                              {(room as any).sharing_capacity || 2}-Sharing (Monthly)
+                            </span>
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
-                          <button 
-                            type="button"
-                            onClick={() => handleConvertCategoryClick(room)}
-                            disabled={actionLoading}
-                            className="p-2 text-zinc-600 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors disabled:opacity-50"
-                            title="Convert Category"
-                          >
-                            <RefreshCw size={14} className={actionLoading ? "animate-spin" : ""} />
-                          </button>
+                          {property?.property_category !== 'PG' && (
+                            <button 
+                              type="button"
+                              onClick={() => handleConvertCategoryClick(room)}
+                              disabled={actionLoading}
+                              className="p-2 text-zinc-600 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors disabled:opacity-50"
+                              title="Convert Category"
+                            >
+                              <RefreshCw size={14} className={actionLoading ? "animate-spin" : ""} />
+                            </button>
+                          )}
                           <button 
                             type="button"
                             onClick={() => handleDeleteRoom(room.id, room.room_number)}
@@ -519,41 +544,26 @@ export default function Inventory() {
                     <option value="Standard" />
                     <option value="Deluxe" />
                     <option value="Suite" />
-                    <option value="Penthouse" />
                     <option value="Non AC" />
                     <option value="Deluxe AC" />
                   </datalist>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Allowed Billing Type</label>
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Sharing Capacity (Co-Living Beds)</label>
                   <select 
-                    name="allowedBillingType"
-                    value={newRoomBillingType}
-                    onChange={(e) => setNewRoomBillingType(e.target.value as 'daily' | 'monthly')}
+                    name="sharingCapacity"
+                    defaultValue="2"
                     className="w-full bg-black/60 border border-white/[0.05] rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500/50 transition-all cursor-pointer"
                   >
-                    <option value="daily">Daily Only (Transient)</option>
-                    <option value="monthly">Monthly Only (Co-Living)</option>
+                    <option value="1">1 Bed (Single Occupancy)</option>
+                    <option value="2">2 Beds (Double Sharing)</option>
+                    <option value="3">3 Beds (Triple Sharing)</option>
+                    <option value="4">4 Beds (Four Sharing)</option>
+                    <option value="5">5 Beds (Five Sharing)</option>
+                    <option value="6">6 Beds (Six Sharing)</option>
                   </select>
                 </div>
-
-                {newRoomBillingType === 'monthly' && (
-                  <div className="space-y-1.5 animate-fade-in">
-                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Sharing Capacity (Co-Living Beds)</label>
-                    <select 
-                      name="sharingCapacity"
-                      defaultValue="2"
-                      className="w-full bg-black/60 border border-white/[0.05] rounded-xl py-2.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500/50 transition-all cursor-pointer"
-                    >
-                      <option value="1">1 Bed (Single Occupancy)</option>
-                      <option value="2">2 Beds (Double Sharing)</option>
-                      <option value="3">3 Beds (Triple Sharing)</option>
-                      <option value="4">4 Beds (Four Sharing)</option>
-                      <option value="5">5 Beds (Five Sharing)</option>
-                    </select>
-                  </div>
-                )}
 
                 {actionError && (
                   <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-lg text-rose-400 text-xs flex items-center gap-2">

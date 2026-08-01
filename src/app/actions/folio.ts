@@ -5,6 +5,7 @@ import { createClient as createSSRClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { logAction } from './audit';
 import { calculateEarlyCheckinFee, calculateLateCheckoutFee } from '@/lib/billing-rules';
+import { getTodayLocalYYYYMMDD } from '@/lib/types';
 
 export async function postIncidentalCharge(formData: FormData) {
   const supabase = createSSRClient();
@@ -35,7 +36,7 @@ export async function postIncidentalCharge(formData: FormData) {
     .select('value')
     .eq('key', 'business_date')
     .single();
-  const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+  const businessDate = settings?.value || getTodayLocalYYYYMMDD();
   
   // Insert the charge securely
   const { data, error } = await supabaseAdmin
@@ -92,8 +93,8 @@ export async function postPayment(formData: FormData) {
   }
 
   const amount = parseFloat(amountStr);
-  if (isNaN(amount) || amount <= 0) {
-    return { error: 'Invalid amount. Must be greater than 0.' };
+  if (isNaN(amount) || amount === 0) {
+    return { error: 'Invalid amount. Must be non-zero.' };
   }
 
   const supabaseAdmin = getSupabaseAdmin();
@@ -106,7 +107,7 @@ export async function postPayment(formData: FormData) {
       .select('value')
       .eq('key', 'business_date')
       .single();
-    businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+    businessDate = settings?.value || getTodayLocalYYYYMMDD();
   }
   
   // Insert the payment securely
@@ -116,12 +117,9 @@ export async function postPayment(formData: FormData) {
       booking_id: bookingId,
       property_id: propertyId,
       amount,
-      method,
-      transaction_id: transactionId,
-      created_by: user.id,
-      business_date: businessDate,
-      allocation,
-      billing_period: billingPeriod || null
+      payment_method: method,
+      transaction_id: allocation === 'Security Deposit' ? (transactionId ? `DEPOSIT-${transactionId}` : 'DEPOSIT') : transactionId,
+      business_date: businessDate
     }])
     .select('id')
     .single();
@@ -154,11 +152,14 @@ export async function getFolioSummary(bookingId: string) {
   // 1. Fetch base booking details
   const { data: booking, error: bookingErr } = await supabaseAdmin
     .from('bookings')
-    .select('id, amount, discount_amount, discount_reason, status, property_id, check_in, check_out, check_in_time, check_out_time, guest_name, guest_email, guest_phone, room_id, is_monthly, monthly_rate, created_at')
+    .select('id, total_amount, status, property_id, check_in, check_out, guest_name, guest_email, guest_phone, room_id, is_monthly, monthly_rent, security_deposit, rent_due_day, created_at')
     .eq('id', bookingId)
     .single();
 
-  if (bookingErr || !booking) return { error: 'Booking not found.' };
+  if (bookingErr || !booking) {
+    console.error("getFolioSummary booking fetch error:", bookingErr);
+    return { error: 'Booking not found.' };
+  }
 
   const propertyId = booking.property_id;
 
@@ -200,12 +201,18 @@ export async function getFolioSummary(bookingId: string) {
     ? allIncidentals.filter(item => !item.description.startsWith('Security Deposit'))
     : allIncidentals;
 
-  // 4. Fetch payments (including the new allocation column and billing period)
-  const { data: payments, error: payErr } = await supabaseAdmin
+  // 4. Fetch payments
+  const { data: rawPayments, error: payErr } = await supabaseAdmin
     .from('payments')
-    .select('id, amount, method, created_at, business_date, transaction_id, is_void, void_reason, voided_at, voided_by, allocation, billing_period')
+    .select('id, amount, payment_method, created_at, business_date, transaction_id')
     .eq('booking_id', bookingId)
     .order('created_at', { ascending: true });
+
+  const payments = (rawPayments || []).map(p => ({
+    ...p,
+    method: p.payment_method || 'Cash',
+    allocation: p.transaction_id?.toUpperCase().includes('DEPOSIT') ? 'Security Deposit' : 'Rent'
+  }));
 
   // Sum of any daily room charges posted by the night audit
   const dailyRoomChargesSum = incidentals
@@ -217,13 +224,13 @@ export async function getFolioSummary(bookingId: string) {
 
   // The base room amount shown on the folio is the booking total minus discount minus already-posted daily charges
   const roomAmount = booking.is_monthly
-    ? Math.max(0, Number(booking.monthly_rate || 0) - discountAmount)
-    : Math.max(0, Number(booking.amount) - discountAmount - dailyRoomChargesSum);
+    ? Math.max(0, Number((booking as any).monthly_rent || (booking as any).monthly_rate || 0) - discountAmount)
+    : Math.max(0, Number((booking as any).total_amount || (booking as any).amount || 0) - discountAmount - dailyRoomChargesSum);
 
   const totalCharges = roomAmount + (incidentals?.reduce((sum, item) => sum + Number(item.amount), 0) || 0);
   const totalPayments = booking.is_monthly
-    ? payments?.filter(item => !item.is_void && (item.allocation === 'Rent' || !item.allocation))?.reduce((sum, item) => sum + Number(item.amount), 0) || 0
-    : payments?.filter(item => !item.is_void)?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
+    ? payments?.filter(item => item.allocation === 'Rent' || !item.allocation)?.reduce((sum, item) => sum + Number(item.amount), 0) || 0
+    : payments?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
   const balanceDue = totalCharges - totalPayments;
 
   // Compute separate ledgers for monthly/co-living bookings
@@ -233,13 +240,13 @@ export async function getFolioSummary(bookingId: string) {
   let rentPaid = 0;
 
   if (booking.is_monthly) {
-    const baseDepositRequired = Number(booking.amount || 0);
+    const baseDepositRequired = Number((booking as any).security_deposit || (booking as any).amount || 0);
     const postedDepositCharges = securityDepositCharges
       ?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
 
     securityDepositRequired = baseDepositRequired + postedDepositCharges;
     securityDepositPaid = payments
-      ?.filter(item => !item.is_void && item.allocation === 'Security Deposit')
+      ?.filter(item => item.allocation === 'Security Deposit')
       ?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
 
     // Rent & Incidentals = Total charges
@@ -284,7 +291,7 @@ export async function getFolioSummary(bookingId: string) {
         const { fee } = calculateLateCheckoutFee(
           now,
           standardCheckoutTime,
-          Number(booking.amount),
+          Number((booking as any).total_amount || (booking as any).amount || 0),
           lateCheckoutRules
         );
         proposedLateCheckoutFee = fee;
@@ -303,7 +310,7 @@ export async function getFolioSummary(bookingId: string) {
         const { fee } = calculateEarlyCheckinFee(
           now,
           standardCheckinTime,
-          Number(booking.amount),
+          Number((booking as any).total_amount || (booking as any).amount || 0),
           earlyCheckinRules
         );
         proposedEarlyCheckinFee = fee;
@@ -317,7 +324,7 @@ export async function getFolioSummary(bookingId: string) {
     .select('value')
     .eq('key', 'business_date')
     .single();
-  const activeBusinessDate = settings?.value || new Date().toISOString().substring(0, 10);
+  const activeBusinessDate = settings?.value || getTodayLocalYYYYMMDD();
 
   return {
     success: true,
@@ -329,8 +336,8 @@ export async function getFolioSummary(bookingId: string) {
       bookingStatus: booking.status,
       checkIn: booking.check_in,
       checkOut: booking.check_out,
-      checkInTime: booking.check_in_time,
-      checkOutTime: booking.check_out_time,
+      checkInTime: (booking as any).check_in_time || null,
+      checkOutTime: (booking as any).check_out_time || null,
       guestName: booking.guest_name,
       guestEmail: booking.guest_email,
       guestPhone: booking.guest_phone,
@@ -380,7 +387,7 @@ export async function postProposedTimeCharge(bookingId: string, propertyId: stri
     .select('value')
     .eq('key', 'business_date')
     .single();
-  const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+  const businessDate = settings?.value || getTodayLocalYYYYMMDD();
 
   const { data, error } = await supabaseAdmin
     .from('incidental_charges')
@@ -430,7 +437,7 @@ export async function waiveProposedTimeCharge(bookingId: string, propertyId: str
     .select('value')
     .eq('key', 'business_date')
     .single();
-  const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+  const businessDate = settings?.value || getTodayLocalYYYYMMDD();
 
   // Insert a minimal ₹0.01 charge to represent the waiver in the ledger history (satisfies CHECK amount > 0)
   const waiverDescription = `${description} - Waived (Reason: ${reason})`;
@@ -616,7 +623,7 @@ export async function forceSettleFolio(bookingId: string, propertyId: string) {
     .select('value')
     .eq('key', 'business_date')
     .single();
-  const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+  const businessDate = settings?.value || getTodayLocalYYYYMMDD();
 
   if (balanceDue > 0) {
     // Guest owes money. Post an adjustment payment to bring the balance to 0.
@@ -738,15 +745,19 @@ export async function syncBusinessDateToToday() {
     return { error: `Failed to fetch business date setting: ${fetchError.message}` };
   }
 
-  const todayLocal = new Date().toISOString().substring(0, 10);
+  const getTodayLocal = () => {
+    try {
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+    } catch (e) {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+  };
+
+  const todayLocal = getTodayLocal();
   const currentVal = setting?.value || '';
 
-  // If the setting is missing or the current business date is in the past, update it to today's date
-  // SAFETY: Auto-sync is restricted to local development only. Production MUST perform manual Night Audits.
-  const dbUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  const isProduction = process.env.NODE_ENV === 'production' || dbUrl.includes('supabase.co');
-
-  if (!isProduction && (!currentVal || new Date(currentVal) < new Date(todayLocal))) {
+  if (!currentVal || currentVal < todayLocal) {
     console.log(`[Auto-Sync] Syncing stale business date (${currentVal}) to today (${todayLocal})`);
     
     const { error: updateError } = await supabaseAdmin

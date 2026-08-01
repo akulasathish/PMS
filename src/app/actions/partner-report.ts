@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient as createSSRClient } from '@/lib/supabase/server';
+import { revalidatePath } from 'next/cache';
 import { PartnerInvestment, TimestampedExpense, StaffPayroll, DailyClosingSnapshot } from '@/lib/types';
 
 export interface DateDrilldownData {
@@ -34,6 +35,7 @@ export interface PartnerReportSummary {
   totalIncome: number;
   cashIncome: number;
   upiIncome: number;
+  securityDepositsHeld: number;
   totalExpenses: number;
   payrollExpenses: number;
   operationalExpenses: number;
@@ -81,20 +83,25 @@ export async function getPartnerMonthlyReport(propertyId: string, yearMonth?: st
     // 2. Fetch Payments / Bookings collections for the month
     const { data: payments } = await supabase
       .from('payments')
-      .select('amount, payment_method, payment_date')
-      .eq('property_id', propertyId)
-      .gte('payment_date', startDate)
-      .lte('payment_date', endDate);
+      .select('amount, payment_method, transaction_id')
+      .eq('property_id', propertyId);
 
     let cashIncome = 0;
     let upiIncome = 0;
+    let securityDepositsHeld = 0;
 
     (payments || []).forEach(p => {
       const amt = Number(p.amount) || 0;
-      if (p.payment_method?.toLowerCase().includes('cash')) {
-        cashIncome += amt;
+      const isDeposit = Boolean(p.transaction_id && p.transaction_id.toUpperCase().includes('DEPOSIT'));
+
+      if (isDeposit) {
+        securityDepositsHeld += amt;
       } else {
-        upiIncome += amt;
+        if (p.payment_method?.toLowerCase().includes('cash')) {
+          cashIncome += amt;
+        } else {
+          upiIncome += amt;
+        }
       }
     });
 
@@ -102,14 +109,13 @@ export async function getPartnerMonthlyReport(propertyId: string, yearMonth?: st
     if ((payments || []).length === 0) {
       const { data: bookings } = await supabase
         .from('bookings')
-        .select('amount, status, check_in')
-        .eq('property_id', propertyId)
-        .gte('check_in', startDate)
-        .lte('check_in', endDate);
+        .select('monthly_rent, security_deposit, status')
+        .eq('property_id', propertyId);
 
       (bookings || []).forEach(b => {
         if (b.status === 'Checked In' || b.status === 'Checked Out' || b.status === 'Confirmed') {
-          upiIncome += Number(b.amount) || 0;
+          upiIncome += Number(b.monthly_rent) || 0;
+          securityDepositsHeld += Number(b.security_deposit) || 0;
         }
       });
     }
@@ -169,6 +175,7 @@ export async function getPartnerMonthlyReport(propertyId: string, yearMonth?: st
         totalIncome,
         cashIncome,
         upiIncome,
+        securityDepositsHeld,
         totalExpenses,
         payrollExpenses,
         operationalExpenses,
@@ -289,6 +296,53 @@ export async function getDateSpecificDrilldown(propertyId: string, selectedDate:
     };
   } catch (err: any) {
     console.error('Error fetching date drilldown:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Log ancillary / additional PG income (e.g. Custom Food/Cooking, Laundry, Guest Stay, Late Fee)
+ */
+export async function logAdditionalIncome(data: {
+  propertyId: string;
+  category: string;
+  title: string;
+  amount: number;
+  paymentMethod: 'Cash' | 'UPI';
+  tenantName?: string;
+}) {
+  try {
+    const supabase = createSSRClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) return { success: false, error: 'Unauthorized.' };
+
+    const today = new Date().toISOString().split('T')[0];
+    const notesStr = `${data.category}: ${data.title} ${data.tenantName ? `(${data.tenantName})` : ''}`.trim();
+
+    const { error } = await supabase
+      .from('payments')
+      .insert([{
+        property_id: data.propertyId,
+        amount: data.amount,
+        payment_method: data.paymentMethod,
+        payment_date: today,
+        notes: notesStr,
+        payment_type: 'Ancillary Income'
+      }]);
+
+    if (error) {
+      console.error('Failed to log additional income:', error);
+      return { success: false, error: error.message };
+    }
+
+    revalidatePath('/dashboard');
+    revalidatePath('/dashboard/partner-report');
+    revalidatePath('/dashboard/front-office');
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('Unhandled error logging additional income:', err);
     return { success: false, error: err.message };
   }
 }

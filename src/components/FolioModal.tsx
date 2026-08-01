@@ -12,10 +12,12 @@ import { getFolioSummary, postIncidentalCharge, postPayment, postProposedTimeCha
 import { checkOutGuest, undoCheckOutGuest, applyBookingDiscount } from '@/app/actions/booking';
 import { extendBookingStay } from '@/app/actions/night-audit';
 import { generateGuestBillPDF, generateDailyItemizedLedgerPDF } from '@/utils/folio-pdf';
+import { getTodayLocalYYYYMMDD } from '@/lib/types';
 
 interface FolioModalProps {
   bookingId: string;
   propertyId: string;
+  propertyCategory?: string;
   guestName: string;
   roomId: string; // The UUID required for the database update
   roomNumber: string; // The string for display purposes
@@ -24,13 +26,15 @@ interface FolioModalProps {
   onSuccess: () => void;
 }
 
-export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumber, baseAmount, onClose, onSuccess }: FolioModalProps) {
+export function FolioModal({ bookingId, propertyId, propertyCategory, guestName, roomId, roomNumber, baseAmount, onClose, onSuccess }: FolioModalProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
   
   const [folio, setFolio] = useState<any>(null);
+
+  const isPG = propertyCategory === 'PG' || folio?.isMonthly;
 
   const hasEarlyCheckinPosted = folio?.incidentals?.some((item: any) => 
     item.description.toLowerCase().includes('early check-in') || 
@@ -412,8 +416,8 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-white/5">
           <div>
-            <h2 className="text-xl font-bold text-white tracking-tight">Folio & Settlement</h2>
-            <p className="text-xs text-zinc-500 mt-1">Guest: <span className="text-zinc-300 font-medium">{guestName}</span> • Room <span className="text-zinc-300 font-medium">{roomNumber}</span></p>
+            <h2 className="text-xl font-bold text-white tracking-tight">{isPG ? "Tenant Ledger & Settlement" : "Folio & Settlement"}</h2>
+            <p className="text-xs text-zinc-500 mt-1">{isPG ? "Resident" : "Guest"}: <span className="text-zinc-300 font-medium">{guestName}</span> • Room <span className="text-zinc-300 font-medium">{roomNumber}</span></p>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-xl transition-colors text-zinc-500 hover:text-white">
             <X size={20} />
@@ -465,13 +469,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
               <div className="hidden lg:block h-px bg-white/5 my-4" />
 
               {/* Tabs selector grid on mobile, flex on desktop */}
-              <div className="grid grid-cols-3 lg:flex lg:flex-col gap-2 w-full">
-                <button 
-                  onClick={() => setActiveTab('charge')}
-                  className={`p-3 rounded-xl text-[11px] sm:text-sm font-medium text-center lg:text-left flex flex-col lg:flex-row items-center justify-center lg:justify-start gap-1 lg:gap-3 transition-colors ${activeTab === 'charge' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}
-                >
-                  <Plus size={16} /> Post Charge
-                </button>
+              <div className="grid grid-cols-2 lg:flex lg:flex-col gap-2 w-full">
                 <button 
                   onClick={() => setActiveTab('payment')}
                   className={`p-3 rounded-xl text-[11px] sm:text-sm font-medium text-center lg:text-left flex flex-col lg:flex-row items-center justify-center lg:justify-start gap-1 lg:gap-3 transition-colors ${activeTab === 'payment' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}
@@ -479,11 +477,19 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                   <Banknote size={16} /> Log Payment
                 </button>
                 <button 
-                  onClick={() => setActiveTab('discount')}
-                  className={`p-3 rounded-xl text-[11px] sm:text-sm font-medium text-center lg:text-left flex flex-col lg:flex-row items-center justify-center lg:justify-start gap-1 lg:gap-3 transition-colors ${activeTab === 'discount' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}
+                  onClick={() => setActiveTab('charge')}
+                  className={`p-3 rounded-xl text-[11px] sm:text-sm font-medium text-center lg:text-left flex flex-col lg:flex-row items-center justify-center lg:justify-start gap-1 lg:gap-3 transition-colors ${activeTab === 'charge' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}
                 >
-                  <Percent size={16} /> Apply Discount
+                  <Plus size={16} /> {isPG ? "Post Extra Charge" : "Post Charge"}
                 </button>
+                {!isPG && (
+                  <button 
+                    onClick={() => setActiveTab('discount')}
+                    className={`p-3 rounded-xl text-[11px] sm:text-sm font-medium text-center lg:text-left flex flex-col lg:flex-row items-center justify-center lg:justify-start gap-1 lg:gap-3 transition-colors ${activeTab === 'discount' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}
+                  >
+                    <Percent size={16} /> Apply Discount
+                  </button>
+                )}
               </div>
 
               <div className="hidden lg:flex sm:mt-0 lg:mt-auto pt-4 sm:pt-0 lg:pt-6 sm:ml-auto lg:ml-0 shrink-0 flex-col gap-2">
@@ -495,10 +501,10 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                   disabled={actionLoading || !folio}
                   className="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-bold uppercase tracking-wider text-xs transition-colors flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/10"
                 >
-                  <Printer size={16} /> Print / Download Bill
+                  <Printer size={16} /> {isPG ? "Print / Download Tenant Bill" : "Print / Download Bill"}
                 </button>
 
-                {!folio?.isMonthly && (
+                {!isPG && (
                   <button
                     onClick={async () => {
                       if (!folio) return;
@@ -527,11 +533,11 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                     disabled={(folio?.balanceDue || 0) > 0.01 || actionLoading}
                     className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-zinc-800 disabled:text-zinc-500 text-black font-bold uppercase tracking-wider text-xs transition-colors flex items-center justify-center gap-2"
                   >
-                    {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <><ShieldCheck size={16} /> Checkout Guest</>}
+                    {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <><ShieldCheck size={16} /> {isPG ? "Checkout Tenant" : "Checkout Guest"}</>}
                   </button>
                 )}
 
-                {folio?.bookingStatus === 'Checked In' && Math.abs(folio?.balanceDue || 0) > 0.01 && (
+                {!isPG && folio?.bookingStatus === 'Checked In' && Math.abs(folio?.balanceDue || 0) > 0.01 && (
                   <button
                     onClick={handleForceSettle}
                     disabled={actionLoading}
@@ -547,7 +553,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                   </div>
                 )}
 
-                {(folio?.bookingStatus === 'Checked In' || folio?.bookingStatus === 'Confirmed') && !showExtensionInput && (
+                {!isPG && (folio?.bookingStatus === 'Checked In' || folio?.bookingStatus === 'Confirmed') && !showExtensionInput && (
                   <button
                     onClick={() => {
                       setExtensionDate(folio?.checkOut?.split('T')[0] || '');
@@ -729,9 +735,45 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                               </span>
                             </div>
 
+                            {(folio.securityDepositPaid || 0) > 0 && (
+                              <button
+                                onClick={async () => {
+                                  const refundAmt = prompt(`Enter deposit refund amount (Max ₹${folio.securityDepositPaid}):`, String(folio.securityDepositPaid));
+                                  if (!refundAmt) return;
+                                  const parsed = parseFloat(refundAmt);
+                                  if (isNaN(parsed) || parsed <= 0 || parsed > folio.securityDepositPaid) {
+                                    alert("Invalid refund amount.");
+                                    return;
+                                  }
+                                  const method = prompt("Enter payment method for refund (Cash / UPI / Bank Transfer):", "UPI") || "UPI";
+                                  
+                                  setActionLoading(true);
+                                  const formData = new FormData();
+                                  formData.append('bookingId', bookingId);
+                                  formData.append('propertyId', propertyId);
+                                  formData.append('amount', String(-parsed));
+                                  formData.append('method', method);
+                                  formData.append('transactionId', 'DEPOSIT-REFUND');
+                                  formData.append('allocation', 'Security Deposit');
+                                  
+                                  const res = await postPayment(formData);
+                                  if (res.error) {
+                                    setError(res.error);
+                                  } else {
+                                    await loadFolio();
+                                  }
+                                  setActionLoading(false);
+                                }}
+                                disabled={actionLoading}
+                                className="w-full mt-2 py-2 px-3 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5"
+                              >
+                                <Banknote size={12} /> Refund Deposit (₹{folio.securityDepositPaid.toFixed(2)})
+                              </button>
+                            )}
+
                             {/* Deposit Payments History list */}
                             {(() => {
-                              const depPays = folio.payments.filter((p: any) => p.allocation === 'Security Deposit' && !p.is_void);
+                              const depPays = (folio?.payments || []).filter((p: any) => p.allocation === 'Security Deposit' && !p.is_void);
                               if (depPays.length > 0) {
                                 return (
                                   <div className="mt-3 pt-3 border-t border-white/5 space-y-1.5">
@@ -896,9 +938,8 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                         <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-widest mb-4">Payments Received</h3>
                         <div className="space-y-3">
                           {(() => {
-                            const paymentsToShow = folio?.isMonthly 
-                              ? folio.payments.filter((item: any) => item.allocation === 'Rent' || !item.allocation)
-                              : folio.payments;
+                            const paymentsList = folio?.payments || [];
+                            const paymentsToShow = paymentsList;
 
                             if (paymentsToShow.length === 0) {
                               return (
@@ -1064,8 +1105,8 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                   <motion.div key="charge" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
                     <div className="max-w-md mx-auto">
                       <div className="mb-6">
-                        <h3 className="text-lg font-bold text-white">Post Incidental Charge</h3>
-                        <p className="text-xs text-zinc-400 mt-1">Add items like minibar, laundry, or damages to the guest folio.</p>
+                        <h3 className="text-lg font-bold text-white">{isPG ? "Post Extra Charge" : "Post Incidental Charge"}</h3>
+                        <p className="text-xs text-zinc-400 mt-1">{isPG ? "Add charges like electricity, maintenance, food, or damages to tenant ledger." : "Add items like minibar, laundry, or damages to the guest folio."}</p>
                       </div>
                       
                       <form onSubmit={handlePostCharge} className="space-y-4">
@@ -1076,12 +1117,14 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                             onChange={(e) => setChargeCategory(e.target.value)}
                             className="w-full bg-black/40 border border-white/10 rounded-xl py-3.5 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all appearance-none"
                           >
-                            {folio?.isMonthly ? (
+                            {isPG ? (
                               <>
-                                <option value="Room Rent" className="bg-zinc-900 text-white">Room Rent</option>
+                                <option value="Electricity Bill" className="bg-zinc-900 text-white">Electricity Bill</option>
+                                <option value="Mess / Food Charge" className="bg-zinc-900 text-white">Mess / Food Charge</option>
+                                <option value="Maintenance Fee" className="bg-zinc-900 text-white">Maintenance Fee</option>
                                 <option value="Security Deposit" className="bg-zinc-900 text-white">Security Deposit</option>
-                                <option value="Food & Water Charges" className="bg-zinc-900 text-white">Food & Water Charges</option>
-                                <option value="Other Utilities" className="bg-zinc-900 text-white">Other Utilities</option>
+                                <option value="Late Fee / Fine" className="bg-zinc-900 text-white">Late Fee / Fine</option>
+                                <option value="Damage Charge" className="bg-zinc-900 text-white">Damage Charge</option>
                                 <option value="Others" className="bg-zinc-900 text-white">Others</option>
                               </>
                             ) : (
@@ -1231,7 +1274,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                                   <option value="">Not Applicable / General Rent</option>
                                   {(() => {
                                     const checkInStr = folio?.checkIn;
-                                    const busDateStr = folio?.businessDate || new Date().toISOString().substring(0, 10);
+                                    const busDateStr = folio?.businessDate || getTodayLocalYYYYMMDD();
                                     if (!checkInStr) return null;
 
                                     const base = new Date(checkInStr);
@@ -1312,7 +1355,7 @@ export function FolioModal({ bookingId, propertyId, guestName, roomId, roomNumbe
                                 name="businessDate" 
                                 type="date" 
                                 required
-                                defaultValue={folio?.businessDate || new Date().toISOString().substring(0, 10)}
+                                defaultValue={folio?.businessDate || getTodayLocalYYYYMMDD()}
                                 className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all font-mono"
                               />
                               <p className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
