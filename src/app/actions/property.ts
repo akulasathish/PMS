@@ -188,10 +188,18 @@ export async function updatePropertyGST(propertyId: string, gstNumber: string) {
 
   const supabaseAdmin = getSupabaseAdmin();
 
-  const { error } = await supabaseAdmin
+  let { error } = await supabaseAdmin
     .from('properties')
     .update({ gstin: gstNumber })
     .eq('id', propertyId);
+
+  if (error && (error.message.includes("gstin") || error.message.includes("schema cache"))) {
+    const fallbackRes = await supabaseAdmin
+      .from('properties')
+      .update({ gst_number: gstNumber })
+      .eq('id', propertyId);
+    error = fallbackRes.error;
+  }
 
   if (error) {
     console.error("Failed to update property GST:", error);
@@ -220,18 +228,34 @@ export async function updateProperty(propertyId: string, propertyData: {
   }
 
   const supabaseAdmin = getSupabaseAdmin();
+  const gstVal = propertyData.gst_number || propertyData.gstin || null;
 
-  const { error } = await supabaseAdmin
+  let { error } = await supabaseAdmin
     .from('properties')
     .update({
       name: propertyData.name,
       address: propertyData.address,
       city: propertyData.city,
       country: propertyData.country,
-      gstin: propertyData.gst_number || propertyData.gstin || null,
+      gstin: gstVal,
       property_category: propertyData.property_category || 'Hotel/PG',
     })
     .eq('id', propertyId);
+
+  if (error && (error.message.includes("gstin") || error.message.includes("schema cache"))) {
+    const fallbackRes = await supabaseAdmin
+      .from('properties')
+      .update({
+        name: propertyData.name,
+        address: propertyData.address,
+        city: propertyData.city,
+        country: propertyData.country,
+        gst_number: gstVal,
+        property_category: propertyData.property_category || 'Hotel/PG',
+      })
+      .eq('id', propertyId);
+    error = fallbackRes.error;
+  }
 
   if (error) {
     console.error("Failed to update property:", error);
