@@ -276,7 +276,7 @@ export default function FrontOfficeTerminal() {
   const [monthlyFilter, setMonthlyFilter] = useState<'all' | 'vacancy' | 'occupied' | 'dues'>('all');
   const [coLivingViewMode, setCoLivingViewMode] = useState<'grid' | 'list'>('grid');
   const [expandedRoomIds, setExpandedRoomIds] = useState<Record<string, boolean>>({});
-  const [selectedReportType, setSelectedReportType] = useState<'checkins' | 'inhouse' | 'checkouts' | 'pending' | null>(null);
+  const [selectedReportType, setSelectedReportType] = useState<'checkins' | 'inhouse' | 'checkouts' | 'pending' | 'deposits' | null>(null);
 
   // Cash Handover and Close Counter states
   const [isCloseCashModalOpen, setIsCloseCashModalOpen] = useState(false);
