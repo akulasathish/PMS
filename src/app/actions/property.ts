@@ -48,9 +48,11 @@ export async function createProperty(propertyData: {
       return { success: false, error: 'All property details are required.' };
     }
 
+    const supabaseAdmin = getSupabaseAdmin();
+
     // 1. Insert the Property
     console.log("2. Inserting Property...");
-    const { data: newProperty, error: propertyError } = await supabase
+    const { data: newProperty, error: propertyError } = await supabaseAdmin
       .from('properties')
       .insert([
         { 
@@ -71,7 +73,7 @@ export async function createProperty(propertyData: {
     }
     console.log("-> Property Inserted:", newProperty.id);
 
-    const { error: accessError } = await supabase
+    const { error: accessError } = await supabaseAdmin
       .from('property_access')
       .insert({ user_id: user.id, property_id: newProperty.id });
 
@@ -81,19 +83,18 @@ export async function createProperty(propertyData: {
     }
 
     // Update the user's profile to link to this property as their current/default
-    const { error: profileUpdateError } = await supabase
+    const { error: profileUpdateError } = await supabaseAdmin
       .from('profiles')
       .update({ property_id: newProperty.id })
       .eq('id', user.id);
 
     if (profileUpdateError) {
       console.error("-> FAILED to update user profile with property_id:", profileUpdateError);
-      // Decide if you want to rollback property creation here. For now, we'll just log.
       return { success: false, error: 'Failed to link property to user profile.' };
     }
     console.log("-> User profile updated with new property_id.");
 
-    revalidatePath('/dashboard'); // Revalidate the dashboard to show the new property
+    revalidatePath('/dashboard');
     
     console.log("-> SUCCESS: Property Creation Complete");
     
@@ -118,9 +119,10 @@ export async function togglePropertyStatus(propertyId: string, currentStatus: st
     return { success: false, error: 'Unauthorized.' };
   }
 
+  const supabaseAdmin = getSupabaseAdmin();
   const newStatus = currentStatus === 'Active' ? 'Suspended' : 'Active';
 
-  const { error } = await supabase
+  const { error } = await supabaseAdmin
     .from('properties')
     .update({ status: newStatus })
     .eq('id', propertyId);
@@ -137,8 +139,6 @@ export async function togglePropertyStatus(propertyId: string, currentStatus: st
 
 /**
  * Delete a property by its owner.
- * This should only delete the property and its dependent data (rooms, bookings etc.)
- * but NOT the user account itself.
  */
 export async function deleteProperty(propertyId: string) {
   const supabase = createSSRClient();
@@ -150,9 +150,9 @@ export async function deleteProperty(propertyId: string) {
     return { success: false, error: 'Unauthorized.' };
   }
 
-  // Delete the Property. Assuming RLS and CASCADE DELETE are configured in the DB
-  // for dependent tables like rooms, bookings, etc.
-  const { error: deletePropError } = await supabase
+  const supabaseAdmin = getSupabaseAdmin();
+
+  const { error: deletePropError } = await supabaseAdmin
     .from('properties')
     .delete()
     .eq('id', propertyId);
@@ -162,12 +162,11 @@ export async function deleteProperty(propertyId: string) {
     return { success: false, error: 'Failed to delete property from the database.' };
   }
 
-  // If the deleted property was the user's current property, reset their profile.property_id
-  const { error: profileUpdateError } = await supabase
+  const { error: profileUpdateError } = await supabaseAdmin
     .from('profiles')
     .update({ property_id: null })
     .eq('id', user.id)
-    .eq('property_id', propertyId); // Only update if it was the currently active one
+    .eq('property_id', propertyId);
 
   if (profileUpdateError) {
     console.error("Failed to clear property_id from user profile:", profileUpdateError);
@@ -187,7 +186,9 @@ export async function updatePropertyGST(propertyId: string, gstNumber: string) {
     return { success: false, error: 'Unauthorized.' };
   }
 
-  const { error } = await supabase
+  const supabaseAdmin = getSupabaseAdmin();
+
+  const { error } = await supabaseAdmin
     .from('properties')
     .update({ gstin: gstNumber })
     .eq('id', propertyId);
@@ -218,7 +219,9 @@ export async function updateProperty(propertyId: string, propertyData: {
     return { success: false, error: 'Unauthorized. Please log in.' };
   }
 
-  const { error } = await supabase
+  const supabaseAdmin = getSupabaseAdmin();
+
+  const { error } = await supabaseAdmin
     .from('properties')
     .update({
       name: propertyData.name,
@@ -255,8 +258,10 @@ export async function savePartnerInvestments(
       return { success: false, error: 'Unauthorized.' };
     }
 
+    const supabaseAdmin = getSupabaseAdmin();
+
     // 1. Update Property Total Capital Investment
-    const { error: propErr } = await supabase
+    const { error: propErr } = await supabaseAdmin
       .from('properties')
       .update({ total_capital_investment: totalCapital })
       .eq('id', propertyId);
@@ -268,7 +273,7 @@ export async function savePartnerInvestments(
 
     // 2. Clear existing partner shares if custom partners are supplied
     if (partners && partners.length > 0) {
-      await supabase
+      await supabaseAdmin
         .from('partner_investments')
         .delete()
         .eq('property_id', propertyId);
@@ -286,7 +291,7 @@ export async function savePartnerInvestments(
         };
       });
 
-      const { error: insertErr } = await supabase
+      const { error: insertErr } = await supabaseAdmin
         .from('partner_investments')
         .insert(payload);
 
