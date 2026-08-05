@@ -168,6 +168,7 @@ export async function createBooking(formData: FormData) {
           booking_id: b.id,
           property_id: propertyId,
           amount: prepaidPerRoom,
+          method: prepaidMethod || 'Cash',
           payment_method: prepaidMethod || 'Cash',
           transaction_id: 'PREPAID-RENT-AT-CREATION',
           business_date: prepaidDate || checkIn
@@ -182,6 +183,7 @@ export async function createBooking(formData: FormData) {
           booking_id: b.id,
           property_id: propertyId,
           amount: prepaidDepositPerRoom,
+          method: prepaidMethod || 'Cash',
           payment_method: prepaidMethod || 'Cash',
           transaction_id: 'PREPAID-DEPOSIT-AT-CREATION',
           business_date: prepaidDate || checkIn

@@ -117,6 +117,7 @@ export async function postPayment(formData: FormData) {
       booking_id: bookingId,
       property_id: propertyId,
       amount,
+      method: method,
       payment_method: method,
       transaction_id: allocation === 'Security Deposit' ? (transactionId ? `DEPOSIT-${transactionId}` : 'DEPOSIT') : transactionId,
       business_date: businessDate
