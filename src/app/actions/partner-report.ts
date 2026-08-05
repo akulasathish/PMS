@@ -122,8 +122,15 @@ export async function getPartnerMonthlyReport(propertyId: string, yearMonth?: st
 
     const totalIncome = cashIncome + upiIncome;
 
-    // 3. Fetch Operational Timestamped Expenses
-    const { data: expenses } = await supabase
+    // 3. Fetch Operational Expenses (from both expenses and timestamped_expenses)
+    const { data: stdExpenses } = await supabase
+      .from('expenses')
+      .select('amount, payment_method, method')
+      .eq('property_id', propertyId)
+      .gte('business_date', startDate)
+      .lte('business_date', endDate);
+
+    const { data: tsExpenses } = await supabase
       .from('timestamped_expenses')
       .select('amount, payment_method')
       .eq('property_id', propertyId)
@@ -131,7 +138,10 @@ export async function getPartnerMonthlyReport(propertyId: string, yearMonth?: st
       .lte('business_date', endDate);
 
     let operationalExpenses = 0;
-    (expenses || []).forEach(e => {
+    (stdExpenses || []).forEach(e => {
+      operationalExpenses += Number(e.amount) || 0;
+    });
+    (tsExpenses || []).forEach(e => {
       operationalExpenses += Number(e.amount) || 0;
     });
 
@@ -181,17 +191,16 @@ export async function getPartnerMonthlyReport(propertyId: string, yearMonth?: st
         operationalExpenses,
         netProfit,
         partnerPayouts,
-        dailySnapshots: snapshots || []
+        dailySnapshots: []
       }
     };
   } catch (err: any) {
-    console.error('Error fetching partner report:', err);
     return { success: false, error: err.message };
   }
 }
 
 /**
- * Fetch detailed date-specific drilldown (e.g. 5th of the month)
+ * Fetch detailed daily drilldown (Payments & Expenses for specific date)
  */
 export async function getDateSpecificDrilldown(propertyId: string, selectedDate: string): Promise<{ success: boolean; data?: DateDrilldownData; error?: string }> {
   try {
@@ -202,12 +211,12 @@ export async function getDateSpecificDrilldown(propertyId: string, selectedDate:
       return { success: false, error: 'Unauthorized.' };
     }
 
-    // 1. Payments received on selectedDate
+    // 1. Payments received on selectedDate (using business_date)
     const { data: payments } = await supabase
       .from('payments')
-      .select('id, amount, payment_method, created_at, booking_id, bookings(guest_name, room_id, rooms(room_number))')
+      .select('id, amount, payment_method, method, created_at, booking_id, bookings(guest_name, room_id, rooms(room_number))')
       .eq('property_id', propertyId)
-      .eq('payment_date', selectedDate);
+      .eq('business_date', selectedDate);
 
     // Fallback to bookings checked in on selectedDate if payments table has no records for that date
     let formattedPayments: DateDrilldownData['payments'] = [];
@@ -217,7 +226,8 @@ export async function getDateSpecificDrilldown(propertyId: string, selectedDate:
     if (payments && payments.length > 0) {
       formattedPayments = payments.map((p: any) => {
         const amt = Number(p.amount) || 0;
-        const isCash = p.payment_method?.toLowerCase().includes('cash');
+        const payMethod = p.payment_method || p.method || 'UPI';
+        const isCash = payMethod.toLowerCase().includes('cash');
         if (isCash) totalCashReceived += amt;
         else totalUpiReceived += amt;
 
@@ -226,7 +236,7 @@ export async function getDateSpecificDrilldown(propertyId: string, selectedDate:
           guest_name: p.bookings?.guest_name || 'Guest Payment',
           room_number: p.bookings?.rooms?.room_number || 'PG Room',
           amount: amt,
-          payment_method: p.payment_method || 'UPI',
+          payment_method: payMethod,
           time: p.created_at ? new Date(p.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined
         };
       });
@@ -251,32 +261,45 @@ export async function getDateSpecificDrilldown(propertyId: string, selectedDate:
       });
     }
 
-    // 2. Expenses incurred on selectedDate
-    const { data: expenses } = await supabase
+    // 2. Expenses incurred on selectedDate from expenses & timestamped_expenses
+    const { data: stdExpenses } = await supabase
+      .from('expenses')
+      .select('*')
+      .eq('property_id', propertyId)
+      .eq('business_date', selectedDate);
+
+    const { data: tsExpenses } = await supabase
       .from('timestamped_expenses')
       .select('*')
       .eq('property_id', propertyId)
-      .eq('business_date', selectedDate)
-      .order('expense_timestamp', { ascending: true });
+      .eq('business_date', selectedDate);
 
     let totalCashExpenses = 0;
     let totalUpiExpenses = 0;
 
-    const formattedExpenses = (expenses || []).map(e => {
-      const amt = Number(e.amount) || 0;
-      if (e.payment_method === 'Cash') totalCashExpenses += amt;
-      else totalUpiExpenses += amt;
-
-      return {
+    const formattedExpenses = [
+      ...(stdExpenses || []).map(e => ({
         id: e.id,
-        title: e.title,
-        category: e.category,
-        amount: amt,
-        payment_method: e.payment_method,
+        title: e.description || 'Expense',
+        category: e.category || 'Operations',
+        amount: Number(e.amount) || 0,
+        payment_method: e.payment_method || e.method || 'UPI',
+        timestamp: e.created_at ? new Date(e.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : selectedDate
+      })),
+      ...(tsExpenses || []).map(e => ({
+        id: e.id,
+        title: e.title || 'Expense',
+        category: e.category || 'Operations',
+        amount: Number(e.amount) || 0,
+        payment_method: e.payment_method || 'UPI',
         timestamp: e.expense_timestamp ? new Date(e.expense_timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : selectedDate
-      };
-    });
+      }))
+    ];
 
+    formattedExpenses.forEach(e => {
+      if (e.payment_method?.toLowerCase().includes('cash')) totalCashExpenses += e.amount;
+      else totalUpiExpenses += e.amount;
+    });
     const netCashInHand = totalCashReceived - totalCashExpenses;
     const dailyNetProfit = (totalCashReceived + totalUpiReceived) - (totalCashExpenses + totalUpiExpenses);
 

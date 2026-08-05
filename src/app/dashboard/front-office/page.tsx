@@ -276,7 +276,7 @@ export default function FrontOfficeTerminal() {
   const [monthlyFilter, setMonthlyFilter] = useState<'all' | 'vacancy' | 'occupied' | 'dues'>('all');
   const [coLivingViewMode, setCoLivingViewMode] = useState<'grid' | 'list'>('grid');
   const [expandedRoomIds, setExpandedRoomIds] = useState<Record<string, boolean>>({});
-  const [selectedReportType, setSelectedReportType] = useState<'checkins' | 'inhouse' | 'checkouts' | 'pending' | 'deposits' | null>(null);
+  const [selectedReportType, setSelectedReportType] = useState<'checkins' | 'inhouse' | 'checkouts' | 'pending' | 'deposits' | 'daily_expenses' | null>(null);
 
   // Cash Handover and Close Counter states
   const [isCloseCashModalOpen, setIsCloseCashModalOpen] = useState(false);
@@ -2726,6 +2726,8 @@ export default function FrontOfficeTerminal() {
   };
 
   const renderReportsView = () => {
+    const filteredDailyExpenses = expenses.filter(e => (e.business_date || e.created_at?.substring(0, 10)) === selectedLedgerDate);
+
     const getReportData = (): any[] => {
       if (!selectedReportType) return [];
       if (selectedReportType === 'checkins') {
@@ -2766,11 +2768,11 @@ export default function FrontOfficeTerminal() {
           const roomAmount = b.is_monthly
             ? Number(b.monthly_rent || b.monthly_rate || 0)
             : Math.max(0, Number(b.amount) - dailyRoomChargesSum);
-          const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0) + (b.is_monthly ? Number(b.security_deposit || 0) : 0);
+          const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0);
           const totalCharges = roomAmount + incidentalsAmount;
-          const totalPaid = bookingPayments.reduce((sum, item) => sum + Number(item.amount), 0);
-          const balanceDue = totalCharges - totalPaid;
-          return balanceDue > 0.01;
+          const rentPaid = bookingPayments.filter(p => p.allocation === 'Rent' || !p.allocation || !p.transaction_id?.toUpperCase().includes('DEPOSIT')).reduce((sum, item) => sum + Number(item.amount), 0);
+          const rentBalanceDue = totalCharges - rentPaid;
+          return rentBalanceDue > 0.01;
         });
       } else if (selectedReportType === 'deposits') {
         return bookings.filter(b => b.status !== 'Cancelled' && Number(b.security_deposit || 0) > 0);
@@ -2785,13 +2787,13 @@ export default function FrontOfficeTerminal() {
         .filter(item => item.description?.startsWith('Daily Room Charge'))
         .reduce((sum, item) => sum + Number(item.amount), 0);
       const roomAmount = b.is_monthly
-        ? Number(b.monthly_rate || 0)
+        ? Number(b.monthly_rent || b.monthly_rate || 0)
         : Math.max(0, Number(b.amount) - dailyRoomChargesSum);
-      const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0) + (b.is_monthly ? Number(b.amount) : 0);
+      const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0);
       const totalCharges = roomAmount + incidentalsAmount;
-      const totalPaid = bookingPayments.reduce((sum, item) => sum + Number(item.amount), 0);
-      const balanceDue = totalCharges - totalPaid;
-      return { totalCharges, totalPaid, balanceDue };
+      const rentPaid = bookingPayments.filter(p => p.allocation === 'Rent' || !p.allocation || !p.transaction_id?.toUpperCase().includes('DEPOSIT')).reduce((sum, item) => sum + Number(item.amount), 0);
+      const balanceDue = Math.max(0, totalCharges - rentPaid);
+      return { totalCharges, totalPaid: rentPaid, balanceDue };
     };
 
     const reportEntries = getReportData();
@@ -2853,6 +2855,17 @@ export default function FrontOfficeTerminal() {
                 >
                   <Eye size={14} />
                   Rent Dues Report
+                </button>
+                <button
+                  onClick={() => setSelectedReportType(selectedReportType === 'daily_expenses' ? null : 'daily_expenses')}
+                  className={`flex-1 sm:flex-initial px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
+                    selectedReportType === 'daily_expenses' 
+                      ? 'bg-emerald-600 text-white border border-emerald-500' 
+                      : 'bg-emerald-600/10 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/20'
+                  }`}
+                >
+                  <Receipt size={14} />
+                  Daily Expenses Report
                 </button>
                 <button
                   onClick={() => router.push('/dashboard/partner-report')}
@@ -2936,7 +2949,8 @@ export default function FrontOfficeTerminal() {
                   {selectedReportType === 'inhouse' && 'In-House'}
                   {selectedReportType === 'checkouts' && 'Check-Outs'}
                   {selectedReportType === 'pending' && 'Pending Dues'}
-                  {selectedReportType === 'deposits' && 'Refundable Security Deposits Audit'} Report Entries ({reportEntries.length})
+                  {selectedReportType === 'deposits' && 'Refundable Security Deposits Audit'}
+                  {selectedReportType === 'daily_expenses' && 'Daily Operational Expenses'} Report Entries ({selectedReportType === 'daily_expenses' ? filteredDailyExpenses.length : reportEntries.length})
                 </h4>
                 <p className="text-[10px] text-zinc-500 mt-1 uppercase tracking-widest font-semibold">
                   Ledger Date: {formatFriendlyDate(selectedLedgerDate)}
@@ -2950,7 +2964,46 @@ export default function FrontOfficeTerminal() {
               </button>
             </div>
 
-            {reportEntries.length === 0 ? (
+            {selectedReportType === 'daily_expenses' ? (
+              filteredDailyExpenses.length === 0 ? (
+                <div className="text-zinc-500 text-xs py-8 text-center border border-dashed border-white/10 rounded-2xl">
+                  No operational expenses recorded on {formatFriendlyDate(selectedLedgerDate)}.
+                </div>
+              ) : (
+                <div className="overflow-hidden border border-white/[0.04] rounded-2xl">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-white/[0.01] border-b border-white/10 text-zinc-400 uppercase tracking-widest text-[9px]">
+                        <th className="py-3.5 px-4">Category</th>
+                        <th className="py-3.5 px-4">Description / Title</th>
+                        <th className="py-3.5 px-4">Payment Method</th>
+                        <th className="py-3.5 px-4 text-right">Amount (₹)</th>
+                        <th className="py-3.5 px-4 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 bg-black/10">
+                      {filteredDailyExpenses.map((exp: any) => (
+                        <tr key={exp.id} className="hover:bg-white/[0.02] transition-colors">
+                          <td className="py-4 px-4 font-bold text-indigo-400 text-xs">{exp.category || 'Operations'}</td>
+                          <td className="py-4 px-4 text-white font-semibold">{exp.description || exp.title || 'Expense'}</td>
+                          <td className="py-4 px-4 text-zinc-400 font-mono">{exp.payment_method || exp.method || 'UPI'}</td>
+                          <td className="py-4 px-4 text-right font-black text-rose-400 font-mono text-sm">₹{Number(exp.amount || 0).toLocaleString('en-IN')}</td>
+                          <td className="py-4 px-4 text-center">
+                            <button
+                              onClick={() => handleDeleteExpense(exp.id)}
+                              className="p-1.5 hover:bg-rose-500/20 text-rose-400 rounded-lg transition-colors"
+                              title="Delete Expense"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            ) : reportEntries.length === 0 ? (
               <div className="text-zinc-500 text-xs py-8 text-center border border-dashed border-white/10 rounded-2xl">
                 No bookings found for this report on {formatFriendlyDate(selectedLedgerDate)}.
               </div>
@@ -4181,7 +4234,7 @@ export default function FrontOfficeTerminal() {
   };
   const renderBalancesView = () => {
     // Filter bookings based on selected balancesFilter (In-House Only or All Active)
-    let filteredBookings = bookings.filter(b => !b.is_monthly);
+    let filteredBookings = bookings.filter(b => property?.property_category === 'PG' ? true : !b.is_monthly);
     
     if (balancesFilter === 'inHouse') {
       filteredBookings = filteredBookings.filter(b => b.status === 'Checked In');
