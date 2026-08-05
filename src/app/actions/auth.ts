@@ -83,6 +83,66 @@ export async function registerUserWithoutVerification(email: string, password: s
   }
 }
 
-export async function registerUserWithVerification(email: string, password: string, redirectToUrl?: string) {
-  return registerUserWithoutVerification(email, password);
+export async function sendSignupOTP(email: string, password: string) {
+  try {
+    const cleanEmail = email.trim().toLowerCase();
+    const admin = getAdminClient();
+
+    // 1. Create user in unconfirmed state so OTP verification is required
+    const { data: authData, error: authError } = await admin.auth.admin.createUser({
+      email: cleanEmail,
+      password,
+      email_confirm: false,
+      user_metadata: { role: 'user' },
+    });
+
+    let userId: string | null = authData?.user?.id || null;
+
+    if (authError) {
+      console.warn('Admin createUser OTP message:', authError.message);
+
+      if (
+        authError.message.includes('already registered') || 
+        authError.message.includes('already been registered') ||
+        authError.status === 422
+      ) {
+        return { success: false, error: 'An account with this email already exists. Please log in.' };
+      } else {
+        return { success: false, error: authError.message || 'Failed to create account.' };
+      }
+    }
+
+    // 2. Ensure profile exists
+    if (userId) {
+      try {
+        await admin.from('profiles').upsert({
+          id: userId,
+          email: cleanEmail,
+          full_name: 'Property User',
+          property_id: null,
+        }, { onConflict: 'id' });
+      } catch (pErr) {
+        console.warn('Profile upsert warning:', pErr);
+      }
+    }
+
+    // 3. Dispatch 6-digit OTP code to user's email via Supabase Auth API
+    const { error: resendErr } = await admin.auth.resend({
+      type: 'signup',
+      email: cleanEmail,
+    });
+
+    if (resendErr) {
+      console.warn("Resend OTP warning:", resendErr.message);
+    }
+
+    return { success: true, userId };
+  } catch (err: any) {
+    console.error('sendSignupOTP error:', err);
+    return { success: false, error: err.message || 'An unexpected server error occurred.' };
+  }
+}
+
+export async function registerUserWithVerification(email: string, password: string, _redirectToUrl?: string) {
+  return sendSignupOTP(email, password);
 }

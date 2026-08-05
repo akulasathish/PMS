@@ -4,7 +4,7 @@ import React, { useState, useRef, Suspense, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { registerUserWithoutVerification, registerUserWithVerification } from '@/app/actions/auth'; 
+import { registerUserWithoutVerification, registerUserWithVerification, sendSignupOTP } from '@/app/actions/auth'; 
 import Link from 'next/link';
 import { Loader2, Mail, Lock, User, AlertCircle, MailOpen, ArrowLeft, ShieldAlert, Sparkles, RefreshCw } from 'lucide-react';
 
@@ -97,63 +97,22 @@ function SignupForm() {
     }
 
     try {
-      const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-      const redirectUrl = `${origin}/auth/callback`;
-
       const cleanEmail = email.trim().toLowerCase();
 
-      // 1. Standard Client SignUp using Anon Key
-      const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
-        email: cleanEmail,
-        password,
-      });
+      // Dispatch 6-digit OTP verification via server action
+      const result = await sendSignupOTP(cleanEmail, password);
 
-      if (signUpErr || !signUpData?.user) {
-        console.warn("Client signUp warning/error, attempting server action registration fallback:", signUpErr?.message);
-        
-        const result = await registerUserWithoutVerification(cleanEmail, password, plan || 'free_trial');
-        if (!result.success) {
-          setError(result.error || signUpErr?.message || 'Failed to create account.');
-          setIsLoading(false);
-          return;
-        }
-
-        // Attempt login with newly created account credentials
-        const { error: loginErr } = await supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password,
-        });
-
-        if (loginErr) {
-          setMessage('Account created successfully! Redirecting to login...');
-          setTimeout(() => {
-            router.push('/login?registered=true');
-          }, 1000);
-          return;
-        }
-
-        setMessage('Account created! Logging you in...');
-        router.refresh();
-        setTimeout(() => {
-          router.push('/dashboard/property-setup');
-        }, 1000);
-        return;
-      }
-
-      // If Supabase requires email verification (session is null)
-      if (signUpData?.user && !signUpData?.session) {
-        setIsVerificationSent(true);
-        setMessage(`A 6-digit confirmation code has been dispatched to ${cleanEmail}.`);
+      if (!result.success) {
+        setError(result.error || 'Failed to dispatch verification code.');
         setIsLoading(false);
         return;
       }
 
-      // If session is established directly
-      setMessage('Account created! Logging you in...');
-      router.refresh();
-      setTimeout(() => {
-        router.push('/dashboard/property-setup');
-      }, 1000);
+      // Display the 6-Digit OTP Verification Screen
+      setIsVerificationSent(true);
+      setMessage(`A 6-digit confirmation code has been dispatched to ${cleanEmail}.`);
+      setIsLoading(false);
+      return;
 
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred.');
