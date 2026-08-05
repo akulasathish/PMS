@@ -108,13 +108,35 @@ function SignupForm() {
         password,
       });
 
-      if (signUpErr) {
-        if (signUpErr.message.includes('already registered')) {
-          setError('An account with this email already exists. Please log in.');
-        } else {
-          setError(signUpErr.message);
+      if (signUpErr || !signUpData?.user) {
+        console.warn("Client signUp warning/error, attempting server action registration fallback:", signUpErr?.message);
+        
+        const result = await registerUserWithoutVerification(cleanEmail, password, plan || 'free_trial');
+        if (!result.success) {
+          setError(result.error || signUpErr?.message || 'Failed to create account.');
+          setIsLoading(false);
+          return;
         }
-        setIsLoading(false);
+
+        // Attempt login with newly created account credentials
+        const { error: loginErr } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        });
+
+        if (loginErr) {
+          setMessage('Account created successfully! Redirecting to login...');
+          setTimeout(() => {
+            router.push('/login?registered=true');
+          }, 1000);
+          return;
+        }
+
+        setMessage('Account created! Logging you in...');
+        router.refresh();
+        setTimeout(() => {
+          router.push('/dashboard/property-setup');
+        }, 1000);
         return;
       }
 
