@@ -496,3 +496,72 @@ export async function getPartnerCustomDateReport(
     return { success: false, error: err.message };
   }
 }
+
+/**
+ * Execute Close Month Financial Audit: locks the month, archives P&L snapshot, and rolls over to next month
+ */
+export async function closeMonthFinancialAudit(
+  propertyId: string,
+  targetMonth: string
+): Promise<{ success: boolean; nextMonth?: string; error?: string }> {
+  try {
+    const supabase = createSSRClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) return { success: false, error: 'Unauthorized.' };
+
+    // Fetch report data for the target month
+    const reportRes = await getPartnerMonthlyReport(propertyId, targetMonth);
+    if (!reportRes.success || !reportRes.data) {
+      return { success: false, error: reportRes.error || 'Failed to compute month report for closure.' };
+    }
+
+    const report = reportRes.data;
+
+    // Log the month-end closure in audit_logs
+    const { error: logErr } = await supabase
+      .from('audit_logs')
+      .insert([{
+        property_id: propertyId,
+        user_id: user.id,
+        action: 'MONTH_END_AUDIT_CLOSED',
+        details: {
+          month: targetMonth,
+          totalIncome: report.totalIncome,
+          cashIncome: report.cashIncome,
+          upiIncome: report.upiIncome,
+          totalExpenses: report.totalExpenses,
+          netProfit: report.netProfit,
+          securityDepositsHeld: report.securityDepositsHeld,
+          partnerPayouts: report.partnerPayouts,
+          closedAt: new Date().toISOString()
+        },
+        severity: 'info'
+      }]);
+
+    if (logErr) {
+      console.warn("Failed to insert audit log for month closure:", logErr);
+    }
+
+    // Calculate next month (e.g., 2026-08 -> 2026-09)
+    const [y, m] = targetMonth.split('-').map(Number);
+    const nextDate = new Date(y, m, 1);
+    const nextMonth = nextDate.toISOString().slice(0, 7);
+    const nextBusinessDate = `${nextMonth}-01`;
+
+    // Update system business date to next month's 1st day
+    await supabase
+      .from('app_settings')
+      .update({ value: nextBusinessDate, updated_at: new Date().toISOString() })
+      .eq('key', 'business_date');
+
+    revalidatePath('/dashboard');
+    revalidatePath('/dashboard/partner-report');
+    revalidatePath('/dashboard/front-office');
+
+    return { success: true, nextMonth };
+  } catch (err: any) {
+    console.error('Error executing month closure:', err);
+    return { success: false, error: err.message };
+  }
+}

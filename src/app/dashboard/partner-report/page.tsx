@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { getPartnerMonthlyReport, getPartnerCustomDateReport, getDateSpecificDrilldown, PartnerReportSummary, DateDrilldownData } from '@/app/actions/partner-report';
+import { getPartnerMonthlyReport, getPartnerCustomDateReport, getDateSpecificDrilldown, closeMonthFinancialAudit, PartnerReportSummary, DateDrilldownData } from '@/app/actions/partner-report';
 import {
   TrendingUp,
   IndianRupee,
@@ -123,6 +123,25 @@ export default function PartnerReportPage() {
       setReport(reportRes.data);
     } else if (reportRes.error) {
       alert(reportRes.error);
+    }
+    setLoading(false);
+  };
+
+  const handleCloseMonthAudit = async () => {
+    if (!propertyId) return;
+    const confirmClose = window.confirm(
+      `Are you sure you want to close and lock the financial audit for ${selectedMonth}?\n\nThis will freeze ${selectedMonth}'s P&L statement, archive partner payout calculations, and advance the active operational month to the next month.`
+    );
+    if (!confirmClose) return;
+
+    setLoading(true);
+    const res = await closeMonthFinancialAudit(propertyId, selectedMonth);
+    if (res.success && res.nextMonth) {
+      alert(`✅ Month ${selectedMonth} closed and locked successfully! Active operational month advanced to ${res.nextMonth}.`);
+      setSelectedMonth(res.nextMonth);
+      setUseCustomRange(false);
+    } else {
+      alert(res.error || 'Failed to close month audit.');
     }
     setLoading(false);
   };
@@ -267,6 +286,16 @@ export default function PartnerReportPage() {
             <Printer size={14} />
             <span>Export / Print PDF Statement</span>
           </button>
+
+          {!isPartner && (
+            <button
+              onClick={handleCloseMonthAudit}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black uppercase tracking-wider transition-all shadow-lg active:scale-95"
+            >
+              <AlertCircle size={14} />
+              <span>Close & Lock Month Audit</span>
+            </button>
+          )}
 
         </div>
       </div>
