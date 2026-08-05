@@ -599,7 +599,12 @@ export default function Inventory() {
       {/* Mobile Bottom Navigation Bar */}
       <div className="lg:hidden fixed bottom-0 left-0 w-full z-40 bg-[#0a0a0c]/85 backdrop-blur-xl border-t border-white/[0.05] shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
         <div className="flex items-center justify-around py-2 px-1 max-w-md mx-auto">
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.filter(item => {
+            if (property?.property_category === 'PG') {
+              return item.label !== 'Night Audit' && item.label !== 'Housekeeping';
+            }
+            return item.label !== 'Partner Report';
+          }).map((item) => {
             const locked = !hasAccess(item.module);
             return (
               <Link

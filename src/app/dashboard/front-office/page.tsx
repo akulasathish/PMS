@@ -2970,8 +2970,8 @@ export default function FrontOfficeTerminal() {
                   No operational expenses recorded on {formatFriendlyDate(selectedLedgerDate)}.
                 </div>
               ) : (
-                <div className="overflow-hidden border border-white/[0.04] rounded-2xl">
-                  <table className="w-full text-left border-collapse text-xs">
+                <div className="overflow-x-auto min-w-full border border-white/[0.04] rounded-2xl">
+                  <table className="w-full text-left border-collapse text-xs min-w-[600px]">
                     <thead>
                       <tr className="bg-white/[0.01] border-b border-white/10 text-zinc-400 uppercase tracking-widest text-[9px]">
                         <th className="py-3.5 px-4">Category</th>
@@ -3008,8 +3008,8 @@ export default function FrontOfficeTerminal() {
                 No bookings found for this report on {formatFriendlyDate(selectedLedgerDate)}.
               </div>
             ) : (
-              <div className="overflow-hidden border border-white/[0.04] rounded-2xl">
-                <table className="w-full text-left border-collapse text-xs">
+                <div className="overflow-x-auto min-w-full border border-white/[0.04] rounded-2xl">
+                  <table className="w-full text-left border-collapse text-xs min-w-[600px]">
                   <thead>
                     <tr className="bg-white/[0.01] border-b border-white/10 text-zinc-400 uppercase tracking-widest text-[9px]">
                       <th className="py-3.5 px-4">Room</th>
@@ -3464,9 +3464,10 @@ export default function FrontOfficeTerminal() {
         return activeRoomBookings.some(booking => {
           const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
           const guestPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
-          const totalCharged = Number(booking.monthly_rate || 0) + Number(booking.total_amount || 0) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
-          const totalPaid = guestPayments.reduce((sum, p) => sum + Number(p.amount), 0);
-          return (totalCharged - totalPaid) > 0.01;
+          const roomAmount = Number(booking.monthly_rent || booking.monthly_rate || 0);
+          const totalCharged = roomAmount + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
+          const rentPaid = guestPayments.filter(p => p.allocation === 'Rent' || !p.allocation || !p.transaction_id?.toUpperCase().includes('DEPOSIT')).reduce((sum, p) => sum + Number(p.amount), 0);
+          return (totalCharged - rentPaid) > 0.01;
         });
       });
     }
@@ -3854,9 +3855,10 @@ export default function FrontOfficeTerminal() {
                                   if (booking) {
                                     const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
                                     const guestPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
-                                    const totalCharged = Number(booking.monthly_rate || 0) + Number(booking.amount) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
-                                    const totalPaid = guestPayments.reduce((sum, p) => sum + Number(p.amount), 0);
-                                    const balanceDue = totalCharged - totalPaid;
+                                    const roomAmount = Number(booking.monthly_rent || booking.monthly_rate || 0);
+                                    const totalCharged = roomAmount + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
+                                    const rentPaid = guestPayments.filter(p => p.allocation === 'Rent' || !p.allocation || !p.transaction_id?.toUpperCase().includes('DEPOSIT')).reduce((sum, p) => sum + Number(p.amount), 0);
+                                    const balanceDue = Math.max(0, totalCharged - rentPaid);
 
                                     return (
                                       <div key={index} className="flex flex-col justify-between p-3 rounded-2xl bg-zinc-900/60 border border-white/[0.04] gap-2">

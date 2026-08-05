@@ -438,6 +438,10 @@ export default function Dashboard() {
           
           if (propData) {
             setProperty(propData);
+            if (propData.property_category === 'PG') {
+              router.replace('/dashboard/front-office');
+              return;
+            }
           }
           if (roomsData) {
             setRooms(roomsData);
@@ -1431,7 +1435,7 @@ export default function Dashboard() {
         <div className="flex items-center justify-around py-2 px-1 max-w-md mx-auto">
           {NAV_ITEMS.filter(item => {
             if (property?.property_category === 'PG') {
-              return item.label !== 'Night Audit';
+              return item.label !== 'Night Audit' && item.label !== 'Housekeeping';
             }
             return item.label !== 'Partner Report';
           }).map((item) => {
