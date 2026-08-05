@@ -135,6 +135,7 @@ export async function createBooking(formData: FormData) {
       guest_phone: guestPhone,
       check_in: checkIn,
       check_out: checkOut,
+      amount: isNaN(roomAmount) ? 0 : roomAmount,
       total_amount: isNaN(roomAmount) ? 0 : roomAmount,
       status: status,
       is_monthly: isMonthly,
