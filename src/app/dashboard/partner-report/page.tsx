@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { getPartnerMonthlyReport, getDateSpecificDrilldown, PartnerReportSummary, DateDrilldownData } from '@/app/actions/partner-report';
+import { getPartnerMonthlyReport, getPartnerCustomDateReport, getDateSpecificDrilldown, PartnerReportSummary, DateDrilldownData } from '@/app/actions/partner-report';
 import {
   TrendingUp,
   IndianRupee,
@@ -44,6 +44,11 @@ export default function PartnerReportPage() {
   const [selectedMonth, setSelectedMonth] = useState<string>(
     new Date().toISOString().slice(0, 7)
   );
+
+  // Custom Date Range States
+  const [useCustomRange, setUseCustomRange] = useState<boolean>(false);
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
 
   // Financial Report State
   const [report, setReport] = useState<PartnerReportSummary | null>(null);
@@ -86,10 +91,17 @@ export default function PartnerReportPage() {
 
           if (prop) setPropertyName(prop.name);
 
-          // Fetch Monthly Report
-          const reportRes = await getPartnerMonthlyReport(profile.property_id, selectedMonth);
-          if (reportRes.success && reportRes.data) {
-            setReport(reportRes.data);
+          // Fetch Monthly or Custom Report
+          if (useCustomRange && customStartDate && customEndDate) {
+            const reportRes = await getPartnerCustomDateReport(profile.property_id, customStartDate, customEndDate);
+            if (reportRes.success && reportRes.data) {
+              setReport(reportRes.data);
+            }
+          } else {
+            const reportRes = await getPartnerMonthlyReport(profile.property_id, selectedMonth);
+            if (reportRes.success && reportRes.data) {
+              setReport(reportRes.data);
+            }
           }
         }
       }
@@ -97,7 +109,23 @@ export default function PartnerReportPage() {
     }
 
     init();
-  }, [selectedMonth]);
+  }, [selectedMonth, useCustomRange, customStartDate, customEndDate]);
+
+  const handleFetchCustomReport = async () => {
+    if (!propertyId || !customStartDate || !customEndDate) {
+      alert('Please select both From Date and Till Date.');
+      return;
+    }
+    setLoading(true);
+    setUseCustomRange(true);
+    const reportRes = await getPartnerCustomDateReport(propertyId, customStartDate, customEndDate);
+    if (reportRes.success && reportRes.data) {
+      setReport(reportRes.data);
+    } else if (reportRes.error) {
+      alert(reportRes.error);
+    }
+    setLoading(false);
+  };
 
   // Handle Date Search / Drilldown (e.g. 5th of the month)
   const handleFetchDrilldown = async (dateStr: string) => {
@@ -179,16 +207,66 @@ export default function PartnerReportPage() {
             </div>
           )}
 
-          {/* Month Selector */}
-          <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-1.5">
-            <Calendar size={14} className="text-zinc-400" />
-            <input
-              type="month"
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="bg-transparent text-xs font-medium text-white focus:outline-none cursor-pointer"
-            />
+          {/* Custom Date Range Controls */}
+          <div className="flex flex-wrap items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-xl p-1.5">
+            <button
+              onClick={() => {
+                setUseCustomRange(false);
+                setSelectedMonth(new Date().toISOString().slice(0, 7));
+              }}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                !useCustomRange ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              Monthly View
+            </button>
+
+            <div className="flex items-center gap-1.5 bg-black/40 px-2 py-1 rounded-lg border border-white/5">
+              <span className="text-[10px] font-black text-zinc-500 uppercase">From</span>
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="bg-transparent text-xs text-white font-bold focus:outline-none cursor-pointer [color-scheme:dark]"
+              />
+              <span className="text-[10px] font-black text-zinc-500 uppercase">Till</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="bg-transparent text-xs text-white font-bold focus:outline-none cursor-pointer [color-scheme:dark]"
+              />
+              <button
+                onClick={handleFetchCustomReport}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1 rounded-md text-xs font-bold uppercase transition-colors"
+              >
+                Run Range Report
+              </button>
+            </div>
+
+            {!useCustomRange && (
+              <div className="flex items-center gap-2 px-2 py-1">
+                <Calendar size={14} className="text-zinc-400" />
+                <input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(e) => {
+                    setUseCustomRange(false);
+                    setSelectedMonth(e.target.value);
+                  }}
+                  className="bg-transparent text-xs font-medium text-white focus:outline-none cursor-pointer"
+                />
+              </div>
+            )}
           </div>
+
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black uppercase tracking-wider transition-all shadow-lg active:scale-95"
+          >
+            <Printer size={14} />
+            <span>Export / Print PDF Statement</span>
+          </button>
 
         </div>
       </div>

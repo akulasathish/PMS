@@ -94,9 +94,7 @@ export async function getPartnerMonthlyReport(propertyId: string, yearMonth?: st
       const amt = Number(p.amount) || 0;
       const isDeposit = Boolean(p.transaction_id && p.transaction_id.toUpperCase().includes('DEPOSIT'));
 
-      if (isDeposit) {
-        securityDepositsHeld += amt;
-      } else {
+      if (!isDeposit) {
         if (p.payment_method?.toLowerCase().includes('cash')) {
           cashIncome += amt;
         } else {
@@ -105,18 +103,21 @@ export async function getPartnerMonthlyReport(propertyId: string, yearMonth?: st
       }
     });
 
-    // Also include completed bookings if payments table is empty
-    if ((payments || []).length === 0) {
-      const { data: bookings } = await supabase
-        .from('bookings')
-        .select('monthly_rent, security_deposit, status')
-        .eq('property_id', propertyId);
+    // Calculate active Blocked Refundable Deposit Fund from currently checked-in residents
+    const { data: activeCheckedInBookings } = await supabase
+      .from('bookings')
+      .select('monthly_rent, security_deposit, status')
+      .eq('property_id', propertyId)
+      .eq('status', 'Checked In');
 
-      (bookings || []).forEach(b => {
-        if (b.status === 'Checked In' || b.status === 'Checked Out' || b.status === 'Confirmed') {
-          upiIncome += Number(b.monthly_rent) || 0;
-          securityDepositsHeld += Number(b.security_deposit) || 0;
-        }
+    (activeCheckedInBookings || []).forEach(b => {
+      securityDepositsHeld += Number(b.security_deposit) || 0;
+    });
+
+    // Fallback if payments table is empty
+    if ((payments || []).length === 0) {
+      (activeCheckedInBookings || []).forEach(b => {
+        upiIncome += Number(b.monthly_rent) || 0;
       });
     }
 
@@ -366,6 +367,132 @@ export async function logAdditionalIncome(data: {
     return { success: true };
   } catch (err: any) {
     console.error('Unhandled error logging additional income:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Fetch custom date range financial report (from startDate to endDate)
+ */
+export async function getPartnerCustomDateReport(
+  propertyId: string,
+  startDate: string,
+  endDate: string
+): Promise<{ success: boolean; data?: PartnerReportSummary & { customStartDate: string; customEndDate: string }; error?: string }> {
+  try {
+    const supabase = createSSRClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) return { success: false, error: 'Unauthorized.' };
+
+    // 1. Fetch Partner Shares
+    const { data: partnerShares } = await supabase
+      .from('partner_investments')
+      .select('*')
+      .eq('property_id', propertyId);
+
+    const shares: PartnerInvestment[] = partnerShares && partnerShares.length > 0 ? partnerShares : [
+      { id: '1', property_id: propertyId, partner_name: 'AKULA KIRAN', investment_amount: 2000000, share_percentage: 37.04 },
+      { id: '2', property_id: propertyId, partner_name: 'RANGA RAO', investment_amount: 1000000, share_percentage: 18.52 },
+      { id: '3', property_id: propertyId, partner_name: 'charan', investment_amount: 1000000, share_percentage: 18.52 },
+      { id: '4', property_id: propertyId, partner_name: 'Sandeep', investment_amount: 700000, share_percentage: 12.96 },
+      { id: '5', property_id: propertyId, partner_name: 'Aravind Pallela', investment_amount: 700000, share_percentage: 12.96 },
+    ];
+
+    // 2. Fetch Payments within custom date range
+    const { data: payments } = await supabase
+      .from('payments')
+      .select('amount, payment_method, method, transaction_id, business_date, created_at')
+      .eq('property_id', propertyId)
+      .gte('business_date', startDate)
+      .lte('business_date', endDate);
+
+    let cashIncome = 0;
+    let upiIncome = 0;
+    let securityDepositsHeld = 0;
+
+    (payments || []).forEach(p => {
+      const amt = Number(p.amount) || 0;
+      const payMethod = p.payment_method || p.method || 'UPI';
+      const isDeposit = Boolean(p.transaction_id && p.transaction_id.toUpperCase().includes('DEPOSIT'));
+
+      if (!isDeposit) {
+        if (payMethod.toLowerCase().includes('cash')) cashIncome += amt;
+        else upiIncome += amt;
+      }
+    });
+
+    // 3. Fetch Active Blocked Security Deposit Fund
+    const { data: activeCheckedInBookings } = await supabase
+      .from('bookings')
+      .select('security_deposit, status')
+      .eq('property_id', propertyId)
+      .eq('status', 'Checked In');
+
+    (activeCheckedInBookings || []).forEach(b => {
+      securityDepositsHeld += Number(b.security_deposit) || 0;
+    });
+
+    // 4. Fetch Operational Expenses within custom date range
+    const { data: stdExpenses } = await supabase
+      .from('expenses')
+      .select('amount')
+      .eq('property_id', propertyId)
+      .gte('business_date', startDate)
+      .lte('business_date', endDate);
+
+    const { data: tsExpenses } = await supabase
+      .from('timestamped_expenses')
+      .select('amount')
+      .eq('property_id', propertyId)
+      .gte('business_date', startDate)
+      .lte('business_date', endDate);
+
+    let operationalExpenses = 0;
+    (stdExpenses || []).forEach(e => { operationalExpenses += Number(e.amount) || 0; });
+    (tsExpenses || []).forEach(e => { operationalExpenses += Number(e.amount) || 0; });
+
+    // 5. Staff Payroll within custom date range
+    const { data: payroll } = await supabase
+      .from('staff_payroll')
+      .select('paid_amount')
+      .eq('property_id', propertyId)
+      .gte('business_month', startDate)
+      .lte('business_month', endDate);
+
+    let payrollExpenses = 0;
+    (payroll || []).forEach(pr => { payrollExpenses += Number(pr.paid_amount) || 0; });
+
+    const totalIncome = cashIncome + upiIncome;
+    const totalExpenses = operationalExpenses + payrollExpenses;
+    const netProfit = Math.max(0, totalIncome - totalExpenses);
+
+    const partnerPayouts = shares.map(partner => ({
+      id: partner.id,
+      partner_name: partner.partner_name,
+      share_percentage: partner.share_percentage,
+      payout_amount: Math.round((netProfit * (partner.share_percentage / 100)) * 100) / 100
+    }));
+
+    return {
+      success: true,
+      data: {
+        month: `${startDate} to ${endDate}`,
+        customStartDate: startDate,
+        customEndDate: endDate,
+        totalIncome,
+        cashIncome,
+        upiIncome,
+        securityDepositsHeld,
+        totalExpenses,
+        payrollExpenses,
+        operationalExpenses,
+        netProfit,
+        partnerPayouts,
+        dailySnapshots: []
+      }
+    };
+  } catch (err: any) {
     return { success: false, error: err.message };
   }
 }

@@ -199,7 +199,7 @@ export async function createBooking(formData: FormData) {
       const feePerRoom = nonRefundableFee / bookingData.length;
       for (const b of bookingData) {
         // Insert incidental charge for non-refundable fee
-        await supabaseAdmin.from('incidentals').insert({
+        await supabaseAdmin.from('incidental_charges').insert({
           booking_id: b.id,
           property_id: propertyId,
           description: 'Non-Refundable Admission / Maintenance Fee',
