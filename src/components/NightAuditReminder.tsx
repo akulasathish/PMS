@@ -44,6 +44,28 @@ export default function NightAuditReminder() {
           return;
         }
 
+        // Check property_category of the user's active property
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('property_id')
+          .eq('id', session.user.id)
+          .single();
+
+        if (profile?.property_id) {
+          const { data: prop } = await supabase
+            .from('properties')
+            .select('property_category')
+            .eq('id', profile.property_id)
+            .single();
+
+          if (prop?.property_category === 'PG') {
+            // In PG / Co-Living mode, Night Audit reminders and date rollover prompts are completely disabled!
+            setShowReminder(false);
+            setShowBlocker(false);
+            return;
+          }
+        }
+
         // Fetch business date from app_settings
         const { data: settings } = await supabase
           .from('app_settings')

@@ -52,7 +52,10 @@ export async function createProperty(propertyData: {
 
     // 1. Insert the Property
     console.log("2. Inserting Property...");
-    const { data: newProperty, error: propertyError } = await supabaseAdmin
+    let newProperty: any = null;
+    let propertyError: any = null;
+
+    const res = await supabaseAdmin
       .from('properties')
       .insert([
         { 
@@ -66,6 +69,35 @@ export async function createProperty(propertyData: {
       ])
       .select()
       .single();
+
+    newProperty = res.data;
+    propertyError = res.error;
+
+    // Fallback if RLS or column error occurred
+    if (propertyError && (propertyError.message?.includes('row-level security') || propertyError.code === '42501')) {
+      console.warn("SupabaseAdmin RLS warning, attempting authenticated SSR client fallback...");
+      const userRes = await supabase
+        .from('properties')
+        .insert([
+          { 
+            name: propertyData.name, 
+            address: propertyData.address,
+            city: propertyData.city,
+            country: propertyData.country,
+            property_category: propertyData.property_category || 'Hotel/PG',
+            total_capital_investment: propertyData.total_capital_investment || 0,
+          }
+        ])
+        .select()
+        .single();
+
+      if (userRes.data) {
+        newProperty = userRes.data;
+        propertyError = null;
+      } else {
+        propertyError = userRes.error;
+      }
+    }
 
     if (propertyError || !newProperty) {
       console.error("-> FAILED to create property:", propertyError);
