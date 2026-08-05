@@ -44,6 +44,19 @@ export default function NightAuditReminder() {
           return;
         }
 
+        // Fetch business date from app_settings
+        const { data: settings } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'business_date')
+          .single();
+
+        // Format local date as YYYY-MM-DD
+        const localYear = now.getFullYear();
+        const localMonth = String(now.getMonth() + 1).padStart(2, '0');
+        const localDay = String(now.getDate()).padStart(2, '0');
+        const localDateStr = `${localYear}-${localMonth}-${localDay}`;
+
         // Check property_category of the user's active property
         const { data: profile } = await supabase
           .from('profiles')
@@ -51,6 +64,7 @@ export default function NightAuditReminder() {
           .eq('id', session.user.id)
           .single();
 
+        let isPGMode = false;
         if (profile?.property_id) {
           const { data: prop } = await supabase
             .from('properties')
@@ -59,41 +73,28 @@ export default function NightAuditReminder() {
             .single();
 
           if (prop?.property_category === 'PG') {
-            // In PG / Co-Living mode, Night Audit reminders and date rollover prompts are completely disabled!
+            isPGMode = true;
+          }
+        }
+
+        if (settings?.value) {
+          setBusinessDate(settings.value);
+
+          const isPending = settings.value < localDateStr;
+
+          if (isPGMode) {
+            // In PG / Co-Living mode: NO Night Audit is required!
+            // Automatically update business_date to today's date silently after 12:00 AM midnight.
+            if (isPending) {
+              console.log(`[NightAuditReminder] PG Mode: Silently auto-updating business_date from ${settings.value} to ${localDateStr}...`);
+              await syncBusinessDateToToday();
+            }
             setShowReminder(false);
             setShowBlocker(false);
             return;
           }
-        }
 
-        // Fetch business date from app_settings
-        const { data: settings } = await supabase
-          .from('app_settings')
-          .select('value')
-          .eq('key', 'business_date')
-          .single();
-
-        if (settings?.value) {
-          setBusinessDate(settings.value);
-          
-          // Format local date as YYYY-MM-DD
-          const localYear = now.getFullYear();
-          const localMonth = String(now.getMonth() + 1).padStart(2, '0');
-          const localDay = String(now.getDate()).padStart(2, '0');
-          const localDateStr = `${localYear}-${localMonth}-${localDay}`;
-
-          // If database business date is behind today's local date, audit is pending
-          const isPending = settings.value < localDateStr;
-
-          if (isPending) {
-            console.log(`[NightAuditReminder] Auto-syncing stale business date ${settings.value} to today ${localDateStr}...`);
-            const syncRes = await syncBusinessDateToToday();
-            if (syncRes && syncRes.success) {
-              window.location.reload();
-              return;
-            }
-          }
-
+          // In Hotel/PG mode: Manual Night Audit is required.
           if (isPending && shouldBlock) {
             // Condition 1: Hard Blocker (After 4:00 AM)
             if (hours >= 4) {
