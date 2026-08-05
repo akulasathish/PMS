@@ -440,14 +440,14 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
                   </div>
                 </div>
 
-                {/* Deposit Section */}
+                {/* Deposit & Maintenance Fee Section */}
                 <div className="p-3.5 bg-white/[0.02] border border-white/[0.06] rounded-2xl space-y-3">
                   <div className="text-[10px] font-black text-indigo-400 uppercase tracking-widest pb-1 border-b border-white/5">
-                    2. Security Deposit Setup
+                    2. Security Deposit & Setup Fee
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider pl-1">Deposit Required (₹)</label>
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider pl-1">Refundable Deposit Required (₹)</label>
                       <div className="relative">
                         <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-550 font-mono text-xs select-none">
                           ₹
@@ -464,7 +464,7 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
                     </div>
 
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider pl-1">Deposit Paid Now (Optional) (₹)</label>
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider pl-1">Refundable Deposit Paid (₹)</label>
                       <div className="relative">
                         <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-550 font-mono text-xs select-none">
                           ₹
@@ -474,11 +474,31 @@ export default function CoLivingBookingModal({ isOpen, onClose, onSuccess, prope
                           name="prepaidDepositAmount"
                           min="0"
                           step="0.01"
-                          placeholder="0.00"
+                          placeholder="1000.00"
                           className="w-full bg-black/50 border border-white/10 rounded-xl py-2 pl-8 pr-4 text-white text-sm placeholder:text-zinc-700 focus:outline-none focus:border-indigo-500/50"
                         />
                       </div>
                     </div>
+                  </div>
+
+                  <div className="space-y-1.5 pt-1">
+                    <label className="text-[10px] font-bold text-amber-400 uppercase tracking-wider pl-1">Non-Refundable Fee / Maintenance (Added to Revenue) (₹)</label>
+                    <div className="relative">
+                      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-500 font-mono text-xs select-none">
+                        ₹
+                      </div>
+                      <input 
+                        type="number" 
+                        name="nonRefundableFee"
+                        min="0"
+                        step="0.01"
+                        placeholder="1000.00"
+                        className="w-full bg-black/50 border border-amber-500/30 rounded-xl py-2 pl-8 pr-4 text-white text-sm placeholder:text-zinc-700 focus:outline-none focus:border-amber-500/60 font-mono"
+                      />
+                    </div>
+                    <p className="text-[9px] text-zinc-500 italic pl-1">
+                      💡 Non-refundable fees are immediately added to P&L Revenue income.
+                    </p>
                   </div>
                 </div>
 

@@ -40,6 +40,9 @@ export async function createBooking(formData: FormData) {
 
   const rawPrepaidDepositAmount = formData.get('prepaidDepositAmount') as string;
   const prepaidDepositAmount = rawPrepaidDepositAmount ? (parseFloat(rawPrepaidDepositAmount) || 0) : 0;
+
+  const rawNonRefundableFee = formData.get('nonRefundableFee') as string;
+  const nonRefundableFee = rawNonRefundableFee ? (parseFloat(rawNonRefundableFee) || 0) : 0;
   
   const prepaidMethod = formData.get('prepaidMethod') as string | null;
   const prepaidDate = formData.get('prepaidDate') as string | null;
@@ -186,9 +189,36 @@ export async function createBooking(formData: FormData) {
           method: prepaidMethod || 'Cash',
           payment_method: prepaidMethod || 'Cash',
           transaction_id: 'PREPAID-DEPOSIT-AT-CREATION',
+          allocation: 'Security Deposit',
           business_date: prepaidDate || checkIn
         });
       });
+    }
+
+    if (isMonthly && !isNaN(nonRefundableFee) && nonRefundableFee > 0) {
+      const feePerRoom = nonRefundableFee / bookingData.length;
+      for (const b of bookingData) {
+        // Insert incidental charge for non-refundable fee
+        await supabaseAdmin.from('incidentals').insert({
+          booking_id: b.id,
+          property_id: propertyId,
+          description: 'Non-Refundable Admission / Maintenance Fee',
+          amount: feePerRoom,
+          category: 'Maintenance',
+          created_at: new Date().toISOString()
+        });
+
+        paymentsToInsert.push({
+          booking_id: b.id,
+          property_id: propertyId,
+          amount: feePerRoom,
+          method: prepaidMethod || 'Cash',
+          payment_method: prepaidMethod || 'Cash',
+          transaction_id: 'NON-REFUNDABLE-FEE-AT-CREATION',
+          allocation: 'Maintenance Fee (Revenue)',
+          business_date: prepaidDate || checkIn
+        });
+      }
     }
   }
 
