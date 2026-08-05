@@ -102,36 +102,31 @@ function SignupForm() {
 
       const cleanEmail = email.trim().toLowerCase();
 
-      // 1. Standard Client SignUp using Anon Key (never throws Invalid API Key)
+      // 1. Standard Client SignUp using Anon Key
       const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
         email: cleanEmail,
         password,
       });
 
-      if (signUpErr && !signUpErr.message.includes('already registered')) {
-        // Try server action fallback if client sign up hit an issue
-        const result = await registerUserWithoutVerification(cleanEmail, password, plan || 'free_trial');
-        if (!result.success) {
-          setError(result.error || signUpErr.message);
-          setIsLoading(false);
-          return;
+      if (signUpErr) {
+        if (signUpErr.message.includes('already registered')) {
+          setError('An account with this email already exists. Please log in.');
+        } else {
+          setError(signUpErr.message);
         }
-      }
-
-      // 2. Auto-login or redirect to Property Setup
-      const { error: loginError } = await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password,
-      });
-
-      if (loginError) {
-        setMessage('Account created successfully! Redirecting to login...');
-        setTimeout(() => {
-          router.push('/login?registered=true');
-        }, 1200);
+        setIsLoading(false);
         return;
       }
 
+      // If Supabase requires email verification (session is null)
+      if (signUpData?.user && !signUpData?.session) {
+        setIsVerificationSent(true);
+        setMessage(`A 6-digit confirmation code has been dispatched to ${cleanEmail}.`);
+        setIsLoading(false);
+        return;
+      }
+
+      // If session is established directly
       setMessage('Account created! Logging you in...');
       router.refresh();
       setTimeout(() => {
@@ -241,16 +236,17 @@ function SignupForm() {
     inputsRef.current[0]?.focus();
     
     try {
-      const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-      const redirectUrl = `${origin}/auth/callback`;
-      
-      const result = await registerUserWithVerification(email, password, redirectUrl);
-      if (result.success) {
-        setResendTimer(60);
-        setMessage('A fresh verification code has been dispatched to your email.');
-        setTimeout(() => setMessage(''), 4000);
+      const { error: resendErr } = await supabase.auth.resend({
+        type: 'signup',
+        email: email.trim().toLowerCase(),
+      });
+
+      if (resendErr) {
+        setOtpError(resendErr.message || 'Failed to resend code.');
       } else {
-        setOtpError(result.error || 'Failed to resend code.');
+        setResendTimer(60);
+        setMessage('A fresh 6-digit confirmation code has been dispatched to your email.');
+        setTimeout(() => setMessage(''), 4000);
       }
     } catch (err: any) {
       setOtpError('Error resending verification code.');
