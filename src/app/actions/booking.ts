@@ -124,6 +124,8 @@ export async function createBooking(formData: FormData) {
   const bookingsToInsert = roomIds.map(rid => {
     const customRate = formData.get(`roomRate_${rid}`);
     const roomAmount = customRate ? parseFloat(customRate as string) : (amount || 0 / roomIds.length);
+    const calculatedMonthlyRent = isMonthly ? (monthlyRate ? (monthlyRate / roomIds.length) : 0) : 0;
+    const calculatedDueDay = isMonthly ? (billingCycleDate || 1) : null;
     
     return {
       property_id: propertyId,
@@ -136,8 +138,10 @@ export async function createBooking(formData: FormData) {
       total_amount: isNaN(roomAmount) ? 0 : roomAmount,
       status: status,
       is_monthly: isMonthly,
-      rent_due_day: isMonthly ? (billingCycleDate || 1) : null,
-      monthly_rent: isMonthly ? (monthlyRate ? (monthlyRate / roomIds.length) : 0) : 0,
+      rent_due_day: calculatedDueDay,
+      billing_cycle_date: calculatedDueDay,
+      monthly_rent: calculatedMonthlyRent,
+      monthly_rate: calculatedMonthlyRent,
       security_deposit: isMonthly ? (amount ? (amount / roomIds.length) : 0) : 0
     };
   });
