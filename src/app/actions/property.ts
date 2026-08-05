@@ -114,17 +114,20 @@ export async function createProperty(propertyData: {
       return { success: false, error: 'Failed to link property access.' };
     }
 
-    // Update the user's profile to link to this property as their current/default
+    // Update or upsert the user's profile to link to this property as their current/default
     const { error: profileUpdateError } = await supabaseAdmin
       .from('profiles')
-      .update({ property_id: newProperty.id })
-      .eq('id', user.id);
+      .upsert({ 
+        id: user.id, 
+        email: user.email || '',
+        property_id: newProperty.id 
+      }, { onConflict: 'id' });
 
     if (profileUpdateError) {
       console.error("-> FAILED to update user profile with property_id:", profileUpdateError);
       return { success: false, error: 'Failed to link property to user profile.' };
     }
-    console.log("-> User profile updated with new property_id.");
+    console.log("-> User profile updated with new property_id:", newProperty.id);
 
     revalidatePath('/dashboard');
     

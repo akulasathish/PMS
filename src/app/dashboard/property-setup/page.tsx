@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { 
   Loader2, Home, MapPin, Building, Flag, Sparkles, LogOut, 
@@ -20,7 +20,7 @@ interface Property {
   state_code?: string;
 }
 
-export default function PropertySetupPage() {
+function PropertySetupForm() {
   // Navigation & Tabs
   const [activeTab, setActiveTab] = useState<'property' | 'suggestions'>('property');
   const [propertiesList, setPropertiesList] = useState<Property[]>([]);
@@ -103,11 +103,18 @@ export default function PropertySetupPage() {
     }
   };
 
+  const searchParams = useSearchParams();
+
   useEffect(() => {
     async function loadData() {
       setIsLoading(true);
       setError('');
       try {
+        const mode = searchParams.get('mode');
+        if (mode === 'PG') {
+          setPropertyCategory('PG');
+        }
+
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
           router.push('/login');
@@ -132,12 +139,15 @@ export default function PropertySetupPage() {
 
         setPropertiesList(props);
 
-        if (props.length > 0) {
+        if (props.length > 0 && mode !== 'PG' && mode !== 'Hotel/PG') {
           const activeId = profile?.property_id || props[0].id;
           const active = props.find((p: any) => p.id === activeId) || props[0];
           handleSelectProperty(active);
         } else {
           setIsCreatingNew(true);
+          if (mode === 'PG') {
+            setPropertyCategory('PG');
+          }
         }
       } catch (err: any) {
         setError(err.message || 'Failed to load settings data.');
@@ -242,8 +252,14 @@ export default function PropertySetupPage() {
         }
 
         setPropertiesList([...propertiesList, newProp]);
+        localStorage.setItem('pms_active_property', newProp.id);
         handleSelectProperty(newProp);
-        setSuccessMessage('Property created successfully!');
+        setSuccessMessage('Property created successfully! Opening workspace...');
+
+        setTimeout(() => {
+          router.refresh();
+          router.push('/dashboard');
+        }, 1000);
       } else {
         // Update existing property
         if (!selectedProperty) return;
@@ -1023,5 +1039,17 @@ export default function PropertySetupPage() {
       </AnimatePresence>
       </main>
     </div>
+  );
+}
+
+export default function PropertySetupPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen bg-[#08080a] items-center justify-center">
+        <Loader2 size={32} className="animate-spin text-indigo-500" />
+      </div>
+    }>
+      <PropertySetupForm />
+    </Suspense>
   );
 }
