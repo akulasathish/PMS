@@ -113,6 +113,8 @@ function PropertySetupForm() {
         const mode = searchParams.get('mode');
         if (mode === 'PG') {
           setPropertyCategory('PG');
+        } else if (mode === 'Hotel/PG') {
+          setPropertyCategory('Hotel/PG');
         }
 
         const { data: { user } } = await supabase.auth.getUser();
@@ -139,15 +141,14 @@ function PropertySetupForm() {
 
         setPropertiesList(props);
 
-        if (props.length > 0 && mode !== 'PG' && mode !== 'Hotel/PG') {
+        if (props.length === 0 || mode === 'PG' || mode === 'Hotel/PG') {
+          setIsCreatingNew(true);
+          if (mode === 'PG') setPropertyCategory('PG');
+          if (mode === 'Hotel/PG') setPropertyCategory('Hotel/PG');
+        } else {
           const activeId = profile?.property_id || props[0].id;
           const active = props.find((p: any) => p.id === activeId) || props[0];
           handleSelectProperty(active);
-        } else {
-          setIsCreatingNew(true);
-          if (mode === 'PG') {
-            setPropertyCategory('PG');
-          }
         }
       } catch (err: any) {
         setError(err.message || 'Failed to load settings data.');
@@ -156,7 +157,7 @@ function PropertySetupForm() {
       }
     }
     loadData();
-  }, []);
+  }, [searchParams]);
 
   const handleSelectProperty = async (prop: Property) => {
     setSelectedProperty(prop);
@@ -211,6 +212,12 @@ function PropertySetupForm() {
     setPropertyCountry('');
     setGstNumber('');
     setStateCode('');
+    const mode = searchParams.get('mode');
+    if (mode === 'PG') {
+      setPropertyCategory('PG');
+    } else if (mode === 'Hotel/PG') {
+      setPropertyCategory('Hotel/PG');
+    }
   };
 
   const handleSaveProperty = async (e: React.FormEvent) => {
@@ -227,6 +234,8 @@ function PropertySetupForm() {
         return;
       }
 
+      const selectedCategoryMode = searchParams.get('mode') === 'PG' ? 'PG' : propertyCategory;
+
       if (isCreatingNew) {
         // Create new property
         const result = await createProperty({
@@ -235,7 +244,7 @@ function PropertySetupForm() {
           address: propertyAddress,
           city: propertyCity,
           country: propertyCountry,
-          property_category: propertyCategory,
+          property_category: selectedCategoryMode,
           total_capital_investment: totalCapital
         });
 

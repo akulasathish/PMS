@@ -63,8 +63,9 @@ export async function createProperty(propertyData: {
           address: propertyData.address,
           city: propertyData.city,
           country: propertyData.country,
-          property_category: propertyData.property_category || 'Hotel/PG',
+          property_category: propertyData.property_category || 'PG',
           total_capital_investment: propertyData.total_capital_investment || 0,
+          owner_user_id: user.id,
         }
       ])
       .select()
@@ -84,8 +85,9 @@ export async function createProperty(propertyData: {
             address: propertyData.address,
             city: propertyData.city,
             country: propertyData.country,
-            property_category: propertyData.property_category || 'Hotel/PG',
+            property_category: propertyData.property_category || 'PG',
             total_capital_investment: propertyData.total_capital_investment || 0,
+            owner_user_id: user.id,
           }
         ])
         .select()

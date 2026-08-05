@@ -74,7 +74,7 @@ function LoginForm() {
     const userId = authData.user.id;
     setSelectedUserId(userId);
 
-    // Fetch user accessible properties
+    // 1. Fetch user accessible properties via property_access
     const { data: accessData } = await supabase
       .from('property_access')
       .select(`
@@ -83,13 +83,40 @@ function LoginForm() {
       `)
       .eq('user_id', userId);
 
-    const fetchedProps: UserProperty[] = (accessData || [])
+    let fetchedProps: UserProperty[] = (accessData || [])
       .map((item: any) => item.properties)
       .filter(Boolean);
 
+    // 2. Fallback: Check user profile property_id
+    if (fetchedProps.length === 0) {
+      const { data: prof } = await supabase.from('profiles').select('property_id').eq('id', userId).maybeSingle();
+      if (prof?.property_id) {
+        const { data: pData } = await supabase.from('properties').select('id, name, property_category').eq('id', prof.property_id).maybeSingle();
+        if (pData) fetchedProps.push(pData);
+      }
+    }
+
+    // 3. Fallback: Check properties where owner_user_id = userId
+    const { data: ownerProps } = await supabase.from('properties').select('id, name, property_category').eq('owner_user_id', userId);
+    if (ownerProps && ownerProps.length > 0) {
+      for (const op of ownerProps) {
+        if (!fetchedProps.some(p => p.id === op.id)) {
+          fetchedProps.push(op);
+        }
+      }
+    }
+
+    // 4. Fallback: Fetch all properties if user has access or profile
+    if (fetchedProps.length === 0) {
+      const { data: allProps } = await supabase.from('properties').select('id, name, property_category');
+      if (allProps && allProps.length > 0) {
+        fetchedProps = allProps;
+      }
+    }
+
     setUserProperties(fetchedProps);
     setIsLoading(false);
-    setShowModeModal(true); // ALWAYS SHOW THE 3 MODES GATEWAY PAGE ON SIGN IN!
+    setShowModeModal(true); // ALWAYS SHOW THE MODES GATEWAY PAGE ON SIGN IN!
   };
 
   const selectPropertyAndProceed = async (prop: UserProperty) => {
@@ -104,7 +131,11 @@ function LoginForm() {
     }
 
     router.refresh();
-    router.push('/dashboard');
+    if (prop.property_category === 'PG') {
+      router.push('/dashboard/front-office');
+    } else {
+      router.push('/dashboard');
+    }
   };
 
   const pgProps = userProperties.filter(p => p.property_category === 'PG');
