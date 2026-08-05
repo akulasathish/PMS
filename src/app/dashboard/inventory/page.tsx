@@ -93,13 +93,15 @@ export default function Inventory() {
         let parsedPropsList: { id: string, name: string }[] = [];
 
         if (accessibleProperties && accessibleProperties.length > 0) {
-          parsedPropsList = accessibleProperties.map((p: any) => p.properties as unknown as { id: string, name: string });
+          parsedPropsList = accessibleProperties
+            .map((p: any) => p?.properties as unknown as { id: string, name: string })
+            .filter(Boolean);
           setAccessiblePropsList(parsedPropsList);
 
           const savedId = localStorage.getItem('pms_active_property');
-          if (savedId && parsedPropsList.some(p => p.id === savedId)) {
+          if (savedId && savedId !== 'undefined' && savedId !== 'null' && parsedPropsList.some(p => p && p.id === savedId)) {
             activePropertyId = savedId;
-          } else {
+          } else if (parsedPropsList.length > 0) {
             activePropertyId = parsedPropsList[0].id;
           }
         } else {

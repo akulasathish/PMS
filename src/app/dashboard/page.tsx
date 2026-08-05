@@ -377,21 +377,26 @@ export default function Dashboard() {
         let parsedPropsList: {id: string, name: string, property_category?: 'PG' | 'Hotel/PG'}[] = [];
         
         if (accessibleProperties && accessibleProperties.length > 0) {
-          parsedPropsList = (accessibleProperties as unknown as { properties: { id: string, name: string, property_category?: 'PG' | 'Hotel/PG' } }[]).map((p) => p.properties);
+          parsedPropsList = (accessibleProperties as unknown as { properties: { id: string, name: string, property_category?: 'PG' | 'Hotel/PG' } }[])
+            .map((p) => p?.properties)
+            .filter(Boolean);
           setAccessiblePropsList(parsedPropsList);
           
           const savedId = localStorage.getItem('pms_active_property');
-          if (savedId && parsedPropsList.some(p => p.id === savedId)) {
+          if (savedId && savedId !== 'undefined' && savedId !== 'null' && parsedPropsList.some(p => p && p.id === savedId)) {
             activePropertyId = savedId;
-          } else {
+          } else if (parsedPropsList.length > 0) {
             activePropertyId = parsedPropsList[0].id;
             localStorage.setItem('pms_active_property', activePropertyId);
           }
-        } else if (profile?.property_id) {
+        }
+        
+        if (!activePropertyId && profile?.property_id) {
           activePropertyId = profile.property_id;
-          const { data: fallbackProp } = await supabase.from('properties').select('id, name').eq('id', activePropertyId).single();
+          const { data: fallbackProp } = await supabase.from('properties').select('id, name, property_category').eq('id', activePropertyId).maybeSingle();
           if (fallbackProp) {
             setAccessiblePropsList([fallbackProp]);
+            localStorage.setItem('pms_active_property', fallbackProp.id);
           }
         }
           
