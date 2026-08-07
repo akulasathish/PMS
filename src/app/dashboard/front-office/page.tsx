@@ -273,7 +273,7 @@ export default function FrontOfficeTerminal() {
   const [activeBlockRoom, setActiveBlockRoom] = useState<Room | null>(null);
   const [editingRoomType, setEditingRoomType] = useState<Room | null>(null);
   const [selectedBeds, setSelectedBeds] = useState<{ [roomId: string]: number }>({});
-  const [monthlyFilter, setMonthlyFilter] = useState<'all' | 'vacancy' | 'occupied' | 'dues'>('all');
+  const [monthlyFilter, setMonthlyFilter] = useState<'all' | 'vacancy' | 'occupied' | 'dues' | 'reminders'>('all');
   const [coLivingViewMode, setCoLivingViewMode] = useState<'grid' | 'list'>('grid');
   const [expandedRoomIds, setExpandedRoomIds] = useState<Record<string, boolean>>({});
   const [selectedReportType, setSelectedReportType] = useState<'checkins' | 'inhouse' | 'checkouts' | 'pending' | 'deposits' | 'daily_expenses' | null>(null);
@@ -3470,6 +3470,23 @@ export default function FrontOfficeTerminal() {
           return (totalCharged - rentPaid) > 0.01;
         });
       });
+    } else if (monthlyFilter === 'reminders') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      filteredRooms = filteredMonthlyRooms.filter(r => {
+        const activeRoomBookings = bookings.filter(b => b.room_id === r.id && (Boolean(b.is_monthly) || property?.property_category === 'PG') && b.status !== 'Cancelled' && b.status !== 'Checked Out');
+        return activeRoomBookings.some(b => {
+          const dueDay = (b as any).rent_due_day || (b as any).billing_cycle_date || (b.check_in ? new Date(b.check_in).getDate() : 1);
+          let dueDate = new Date(today.getFullYear(), today.getMonth(), dueDay);
+          dueDate.setHours(0, 0, 0, 0);
+          let diffDays = Math.round((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          if (diffDays < -3) {
+            dueDate = new Date(today.getFullYear(), today.getMonth() + 1, dueDay);
+            diffDays = Math.round((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          }
+          return diffDays >= 0 && diffDays <= 2;
+        });
+      });
     }
 
     // Calculate quick stats
@@ -3502,6 +3519,49 @@ export default function FrontOfficeTerminal() {
     });
 
     const vacantBeds = Math.max(0, totalBeds - occupiedBeds);
+
+    // Calculate 2-Day Prior Due Reminders
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dueRemindersList: {
+      bookingId: string;
+      guestName: string;
+      guestPhone: string;
+      roomNumber: string;
+      monthlyRent: number;
+      dueDay: number;
+      dueDateFormatted: string;
+      daysRemaining: number;
+      statusText: string;
+    }[] = [];
+
+    bookings.forEach(b => {
+      if ((Boolean(b.is_monthly) || property?.property_category === 'PG') && b.status !== 'Cancelled' && b.status !== 'Checked Out') {
+        const dueDay = (b as any).rent_due_day || (b as any).billing_cycle_date || (b.check_in ? new Date(b.check_in).getDate() : 1);
+        let dueDate = new Date(today.getFullYear(), today.getMonth(), dueDay);
+        dueDate.setHours(0, 0, 0, 0);
+        let diffDays = Math.round((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays < -3) {
+          dueDate = new Date(today.getFullYear(), today.getMonth() + 1, dueDay);
+          diffDays = Math.round((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        }
+
+        if (diffDays >= 0 && diffDays <= 2) {
+          const roomObj = monthlyRooms.find(r => r.id === b.room_id);
+          dueRemindersList.push({
+            bookingId: b.id,
+            guestName: b.guest_name,
+            guestPhone: b.guest_phone || '',
+            roomNumber: roomObj?.room_number || 'Room',
+            monthlyRent: Number(b.monthly_rent || b.monthly_rate || 0),
+            dueDay,
+            dueDateFormatted: dueDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+            daysRemaining: diffDays,
+            statusText: diffDays === 0 ? 'Due Today' : diffDays === 1 ? 'Due Tomorrow' : 'Due in 2 Days'
+          });
+        }
+      }
+    });
 
     // Calculate Breakdown by Sharing Type (3-Sharing, 4-Sharing, 5-Sharing, etc.)
     const sharingBreakdown: { [cap: number]: { totalBeds: number; occupiedBeds: number; vacantBeds: number; roomsCount: number } } = {};
@@ -3671,12 +3731,13 @@ export default function FrontOfficeTerminal() {
             </div>
 
             {/* Filter segments */}
-            <div className="flex items-center bg-black/40 border border-white/10 rounded-xl p-1 text-[10px] font-bold">
+            <div className="flex items-center bg-black/40 border border-white/10 rounded-xl p-1 text-[10px] font-bold overflow-x-auto max-w-full">
               {[
                 { id: 'all', label: 'All Rooms' },
                 { id: 'vacancy', label: 'With Vacancy' },
                 { id: 'occupied', label: 'Fully Booked' },
                 { id: 'dues', label: 'Has Dues' },
+                { id: 'reminders', label: '⏰ Due Reminders (2-Day Prior)' },
               ].map(segment => (
                 <button
                   key={segment.id}
@@ -3704,6 +3765,101 @@ export default function FrontOfficeTerminal() {
             </button>
           </div>
         </div>
+
+        {/* ⏰ DEDICATED DUE REMINDERS SECTION (2-DAY PRIOR) */}
+        {monthlyFilter === 'reminders' && (
+          <div className="mb-8 p-6 bg-gradient-to-br from-amber-950/30 via-zinc-900 to-black border border-amber-500/20 rounded-3xl shadow-2xl space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-amber-500/10 pb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-black uppercase tracking-widest">
+                    Automated Alert Engine
+                  </span>
+                  <span className="text-xs text-zinc-400 font-mono">2-Day Window Active</span>
+                </div>
+                <h2 className="text-xl font-black text-white tracking-tight flex items-center gap-2 mt-1">
+                  ⏰ Upcoming Rent Reminders (2 Days Prior)
+                </h2>
+                <p className="text-xs text-zinc-400">
+                  Residents whose monthly billing cycle due date occurs today, tomorrow, or in 2 days.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-3 py-1.5 rounded-xl border border-amber-500/20">
+                  {dueRemindersList.length} Residents Due Soon
+                </span>
+              </div>
+            </div>
+
+            {dueRemindersList.length === 0 ? (
+              <div className="py-12 text-center text-zinc-500 text-xs">
+                🎉 No rent payments are due in the next 2 days! All tenant cycles are clear.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
+                {dueRemindersList.map((item) => (
+                  <div key={item.bookingId} className="bg-black/60 border border-white/10 rounded-2xl p-4 space-y-3 relative overflow-hidden group hover:border-amber-500/40 transition-all">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <span className="text-[10px] font-black text-indigo-400 uppercase tracking-wider">Room {item.roomNumber}</span>
+                        <h4 className="text-sm font-black text-white">{item.guestName}</h4>
+                        <p className="text-[11px] text-zinc-400 font-mono">{item.guestPhone || 'No Phone Registered'}</p>
+                      </div>
+                      <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ${
+                        item.daysRemaining === 0 
+                          ? 'bg-rose-500/10 border-rose-500/30 text-rose-400' 
+                          : item.daysRemaining === 1 
+                          ? 'bg-orange-500/10 border-orange-500/30 text-orange-400' 
+                          : 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                      }`}>
+                        {item.statusText}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-white/5 text-xs">
+                      <div>
+                        <span className="text-[10px] text-zinc-500 uppercase font-bold block">Monthly Rent</span>
+                        <span className="text-sm font-black text-emerald-400">₹{item.monthlyRent.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] text-zinc-500 uppercase font-bold block">Due Date</span>
+                        <span className="text-xs font-bold text-white font-mono">{item.dueDateFormatted} (Day {item.dueDay})</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-2">
+                      {item.guestPhone ? (
+                        <a
+                          href={`https://wa.me/91${item.guestPhone.replace(/\D/g, '')}?text=${encodeURIComponent(
+                            `Hello ${item.guestName}, gentle reminder from ${property?.name || 'StaySync PG'} that your monthly rent of ₹${item.monthlyRent} for Room ${item.roomNumber} is ${item.statusText.toLowerCase()} (${item.dueDateFormatted}). Please collect your receipt upon payment. Thank you!`
+                          )}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex-1 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-400 py-2 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all text-center"
+                        >
+                          <span>📲 WhatsApp Reminder</span>
+                        </a>
+                      ) : (
+                        <span className="flex-1 text-center text-[10px] text-zinc-600 py-2">No WhatsApp Phone</span>
+                      )}
+
+                      <button
+                        onClick={() => {
+                          const targetBooking = bookings.find(b => b.id === item.bookingId);
+                          if (targetBooking) setSelectedBooking(targetBooking as any);
+                        }}
+                        className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-xl text-xs font-extrabold transition-all shrink-0"
+                      >
+                        💳 Collect Rent
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {filteredRooms.length === 0 ? (
           <div className="py-24 text-center border border-dashed border-white/5 rounded-3xl bg-white/[0.01]">
