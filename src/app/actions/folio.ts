@@ -781,5 +781,95 @@ export async function syncBusinessDateToToday() {
   return { success: false, syncedDate: currentVal };
 }
 
+/**
+ * Issue a Security Deposit Refund to a vacating tenant
+ */
+export async function refundSecurityDeposit(data: {
+  bookingId: string;
+  propertyId: string;
+  refundAmount: number;
+  paymentMethod: 'Cash' | 'UPI' | 'Bank Transfer';
+  notes?: string;
+}) {
+  try {
+    const supabase = createSSRClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { error: 'Unauthorized.' };
+
+    const supabaseAdmin = getSupabaseAdmin();
+
+    // Fetch active business date
+    const { data: settings } = await supabaseAdmin
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'business_date')
+      .single();
+
+    const businessDate = settings?.value || new Date().toISOString().substring(0, 10);
+
+    // Fetch booking details
+    const { data: booking } = await supabaseAdmin
+      .from('bookings')
+      .select('guest_name, room_id')
+      .eq('id', data.bookingId)
+      .single();
+
+    const guestName = booking?.guest_name || 'Resident';
+
+    // 1. Post entry into expenses table under category 'Security Deposit Refund'
+    const { error: expError } = await supabaseAdmin
+      .from('expenses')
+      .insert([{
+        property_id: data.propertyId,
+        description: `Security Deposit Refund to ${guestName} ${data.notes ? `(${data.notes})` : ''}`.trim(),
+        category: 'Security Deposit Refund',
+        amount: data.refundAmount,
+        payment_method: data.paymentMethod,
+        date: businessDate,
+        business_date: businessDate
+      }]);
+
+    if (expError) {
+      console.error("Deposit Refund Expense Error:", expError.message);
+      return { error: `Failed to record deposit refund expense: ${expError.message}` };
+    }
+
+    // 2. Post negative entry in payments table for booking audit
+    await supabaseAdmin
+      .from('payments')
+      .insert([{
+        booking_id: data.bookingId,
+        property_id: data.propertyId,
+        amount: -data.refundAmount,
+        method: data.paymentMethod,
+        payment_method: data.paymentMethod,
+        transaction_id: 'DEPOSIT-REFUND-AT-CHECKOUT',
+        allocation: 'Security Deposit Refund',
+        business_date: businessDate
+      }]);
+
+    // Log action
+    await logAction({
+      propertyId: data.propertyId,
+      action: 'PAYMENT_RECEIVED',
+      details: {
+        bookingId: data.bookingId,
+        amount: -data.refundAmount,
+        description: `Security Deposit Refund to ${guestName}`
+      },
+      userId: user.id
+    });
+
+    revalidatePath('/dashboard');
+    revalidatePath('/dashboard/front-office');
+    revalidatePath('/dashboard/partner-report');
+
+    return { success: true };
+  } catch (err: any) {
+    console.error("Error refunding security deposit:", err);
+    return { error: err.message || 'Failed to refund security deposit.' };
+  }
+}
+
 
 

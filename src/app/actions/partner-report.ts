@@ -35,10 +35,14 @@ export interface PartnerReportSummary {
   totalIncome: number;
   cashIncome: number;
   upiIncome: number;
+  roomRentIncome: number;
+  nonRefundableFees: number;
+  refundableDepositsCollected: number;
   securityDepositsHeld: number;
   totalExpenses: number;
   payrollExpenses: number;
   operationalExpenses: number;
+  depositRefundsIssued: number;
   netProfit: number;
   partnerPayouts: {
     id: string;
@@ -83,23 +87,33 @@ export async function getPartnerMonthlyReport(propertyId: string, yearMonth?: st
     // 2. Fetch Payments / Bookings collections for the month
     const { data: payments } = await supabase
       .from('payments')
-      .select('amount, payment_method, transaction_id')
-      .eq('property_id', propertyId);
+      .select('amount, payment_method, method, transaction_id, allocation, business_date')
+      .eq('property_id', propertyId)
+      .gte('business_date', startDate)
+      .lte('business_date', endDate);
 
     let cashIncome = 0;
     let upiIncome = 0;
+    let roomRentIncome = 0;
+    let nonRefundableFees = 0;
+    let refundableDepositsCollected = 0;
     let securityDepositsHeld = 0;
 
     (payments || []).forEach(p => {
       const amt = Number(p.amount) || 0;
-      const isDeposit = Boolean(p.transaction_id && p.transaction_id.toUpperCase().includes('DEPOSIT'));
+      const payMethod = p.payment_method || p.method || 'UPI';
+      const alloc = p.allocation || '';
+      const txId = p.transaction_id || '';
 
-      if (!isDeposit) {
-        if (p.payment_method?.toLowerCase().includes('cash')) {
-          cashIncome += amt;
-        } else {
-          upiIncome += amt;
-        }
+      if (payMethod.toLowerCase().includes('cash')) cashIncome += amt;
+      else upiIncome += amt;
+
+      if (alloc.includes('Maintenance') || txId.includes('NON-REFUNDABLE')) {
+        nonRefundableFees += amt;
+      } else if (alloc.includes('Security Deposit') || txId.includes('PREPAID-DEPOSIT')) {
+        refundableDepositsCollected += amt;
+      } else {
+        roomRentIncome += amt;
       }
     });
 
@@ -117,16 +131,18 @@ export async function getPartnerMonthlyReport(propertyId: string, yearMonth?: st
     // Fallback if payments table is empty
     if ((payments || []).length === 0) {
       (activeCheckedInBookings || []).forEach(b => {
-        upiIncome += Number(b.monthly_rent) || 0;
+        const rentAmt = Number(b.monthly_rent) || 0;
+        upiIncome += rentAmt;
+        roomRentIncome += rentAmt;
       });
     }
 
-    const totalIncome = cashIncome + upiIncome;
+    const totalIncome = roomRentIncome + nonRefundableFees + refundableDepositsCollected;
 
     // 3. Fetch Operational Expenses (from both expenses and timestamped_expenses)
     const { data: stdExpenses } = await supabase
       .from('expenses')
-      .select('amount, payment_method, method')
+      .select('amount, payment_method, method, category')
       .eq('property_id', propertyId)
       .gte('business_date', startDate)
       .lte('business_date', endDate);
@@ -139,8 +155,15 @@ export async function getPartnerMonthlyReport(propertyId: string, yearMonth?: st
       .lte('business_date', endDate);
 
     let operationalExpenses = 0;
+    let depositRefundsIssued = 0;
+
     (stdExpenses || []).forEach(e => {
-      operationalExpenses += Number(e.amount) || 0;
+      const amt = Number(e.amount) || 0;
+      if (e.category === 'Security Deposit Refund') {
+        depositRefundsIssued += amt;
+      } else {
+        operationalExpenses += amt;
+      }
     });
     (tsExpenses || []).forEach(e => {
       operationalExpenses += Number(e.amount) || 0;
@@ -159,7 +182,7 @@ export async function getPartnerMonthlyReport(propertyId: string, yearMonth?: st
       payrollExpenses += Number(pr.paid_amount) || 0;
     });
 
-    const totalExpenses = operationalExpenses + payrollExpenses;
+    const totalExpenses = operationalExpenses + payrollExpenses + depositRefundsIssued;
     const netProfit = Math.max(0, totalIncome - totalExpenses);
 
     // 5. Calculate Partner Dynamic Payouts
@@ -186,10 +209,14 @@ export async function getPartnerMonthlyReport(propertyId: string, yearMonth?: st
         totalIncome,
         cashIncome,
         upiIncome,
+        roomRentIncome,
+        nonRefundableFees,
+        refundableDepositsCollected,
         securityDepositsHeld,
         totalExpenses,
         payrollExpenses,
         operationalExpenses,
+        depositRefundsIssued,
         netProfit,
         partnerPayouts,
         dailySnapshots: []
@@ -402,23 +429,33 @@ export async function getPartnerCustomDateReport(
     // 2. Fetch Payments within custom date range
     const { data: payments } = await supabase
       .from('payments')
-      .select('amount, payment_method, method, transaction_id, business_date, created_at')
+      .select('amount, payment_method, method, transaction_id, allocation, business_date, created_at')
       .eq('property_id', propertyId)
       .gte('business_date', startDate)
       .lte('business_date', endDate);
 
     let cashIncome = 0;
     let upiIncome = 0;
+    let roomRentIncome = 0;
+    let nonRefundableFees = 0;
+    let refundableDepositsCollected = 0;
     let securityDepositsHeld = 0;
 
     (payments || []).forEach(p => {
       const amt = Number(p.amount) || 0;
       const payMethod = p.payment_method || p.method || 'UPI';
-      const isDeposit = Boolean(p.transaction_id && p.transaction_id.toUpperCase().includes('DEPOSIT'));
+      const alloc = p.allocation || '';
+      const txId = p.transaction_id || '';
 
-      if (!isDeposit) {
-        if (payMethod.toLowerCase().includes('cash')) cashIncome += amt;
-        else upiIncome += amt;
+      if (payMethod.toLowerCase().includes('cash')) cashIncome += amt;
+      else upiIncome += amt;
+
+      if (alloc.includes('Maintenance') || txId.includes('NON-REFUNDABLE')) {
+        nonRefundableFees += amt;
+      } else if (alloc.includes('Security Deposit') || txId.includes('PREPAID-DEPOSIT')) {
+        refundableDepositsCollected += amt;
+      } else {
+        roomRentIncome += amt;
       }
     });
 
@@ -433,10 +470,12 @@ export async function getPartnerCustomDateReport(
       securityDepositsHeld += Number(b.security_deposit) || 0;
     });
 
+    const totalIncome = roomRentIncome + nonRefundableFees + refundableDepositsCollected;
+
     // 4. Fetch Operational Expenses within custom date range
     const { data: stdExpenses } = await supabase
       .from('expenses')
-      .select('amount')
+      .select('amount, category')
       .eq('property_id', propertyId)
       .gte('business_date', startDate)
       .lte('business_date', endDate);
@@ -449,7 +488,16 @@ export async function getPartnerCustomDateReport(
       .lte('business_date', endDate);
 
     let operationalExpenses = 0;
-    (stdExpenses || []).forEach(e => { operationalExpenses += Number(e.amount) || 0; });
+    let depositRefundsIssued = 0;
+
+    (stdExpenses || []).forEach(e => {
+      const amt = Number(e.amount) || 0;
+      if (e.category === 'Security Deposit Refund') {
+        depositRefundsIssued += amt;
+      } else {
+        operationalExpenses += amt;
+      }
+    });
     (tsExpenses || []).forEach(e => { operationalExpenses += Number(e.amount) || 0; });
 
     // 5. Staff Payroll within custom date range
@@ -463,8 +511,7 @@ export async function getPartnerCustomDateReport(
     let payrollExpenses = 0;
     (payroll || []).forEach(pr => { payrollExpenses += Number(pr.paid_amount) || 0; });
 
-    const totalIncome = cashIncome + upiIncome;
-    const totalExpenses = operationalExpenses + payrollExpenses;
+    const totalExpenses = operationalExpenses + payrollExpenses + depositRefundsIssued;
     const netProfit = Math.max(0, totalIncome - totalExpenses);
 
     const partnerPayouts = shares.map(partner => ({
@@ -483,10 +530,14 @@ export async function getPartnerCustomDateReport(
         totalIncome,
         cashIncome,
         upiIncome,
+        roomRentIncome,
+        nonRefundableFees,
+        refundableDepositsCollected,
         securityDepositsHeld,
         totalExpenses,
         payrollExpenses,
         operationalExpenses,
+        depositRefundsIssued,
         netProfit,
         partnerPayouts,
         dailySnapshots: []

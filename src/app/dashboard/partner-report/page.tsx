@@ -300,6 +300,49 @@ export default function PartnerReportPage() {
         </div>
       </div>
 
+      {/* 🧾 ITEMIZED PARTNER CASH FLOW AUDIT BANNER */}
+      <div className="mb-6 p-5 bg-gradient-to-br from-zinc-900 via-black to-zinc-950 border border-white/10 rounded-2xl shadow-xl space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
+          <div>
+            <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+              Option A Partner Cash Flow Accounting
+            </span>
+            <h3 className="text-base font-extrabold text-white tracking-tight mt-1">
+              Monthly Collections & Cash Surplus Audit Statement
+            </h3>
+          </div>
+          <div className="text-xs text-zinc-400 font-mono">
+            Total Cash Received: <strong className="text-emerald-400 font-extrabold text-sm">₹{(report?.totalIncome || 0).toLocaleString('en-IN')}</strong>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1 text-xs">
+          <div className="bg-black/50 p-3 rounded-xl border border-white/5">
+            <span className="text-[10px] text-zinc-400 font-bold uppercase block">1. Room Rent Revenue</span>
+            <span className="text-base font-extrabold text-white mt-0.5 block">₹{(report?.roomRentIncome || 0).toLocaleString('en-IN')}</span>
+            <span className="text-[9px] text-zinc-500 italic">Core operational room rent</span>
+          </div>
+
+          <div className="bg-black/50 p-3 rounded-xl border border-amber-500/20">
+            <span className="text-[10px] text-amber-400 font-bold uppercase block">2. Non-Refundable Fee</span>
+            <span className="text-base font-extrabold text-amber-300 mt-0.5 block">₹{(report?.nonRefundableFees || 0).toLocaleString('en-IN')}</span>
+            <span className="text-[9px] text-amber-500/70 italic">Admission / setup fee</span>
+          </div>
+
+          <div className="bg-black/50 p-3 rounded-xl border border-indigo-500/20">
+            <span className="text-[10px] text-indigo-400 font-bold uppercase block">3. Refundable Deposit</span>
+            <span className="text-base font-extrabold text-indigo-300 mt-0.5 block">₹{(report?.refundableDepositsCollected || 0).toLocaleString('en-IN')}</span>
+            <span className="text-[9px] text-indigo-400/70 italic">Security deposits collected</span>
+          </div>
+
+          <div className="bg-black/50 p-3 rounded-xl border border-rose-500/20">
+            <span className="text-[10px] text-rose-400 font-bold uppercase block">4. Deposit Refunds Issued</span>
+            <span className="text-base font-extrabold text-rose-300 mt-0.5 block">₹{(report?.depositRefundsIssued || 0).toLocaleString('en-IN')}</span>
+            <span className="text-[9px] text-rose-400/70 italic">Checkout deposit returns</span>
+          </div>
+        </div>
+      </div>
+
       {/* 📊 SUMMARY METRICS HEADER CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         
