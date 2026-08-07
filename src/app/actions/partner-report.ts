@@ -39,11 +39,14 @@ export interface PartnerReportSummary {
   nonRefundableFees: number;
   refundableDepositsCollected: number;
   securityDepositsHeld: number;
+  totalAvailableBalance: number;
+  retainedReserveBuffer: number;
   totalExpenses: number;
   payrollExpenses: number;
   operationalExpenses: number;
   depositRefundsIssued: number;
   netProfit: number;
+  netDistributableProfit: number;
   partnerPayouts: {
     id: string;
     partner_name: string;
@@ -185,22 +188,49 @@ export async function getPartnerMonthlyReport(propertyId: string, yearMonth?: st
     const totalExpenses = operationalExpenses + payrollExpenses + depositRefundsIssued;
     const netProfit = Math.max(0, totalIncome - totalExpenses);
 
-    // 5. Calculate Partner Dynamic Payouts
+    // Retained Operating Buffer (Working Capital Float reserved for next month's starting expenses)
+    const retainedReserveBuffer = 20000;
+    const netDistributableProfit = Math.max(0, netProfit - retainedReserveBuffer);
+
+    // 5. Calculate All-Time Live Total Available Cash/Bank Balance
+    const { data: allPayments } = await supabase.from('payments').select('amount, is_void').eq('property_id', propertyId);
+    let allTimeIncome = 0;
+    (allPayments || []).forEach(p => { if (!p.is_void) allTimeIncome += Number(p.amount) || 0; });
+
+    const { data: allStdExp } = await supabase.from('expenses').select('amount').eq('property_id', propertyId);
+    const { data: allTsExp } = await supabase.from('timestamped_expenses').select('amount').eq('property_id', propertyId);
+    let allTimeExpenses = 0;
+    (allStdExp || []).forEach(e => { allTimeExpenses += Number(e.amount) || 0; });
+    (allTsExp || []).forEach(e => { allTimeExpenses += Number(e.amount) || 0; });
+
+    const { data: allPayroll } = await supabase.from('staff_payroll').select('paid_amount').eq('property_id', propertyId);
+    let allTimePayroll = 0;
+    (allPayroll || []).forEach(pr => { allTimePayroll += Number(pr.paid_amount) || 0; });
+
+    const { data: closedLogs } = await supabase
+      .from('audit_logs')
+      .select('details')
+      .eq('property_id', propertyId)
+      .eq('action', 'MONTH_END_AUDIT_CLOSED');
+
+    let allTimePayouts = 0;
+    (closedLogs || []).forEach((log: any) => {
+      if (log.details && Array.isArray(log.details.partnerPayouts)) {
+        log.details.partnerPayouts.forEach((p: any) => {
+          allTimePayouts += Number(p.payout_amount) || 0;
+        });
+      }
+    });
+
+    const totalAvailableBalance = allTimeIncome - (allTimeExpenses + allTimePayroll + allTimePayouts);
+
+    // 6. Calculate Partner Dynamic Payouts (from netDistributableProfit)
     const partnerPayouts = shares.map(partner => ({
       id: partner.id,
       partner_name: partner.partner_name,
       share_percentage: partner.share_percentage,
-      payout_amount: Math.round((netProfit * (partner.share_percentage / 100)) * 100) / 100
+      payout_amount: Math.round((netDistributableProfit * (partner.share_percentage / 100)) * 100) / 100
     }));
-
-    // 6. Fetch Daily Closing Snapshots
-    const { data: snapshots } = await supabase
-      .from('daily_closing_snapshots')
-      .select('*')
-      .eq('property_id', propertyId)
-      .gte('snapshot_date', startDate)
-      .lte('snapshot_date', endDate)
-      .order('snapshot_date', { ascending: false });
 
     return {
       success: true,
@@ -213,11 +243,14 @@ export async function getPartnerMonthlyReport(propertyId: string, yearMonth?: st
         nonRefundableFees,
         refundableDepositsCollected,
         securityDepositsHeld,
+        totalAvailableBalance,
+        retainedReserveBuffer,
         totalExpenses,
         payrollExpenses,
         operationalExpenses,
         depositRefundsIssued,
         netProfit,
+        netDistributableProfit,
         partnerPayouts,
         dailySnapshots: []
       }
@@ -513,12 +546,46 @@ export async function getPartnerCustomDateReport(
 
     const totalExpenses = operationalExpenses + payrollExpenses + depositRefundsIssued;
     const netProfit = Math.max(0, totalIncome - totalExpenses);
+    const retainedReserveBuffer = 20000;
+    const netDistributableProfit = Math.max(0, netProfit - retainedReserveBuffer);
+
+    // Calculate All-Time Live Total Available Cash/Bank Balance
+    const { data: allPayments } = await supabase.from('payments').select('amount, is_void').eq('property_id', propertyId);
+    let allTimeIncome = 0;
+    (allPayments || []).forEach(p => { if (!p.is_void) allTimeIncome += Number(p.amount) || 0; });
+
+    const { data: allStdExp } = await supabase.from('expenses').select('amount').eq('property_id', propertyId);
+    const { data: allTsExp } = await supabase.from('timestamped_expenses').select('amount').eq('property_id', propertyId);
+    let allTimeExpenses = 0;
+    (allStdExp || []).forEach(e => { allTimeExpenses += Number(e.amount) || 0; });
+    (allTsExp || []).forEach(e => { allTimeExpenses += Number(e.amount) || 0; });
+
+    const { data: allPayroll } = await supabase.from('staff_payroll').select('paid_amount').eq('property_id', propertyId);
+    let allTimePayroll = 0;
+    (allPayroll || []).forEach(pr => { allTimePayroll += Number(pr.paid_amount) || 0; });
+
+    const { data: closedLogs } = await supabase
+      .from('audit_logs')
+      .select('details')
+      .eq('property_id', propertyId)
+      .eq('action', 'MONTH_END_AUDIT_CLOSED');
+
+    let allTimePayouts = 0;
+    (closedLogs || []).forEach((log: any) => {
+      if (log.details && Array.isArray(log.details.partnerPayouts)) {
+        log.details.partnerPayouts.forEach((p: any) => {
+          allTimePayouts += Number(p.payout_amount) || 0;
+        });
+      }
+    });
+
+    const totalAvailableBalance = allTimeIncome - (allTimeExpenses + allTimePayroll + allTimePayouts);
 
     const partnerPayouts = shares.map(partner => ({
       id: partner.id,
       partner_name: partner.partner_name,
       share_percentage: partner.share_percentage,
-      payout_amount: Math.round((netProfit * (partner.share_percentage / 100)) * 100) / 100
+      payout_amount: Math.round((netDistributableProfit * (partner.share_percentage / 100)) * 100) / 100
     }));
 
     return {
@@ -534,11 +601,14 @@ export async function getPartnerCustomDateReport(
         nonRefundableFees,
         refundableDepositsCollected,
         securityDepositsHeld,
+        totalAvailableBalance,
+        retainedReserveBuffer,
         totalExpenses,
         payrollExpenses,
         operationalExpenses,
         depositRefundsIssued,
         netProfit,
+        netDistributableProfit,
         partnerPayouts,
         dailySnapshots: []
       }
@@ -583,6 +653,9 @@ export async function closeMonthFinancialAudit(
           upiIncome: report.upiIncome,
           totalExpenses: report.totalExpenses,
           netProfit: report.netProfit,
+          retainedReserveBuffer: report.retainedReserveBuffer,
+          netDistributableProfit: report.netDistributableProfit,
+          totalAvailableBalance: report.totalAvailableBalance,
           securityDepositsHeld: report.securityDepositsHeld,
           partnerPayouts: report.partnerPayouts,
           closedAt: new Date().toISOString()
