@@ -277,6 +277,8 @@ export default function FrontOfficeTerminal() {
   const [coLivingViewMode, setCoLivingViewMode] = useState<'grid' | 'list'>('grid');
   const [expandedRoomIds, setExpandedRoomIds] = useState<Record<string, boolean>>({});
   const [selectedReportType, setSelectedReportType] = useState<'checkins' | 'inhouse' | 'checkouts' | 'pending' | 'deposits' | 'daily_expenses' | null>(null);
+  const [reportStartDate, setReportStartDate] = useState<string>('');
+  const [reportEndDate, setReportEndDate] = useState<string>('');
 
   // Cash Handover and Close Counter states
   const [isCloseCashModalOpen, setIsCloseCashModalOpen] = useState(false);
@@ -2712,7 +2714,13 @@ export default function FrontOfficeTerminal() {
   };
 
   const renderReportsView = () => {
-    const filteredDailyExpenses = expenses.filter(e => (e.business_date || e.created_at?.substring(0, 10)) === selectedLedgerDate);
+    const effectiveStart = reportStartDate || selectedLedgerDate;
+    const effectiveEnd = reportEndDate || selectedLedgerDate;
+
+    const filteredDailyExpenses = expenses.filter(e => {
+      const eDate = e.business_date || e.created_at?.substring(0, 10);
+      return eDate >= effectiveStart && eDate <= effectiveEnd;
+    });
 
     const getReportData = (): any[] => {
       if (!selectedReportType) return [];
@@ -2721,14 +2729,14 @@ export default function FrontOfficeTerminal() {
           const cInTimeStr = b.check_in_time ? getLocalYYYYMMDD(new Date(b.check_in_time)) : '';
           const cInDateStr = b.check_in ? b.check_in.substring(0, 10) : '';
           const actDate = cInTimeStr || cInDateStr;
-          return (actDate === selectedLedgerDate || property?.property_category === 'PG') && ['Checked In', 'Checked Out'].includes(b.status);
+          return (actDate >= effectiveStart && actDate <= effectiveEnd || property?.property_category === 'PG') && ['Checked In', 'Checked Out'].includes(b.status);
         });
       } else if (selectedReportType === 'checkouts') {
         return bookings.filter(b => {
           const cOutTimeStr = b.check_out_time ? getLocalYYYYMMDD(new Date(b.check_out_time)) : '';
           const cOutDateStr = b.check_out ? b.check_out.substring(0, 10) : '';
           const actDate = cOutTimeStr || cOutDateStr;
-          return actDate === selectedLedgerDate && b.status === 'Checked Out';
+          return (actDate >= effectiveStart && actDate <= effectiveEnd) && b.status === 'Checked Out';
         });
       } else if (selectedReportType === 'inhouse') {
         return bookings.filter(b => b.status === 'Checked In');
@@ -2777,18 +2785,31 @@ export default function FrontOfficeTerminal() {
       <div className="space-y-8 animate-fade-in">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-zinc-900/40 border border-white/[0.04] p-6 rounded-3xl backdrop-blur-xl">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <div className="flex flex-col gap-1.5">
-              <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest pl-1">Selected Ledger Date</span>
-              <input 
-                type="date"
-                value={selectedLedgerDate}
-                onChange={(e) => {
-                  setSelectedLedgerDate(e.target.value);
-                  setNewExpenseDate(e.target.value);
-                  setSelectedReportType(null);
-                }}
-                className="bg-black/60 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white font-bold focus:outline-none focus:border-indigo-500/50 transition-all cursor-pointer [color-scheme:dark] shadow-xl"
-              />
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest pl-1">From Date</span>
+                <input 
+                  type="date"
+                  value={reportStartDate || selectedLedgerDate}
+                  onChange={(e) => {
+                    setReportStartDate(e.target.value);
+                    setSelectedLedgerDate(e.target.value);
+                    setNewExpenseDate(e.target.value);
+                  }}
+                  className="bg-black/60 border border-white/10 rounded-2xl px-3 py-2.5 text-xs text-white font-bold focus:outline-none focus:border-indigo-500/50 transition-all cursor-pointer [color-scheme:dark] shadow-xl"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest pl-1">Till Date</span>
+                <input 
+                  type="date"
+                  value={reportEndDate || selectedLedgerDate}
+                  onChange={(e) => {
+                    setReportEndDate(e.target.value);
+                  }}
+                  className="bg-black/60 border border-white/10 rounded-2xl px-3 py-2.5 text-xs text-white font-bold focus:outline-none focus:border-indigo-500/50 transition-all cursor-pointer [color-scheme:dark] shadow-xl"
+                />
+              </div>
             </div>
             <div className="mt-4 sm:mt-0 sm:pl-4 sm:border-l sm:border-white/10">
               <h3 className="text-sm font-bold text-white">Daily Ledger Reports</h3>

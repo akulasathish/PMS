@@ -27,6 +27,7 @@ import {
   AlertCircle,
   X,
   ChevronRight,
+  ChevronDown,
   Loader2,
   LayoutDashboard
 } from 'lucide-react';
@@ -53,6 +54,7 @@ export default function PartnerReportPage() {
   // Financial Report State
   const [report, setReport] = useState<PartnerReportSummary | null>(null);
   const [retainedFloat, setRetainedFloat] = useState<number>(20000);
+  const [showPartnerPayoutsMobile, setShowPartnerPayoutsMobile] = useState<boolean>(false);
 
   // Date Drilldown State (e.g. 5th of the month)
   const [drilldownDate, setDrilldownDate] = useState<string>(
@@ -309,14 +311,14 @@ export default function PartnerReportPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
           <div>
             <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
-              Option A Partner Cash Flow Accounting
+              Option A Partner Collections Accounting
             </span>
             <h3 className="text-base font-extrabold text-white tracking-tight mt-1">
-              Monthly Collections & Cash Surplus Audit Statement
+              Monthly Collections & Surplus Audit Statement
             </h3>
           </div>
           <div className="text-xs text-zinc-400 font-mono">
-            Total Cash Received: <strong className="text-emerald-400 font-extrabold text-sm">₹{(report?.totalIncome || 0).toLocaleString('en-IN')}</strong>
+            Total Collections Received: <strong className="text-emerald-400 font-extrabold text-sm">₹{(report?.totalIncome || 0).toLocaleString('en-IN')}</strong>
           </div>
         </div>
 
@@ -375,7 +377,7 @@ export default function PartnerReportPage() {
             </div>
             <span className="text-[10px] uppercase font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded">Gross Collections</span>
           </div>
-          <p className="text-[11px] text-zinc-500 uppercase font-semibold">Gross Cash Received</p>
+          <p className="text-[11px] text-zinc-500 uppercase font-semibold">Gross Revenue Received</p>
           <p className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mt-0.5">
             ₹{(report?.totalIncome || 0).toLocaleString('en-IN')}
           </p>
@@ -460,16 +462,27 @@ export default function PartnerReportPage() {
 
       {/* 🤝 DYNAMIC PARTNER PROFIT DISTRIBUTION SECTION */}
       <div className="mb-10">
-        <div className="flex items-center justify-between mb-4">
+        <div 
+          onClick={() => setShowPartnerPayoutsMobile(!showPartnerPayoutsMobile)}
+          className="flex items-center justify-between mb-4 p-3 sm:p-0 rounded-2xl bg-zinc-900/60 sm:bg-transparent border border-white/5 sm:border-none cursor-pointer sm:cursor-default"
+        >
           <div>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <Users size={18} className="text-emerald-400" /> Partner Share Allocations & Dynamic Payouts
+            <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+              <Users size={18} className="text-emerald-400" />
+              <span>Partner Share Allocations & Dynamic Payouts</span>
             </h2>
             <p className="text-xs text-zinc-400">Profit distribution based on partner equity investment percentages.</p>
           </div>
+          <button 
+            type="button"
+            className="sm:hidden flex items-center gap-1.5 text-xs text-emerald-400 font-extrabold bg-emerald-500/10 hover:bg-emerald-500/20 px-3 py-2 rounded-xl border border-emerald-500/20 transition-all shrink-0 ml-2"
+          >
+            <span>{showPartnerPayoutsMobile ? 'Hide' : 'View Payouts'}</span>
+            <ChevronDown size={14} className={`transition-transform duration-300 ${showPartnerPayoutsMobile ? 'rotate-180' : ''}`} />
+          </button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className={`${showPartnerPayoutsMobile ? 'grid' : 'hidden sm:grid'} grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4`}>
           {(report?.partnerPayouts || []).map((partner, index) => {
             const colors = [
               { border: 'border-emerald-500/30', bg: 'bg-emerald-500/10', text: 'text-emerald-400' },

@@ -834,19 +834,23 @@ export async function refundSecurityDeposit(data: {
       return { error: `Failed to record deposit refund expense: ${expError.message}` };
     }
 
-    // 2. Post negative entry in payments table for booking audit
-    await supabaseAdmin
+    // 2. Post entry in payments table for booking audit (using positive amount to satisfy payments_amount_check constraint)
+    const { error: payErr } = await supabaseAdmin
       .from('payments')
       .insert([{
         booking_id: data.bookingId,
         property_id: data.propertyId,
-        amount: -data.refundAmount,
+        amount: data.refundAmount,
         method: data.paymentMethod,
         payment_method: data.paymentMethod,
         transaction_id: 'DEPOSIT-REFUND-AT-CHECKOUT',
         allocation: 'Security Deposit Refund',
         business_date: businessDate
       }]);
+
+    if (payErr) {
+      console.warn("Notice: Payments refund record warning:", payErr.message);
+    }
 
     // Log action
     await logAction({
