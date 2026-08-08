@@ -176,7 +176,7 @@ export default function PartnerReportPage() {
   const isPartner = userRole === 'partner';
 
   return (
-    <div className="min-h-screen bg-black text-zinc-100 p-4 sm:p-8 print:p-0 print:bg-white print:text-black">
+    <div className="min-h-screen max-w-full overflow-x-hidden bg-black text-zinc-100 p-3 sm:p-8 print:p-0 print:bg-white print:text-black">
       
       {/* 🖨️ PRINT-ONLY HEADER */}
       <div className="hidden print:block mb-6 border-b pb-4">
@@ -205,11 +205,11 @@ export default function PartnerReportPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           {/* Configure Partner Capital Button */}
           <Link
             href="/dashboard/property-setup"
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 hover:text-indigo-300 text-xs font-bold transition-all shadow-md active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 hover:text-indigo-300 text-xs font-bold transition-all shadow-md active:scale-95 shrink-0"
           >
             <Building2 size={14} />
             <span>Configure Capital & Partners</span>
@@ -217,54 +217,58 @@ export default function PartnerReportPage() {
 
           {/* Read-Only Badge for Partners */}
           {isPartner ? (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold shrink-0">
               <Eye size={14} /> Read-Only Partner Audit Mode
             </div>
           ) : (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold shrink-0">
               <ShieldCheck size={14} /> Admin Controls Active
             </div>
           )}
 
           {/* Custom Date Range Controls */}
-          <div className="flex flex-wrap items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-xl p-1.5">
+          <div className="flex flex-wrap items-center gap-2 bg-zinc-900 border border-zinc-800 rounded-xl p-1.5 w-full sm:w-auto">
             <button
               onClick={() => {
                 setUseCustomRange(false);
                 setSelectedMonth(new Date().toISOString().slice(0, 7));
               }}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all shrink-0 ${
                 !useCustomRange ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'text-zinc-400 hover:text-white'
               }`}
             >
               Monthly View
             </button>
 
-            <div className="flex items-center gap-1.5 bg-black/40 px-2 py-1 rounded-lg border border-white/5">
-              <span className="text-[10px] font-black text-zinc-500 uppercase">From</span>
-              <input
-                type="date"
-                value={customStartDate}
-                onChange={(e) => setCustomStartDate(e.target.value)}
-                className="bg-transparent text-xs text-white font-bold focus:outline-none cursor-pointer [color-scheme:dark]"
-              />
-              <span className="text-[10px] font-black text-zinc-500 uppercase">Till</span>
-              <input
-                type="date"
-                value={customEndDate}
-                onChange={(e) => setCustomEndDate(e.target.value)}
-                className="bg-transparent text-xs text-white font-bold focus:outline-none cursor-pointer [color-scheme:dark]"
-              />
+            <div className="flex flex-wrap items-center gap-1.5 bg-black/40 px-2 py-1 rounded-lg border border-white/5 w-full sm:w-auto">
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] font-black text-zinc-500 uppercase">From</span>
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="bg-transparent text-xs text-white font-bold focus:outline-none cursor-pointer [color-scheme:dark] max-w-[120px]"
+                />
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] font-black text-zinc-500 uppercase">Till</span>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="bg-transparent text-xs text-white font-bold focus:outline-none cursor-pointer [color-scheme:dark] max-w-[120px]"
+                />
+              </div>
               <button
                 onClick={handleFetchCustomReport}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1 rounded-md text-xs font-bold uppercase transition-colors"
+                className="bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1 rounded-md text-xs font-bold uppercase transition-colors shrink-0"
               >
                 Run Range Report
               </button>
             </div>
 
             {!useCustomRange && (
-              <div className="flex items-center gap-2 px-2 py-1">
+              <div className="flex items-center gap-2 px-2 py-1 shrink-0">
                 <Calendar size={14} className="text-zinc-400" />
                 <input
                   type="month"
@@ -273,7 +277,7 @@ export default function PartnerReportPage() {
                     setUseCustomRange(false);
                     setSelectedMonth(e.target.value);
                   }}
-                  className="bg-transparent text-xs font-medium text-white focus:outline-none cursor-pointer"
+                  className="bg-transparent text-xs font-medium text-white focus:outline-none cursor-pointer [color-scheme:dark]"
                 />
               </div>
             )}
@@ -281,22 +285,21 @@ export default function PartnerReportPage() {
 
           <button
             onClick={() => window.print()}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black uppercase tracking-wider transition-all shadow-lg active:scale-95"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black uppercase tracking-wider transition-all shadow-lg active:scale-95 shrink-0"
           >
             <Printer size={14} />
-            <span>Export / Print PDF Statement</span>
+            <span>Export / Print PDF</span>
           </button>
 
           {!isPartner && (
             <button
               onClick={handleCloseMonthAudit}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black uppercase tracking-wider transition-all shadow-lg active:scale-95"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black uppercase tracking-wider transition-all shadow-lg active:scale-95 shrink-0"
             >
               <AlertCircle size={14} />
-              <span>Close & Lock Month Audit</span>
+              <span>Close Month Audit</span>
             </button>
           )}
-
         </div>
       </div>
 
