@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { getPartnerMonthlyReport, getPartnerCustomDateReport, getDateSpecificDrilldown, closeMonthFinancialAudit, PartnerReportSummary, DateDrilldownData } from '@/app/actions/partner-report';
+import { getPartnerMonthlyReport, getPartnerCustomDateReport, getDateSpecificDrilldown, closeMonthFinancialAudit, getClosedMonthAuditHistory, PartnerReportSummary, DateDrilldownData } from '@/app/actions/partner-report';
 import {
   TrendingUp,
   IndianRupee,
@@ -55,6 +55,7 @@ export default function PartnerReportPage() {
   const [report, setReport] = useState<PartnerReportSummary | null>(null);
   const [retainedFloat, setRetainedFloat] = useState<number>(20000);
   const [showPartnerPayoutsMobile, setShowPartnerPayoutsMobile] = useState<boolean>(false);
+  const [auditHistory, setAuditHistory] = useState<any[]>([]);
 
   // Date Drilldown State (e.g. 5th of the month)
   const [drilldownDate, setDrilldownDate] = useState<string>(
@@ -93,6 +94,12 @@ export default function PartnerReportPage() {
             .single();
 
           if (prop) setPropertyName(prop.name);
+
+          // Fetch past closed month audit logs & partner payouts history
+          const historyRes = await getClosedMonthAuditHistory(profile.property_id);
+          if (historyRes.success && historyRes.history) {
+            setAuditHistory(historyRes.history);
+          }
 
           // Fetch Monthly or Custom Report
           if (useCustomRange && customStartDate && customEndDate) {
@@ -526,6 +533,63 @@ export default function PartnerReportPage() {
             );
           })}
         </div>
+      </div>
+
+      {/* 📜 CLOSED MONTH PAYOUTS & PARTNER BANK TRANSFERS HISTORY LEDGER */}
+      <div className="mb-10">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <ShieldCheck size={18} className="text-amber-400" /> Closed Month Payouts & Partner Bank Transfers History
+            </h2>
+            <p className="text-xs text-zinc-400">Historical archive of finalized month closures, bank reserve floats kept, and partner payouts transferred.</p>
+          </div>
+        </div>
+
+        {auditHistory.length === 0 ? (
+          <div className="p-8 text-center text-zinc-500 text-xs border border-dashed border-white/10 rounded-2xl bg-zinc-900/30">
+            No closed month audit records found. Click <strong>🔒 Close Month Audit</strong> at the top when you finalize a month to archive partner payout transfers.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {auditHistory.map((item) => (
+              <div key={item.id} className="bg-zinc-900/80 border border-white/10 p-5 rounded-2xl space-y-4 backdrop-blur-xl">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
+                  <div>
+                    <span className="text-[10px] font-black text-amber-400 uppercase tracking-widest bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
+                      Closed Month Audit: {item.month}
+                    </span>
+                    <p className="text-xs text-zinc-400 mt-1">
+                      Finalized on: <strong className="text-white">{item.closedAt ? new Date(item.closedAt).toLocaleString('en-IN') : 'N/A'}</strong>
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 text-xs font-mono">
+                    <span className="text-zinc-400">Bank Float Kept: <strong className="text-amber-400">₹{Number(item.retainedReserveBuffer || 0).toLocaleString('en-IN')}</strong></span>
+                    <span className="text-zinc-400">Distributable Dividends: <strong className="text-emerald-400">₹{Number(item.netDistributableProfit || 0).toLocaleString('en-IN')}</strong></span>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="text-xs font-bold text-zinc-300 mb-2 uppercase tracking-wider">Partner Bank Payout Transfers Made</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                    {(item.partnerPayouts || []).map((p: any, idx: number) => (
+                      <div key={idx} className="bg-black/60 border border-white/5 p-3 rounded-xl">
+                        <div className="flex items-center justify-between text-[10px] text-zinc-400 font-bold uppercase">
+                          <span>{p.partner_name}</span>
+                          <span className="text-indigo-400">{p.share_percentage}%</span>
+                        </div>
+                        <p className="text-base font-black text-emerald-400 mt-1">
+                          ₹{Number(p.payout_amount || 0).toLocaleString('en-IN')}
+                        </p>
+                        <span className="text-[9px] text-zinc-500 font-medium">Bank transfer completed</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* 🔍 DATE DRILLDOWN MODAL / INSPECTOR (E.G. 5TH OF MONTH) */}

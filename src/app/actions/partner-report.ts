@@ -697,3 +697,37 @@ export async function closeMonthFinancialAudit(
     return { success: false, error: err.message };
   }
 }
+
+/**
+ * Fetch past closed month financial audit logs & partner bank transfer records
+ */
+export async function getClosedMonthAuditHistory(propertyId: string) {
+  try {
+    const supabase = createSSRClient();
+    const { data: logs, error } = await supabase
+      .from('audit_logs')
+      .select('id, details, created_at')
+      .eq('property_id', propertyId)
+      .eq('action', 'MONTH_END_AUDIT_CLOSED')
+      .order('created_at', { ascending: false });
+
+    if (error) return { success: false, error: error.message };
+
+    const history = (logs || []).map((log: any) => ({
+      id: log.id,
+      month: log.details?.month || 'N/A',
+      closedAt: log.created_at || log.details?.closedAt,
+      totalIncome: log.details?.totalIncome || 0,
+      totalExpenses: log.details?.totalExpenses || 0,
+      netProfit: log.details?.netProfit || 0,
+      retainedReserveBuffer: log.details?.retainedReserveBuffer || 20000,
+      netDistributableProfit: log.details?.netDistributableProfit || 0,
+      totalAvailableBalance: log.details?.totalAvailableBalance || 0,
+      partnerPayouts: log.details?.partnerPayouts || []
+    }));
+
+    return { success: true, history };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
