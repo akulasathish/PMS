@@ -438,10 +438,6 @@ export default function Dashboard() {
           
           if (propData) {
             setProperty(propData);
-            if (propData.property_category === 'PG') {
-              router.replace('/dashboard/front-office');
-              return;
-            }
           }
           if (roomsData) {
             setRooms(roomsData);

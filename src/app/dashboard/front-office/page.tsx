@@ -1567,43 +1567,29 @@ export default function FrontOfficeTerminal() {
     let title = '';
     let dataList: any[] = [];
     if (type === 'checkins') {
-      title = `Daily Check-Ins Report - ${formatFriendlyDate(selectedLedgerDate)}`;
+      title = `Resident Joinings / Check-Ins Report - ${formatFriendlyDate(selectedLedgerDate)}`;
       dataList = bookings.filter(b => {
-        if (b.is_monthly) return false; // Isolate from daily transient reports
+        if (b.is_monthly && property?.property_category !== 'PG') return false;
         const cInTimeStr = b.check_in_time ? getLocalYYYYMMDD(new Date(b.check_in_time)) : '';
         const cInDateStr = b.check_in ? b.check_in.substring(0, 10) : '';
         const actDate = cInTimeStr || cInDateStr;
-        return actDate === selectedLedgerDate && ['Checked In', 'Checked Out'].includes(b.status);
+        return (actDate === selectedLedgerDate || property?.property_category === 'PG') && ['Checked In', 'Checked Out'].includes(b.status);
       });
     } else if (type === 'checkouts') {
-      title = `Daily Check-Outs Report - ${formatFriendlyDate(selectedLedgerDate)}`;
+      title = `Check-Outs Report - ${formatFriendlyDate(selectedLedgerDate)}`;
       dataList = bookings.filter(b => {
-        if (b.is_monthly) return false; // Isolate from daily transient reports
+        if (b.is_monthly && property?.property_category !== 'PG') return false;
         const cOutTimeStr = b.check_out_time ? getLocalYYYYMMDD(new Date(b.check_out_time)) : '';
         const cOutDateStr = b.check_out ? b.check_out.substring(0, 10) : '';
         const actDate = cOutTimeStr || cOutDateStr;
         return actDate === selectedLedgerDate && b.status === 'Checked Out';
       });
     } else if (type === 'inhouse') {
-      title = `Daily In-House Guests Report - ${formatFriendlyDate(selectedLedgerDate)}`;
-      dataList = bookings.filter(b => {
-        if (b.is_monthly) return false; // Isolate from daily transient reports
-        const checkInDate = b.check_in_time ? getLocalYYYYMMDD(new Date(b.check_in_time)) : (b.check_in ? b.check_in.substring(0, 10) : '');
-        const checkOutDate = b.check_out_time ? getLocalYYYYMMDD(new Date(b.check_out_time)) : (b.check_out ? b.check_out.substring(0, 10) : '');
-        
-        if (b.status === 'Checked In') {
-          return checkInDate <= selectedLedgerDate;
-        }
-        if (b.status === 'Checked Out') {
-          // Historically in-house on selectedLedgerDate (excluding checkout date)
-          return checkInDate <= selectedLedgerDate && checkOutDate > selectedLedgerDate;
-        }
-        return false;
-      });
+      title = `In-House Residents Report - ${formatFriendlyDate(selectedLedgerDate)}`;
+      dataList = bookings.filter(b => b.status === 'Checked In');
     } else if (type === 'pending') {
-      title = `Daily Pending Bills Report - ${formatFriendlyDate(selectedLedgerDate)}`;
+      title = `Pending Rent Dues Report - ${formatFriendlyDate(selectedLedgerDate)}`;
       dataList = bookings.filter(b => {
-        if (b.is_monthly) return false; // Isolate from daily transient reports
         if (b.status !== 'Checked In') return false;
         const bookingIncidentals = incidentals.filter(i => i.booking_id === b.id);
         const bookingPayments = payments.filter(p => p.booking_id === b.id && !p.is_void);
@@ -1611,7 +1597,7 @@ export default function FrontOfficeTerminal() {
           .filter(item => item.description?.startsWith('Daily Room Charge'))
           .reduce((sum, item) => sum + Number(item.amount), 0);
         const roomAmount = b.is_monthly
-          ? Number(b.monthly_rate || 0)
+          ? Number(b.monthly_rent || b.monthly_rate || 0)
           : Math.max(0, Number(b.amount) - dailyRoomChargesSum);
         const incidentalsAmount = bookingIncidentals.reduce((sum, item) => sum + Number(item.amount), 0) + (b.is_monthly ? Number(b.amount) : 0);
         const totalCharges = roomAmount + incidentalsAmount;
@@ -2745,18 +2731,7 @@ export default function FrontOfficeTerminal() {
           return actDate === selectedLedgerDate && b.status === 'Checked Out';
         });
       } else if (selectedReportType === 'inhouse') {
-        return bookings.filter(b => {
-          const checkInDate = b.check_in_time ? getLocalYYYYMMDD(new Date(b.check_in_time)) : (b.check_in ? b.check_in.substring(0, 10) : '');
-          const checkOutDate = b.check_out_time ? getLocalYYYYMMDD(new Date(b.check_out_time)) : (b.check_out ? b.check_out.substring(0, 10) : '');
-          
-          if (b.status === 'Checked In') {
-            return checkInDate <= selectedLedgerDate;
-          }
-          if (b.status === 'Checked Out') {
-            return checkInDate <= selectedLedgerDate && checkOutDate > selectedLedgerDate;
-          }
-          return false;
-        });
+        return bookings.filter(b => b.status === 'Checked In');
       } else if (selectedReportType === 'pending') {
         return bookings.filter(b => {
           if (b.status !== 'Checked In' && b.status !== 'Confirmed') return false;
@@ -2833,6 +2808,17 @@ export default function FrontOfficeTerminal() {
                 >
                   <Eye size={14} />
                   Resident Joinings Report
+                </button>
+                <button
+                  onClick={() => setSelectedReportType(selectedReportType === 'inhouse' ? null : 'inhouse')}
+                  className={`flex-1 sm:flex-initial px-4 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
+                    selectedReportType === 'inhouse' 
+                      ? 'bg-blue-600 text-white border border-blue-500' 
+                      : 'bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/20'
+                  }`}
+                >
+                  <Users size={14} />
+                  In-House Resident List
                 </button>
                 <button
                   onClick={() => setSelectedReportType(selectedReportType === 'deposits' ? null : 'deposits')}
@@ -2956,12 +2942,23 @@ export default function FrontOfficeTerminal() {
                   Ledger Date: {formatFriendlyDate(selectedLedgerDate)}
                 </p>
               </div>
-              <button 
-                onClick={() => setSelectedReportType(null)}
-                className="text-xs text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-lg border border-white/5 transition-colors"
-              >
-                Close Report View
-              </button>
+              <div className="flex items-center gap-2.5">
+                <button 
+                  onClick={() => {
+                    generateHorizontalPDFReport((['checkins', 'checkouts', 'pending', 'inhouse'].includes(selectedReportType) ? selectedReportType : 'inhouse') as any);
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black uppercase tracking-wider transition-all shadow-md active:scale-95"
+                >
+                  <Printer size={14} />
+                  <span>View / Download PDF Report</span>
+                </button>
+                <button 
+                  onClick={() => setSelectedReportType(null)}
+                  className="text-xs text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10 px-3.5 py-2 rounded-xl border border-white/5 transition-colors font-bold"
+                >
+                  Close Report View
+                </button>
+              </div>
             </div>
 
             {selectedReportType === 'daily_expenses' ? (

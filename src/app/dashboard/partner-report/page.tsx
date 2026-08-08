@@ -52,6 +52,7 @@ export default function PartnerReportPage() {
 
   // Financial Report State
   const [report, setReport] = useState<PartnerReportSummary | null>(null);
+  const [retainedFloat, setRetainedFloat] = useState<number>(20000);
 
   // Date Drilldown State (e.g. 5th of the month)
   const [drilldownDate, setDrilldownDate] = useState<string>(
@@ -412,11 +413,20 @@ export default function PartnerReportPage() {
           </div>
           <p className="text-[11px] text-zinc-400 uppercase font-semibold">Net Distributable Dividends</p>
           <p className="text-2xl sm:text-3xl font-extrabold text-amber-400 tracking-tight mt-0.5">
-            ₹{(report?.netDistributableProfit || 0).toLocaleString('en-IN')}
+            ₹{Math.max(0, (report?.netProfit || 0) - retainedFloat).toLocaleString('en-IN')}
           </p>
           <div className="flex items-center justify-between text-[11px] text-zinc-400 mt-3 pt-3 border-t border-zinc-800">
             <span>Gross Surplus: <strong className="text-zinc-200">₹{(report?.netProfit || 0).toLocaleString('en-IN')}</strong></span>
-            <span>Reserve Float: <strong className="text-amber-400">₹{(report?.retainedReserveBuffer || 20000).toLocaleString('en-IN')}</strong></span>
+            <div className="flex items-center gap-1">
+              <span>Reserve Float: ₹</span>
+              <input
+                type="number"
+                value={retainedFloat}
+                onChange={(e) => setRetainedFloat(Math.max(0, Number(e.target.value)))}
+                className="bg-black/80 border border-amber-500/40 rounded px-1.5 py-0.5 text-xs text-amber-300 font-bold w-20 text-right focus:outline-none focus:border-amber-400"
+                title="Enter custom bank reserve float to keep before partner payout"
+              />
+            </div>
           </div>
         </div>
 
@@ -469,6 +479,9 @@ export default function PartnerReportPage() {
               { border: 'border-rose-500/30', bg: 'bg-rose-500/10', text: 'text-rose-400' },
             ][index % 5];
 
+            const effectiveNetDistributable = Math.max(0, (report?.netProfit || 0) - retainedFloat);
+            const dynamicPayout = Math.round((effectiveNetDistributable * (partner.share_percentage / 100)) * 100) / 100;
+
             return (
               <motion.div
                 key={partner.id || index}
@@ -488,7 +501,7 @@ export default function PartnerReportPage() {
                   </div>
                   <p className="text-[11px] text-zinc-500 uppercase tracking-wider font-medium mt-3">Calculated Payout</p>
                   <p className={`text-2xl font-extrabold ${colors.text} tracking-tight mt-1`}>
-                    ₹{partner.payout_amount.toLocaleString('en-IN')}
+                    ₹{dynamicPayout.toLocaleString('en-IN')}
                   </p>
                 </div>
 
