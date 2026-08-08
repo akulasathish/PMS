@@ -110,16 +110,26 @@ export async function postPayment(formData: FormData) {
     businessDate = settings?.value || getTodayLocalYYYYMMDD();
   }
   
-  // Insert the payment securely
+  const isRefund = amount < 0 || allocation?.toLowerCase().includes('refund');
+  const posAmount = Math.abs(amount);
+
+  let finalTxnId = transactionId || '';
+  if (isRefund) {
+    finalTxnId = transactionId ? `REFUND-${transactionId}` : 'REFUND-AT-FOLIO';
+  } else if (allocation === 'Security Deposit') {
+    finalTxnId = transactionId ? `DEPOSIT-${transactionId}` : 'DEPOSIT';
+  }
+
+  // Insert the payment securely (always positive posAmount to satisfy payments_amount_check constraint)
   const { data, error } = await supabaseAdmin
     .from('payments')
     .insert([{
       booking_id: bookingId,
       property_id: propertyId,
-      amount,
+      amount: posAmount,
       method: method,
       payment_method: method,
-      transaction_id: allocation === 'Security Deposit' ? (transactionId ? `DEPOSIT-${transactionId}` : 'DEPOSIT') : transactionId,
+      transaction_id: finalTxnId,
       business_date: businessDate
     }])
     .select('id')
@@ -130,16 +140,32 @@ export async function postPayment(formData: FormData) {
     return { error: `Failed to post payment: ${error.message}` };
   }
 
+  // If it's a refund, also record in expenses table for cash flow accounting
+  if (isRefund) {
+    await supabaseAdmin
+      .from('expenses')
+      .insert([{
+        property_id: propertyId,
+        description: `Guest Refund (${method})`,
+        category: 'Security Deposit Refund',
+        amount: posAmount,
+        payment_method: method,
+        date: businessDate,
+        business_date: businessDate
+      }]);
+  }
+
   // Audit the action
   await logAction({
     propertyId,
-    action: 'PAYMENT_RECEIVED',
-    details: { bookingId, amount, method, transactionId, paymentId: data.id, businessDate },
+    action: isRefund ? 'REFUND_ISSUED' : 'PAYMENT_RECEIVED',
+    details: { bookingId, amount: posAmount, method, transactionId: finalTxnId, paymentId: data.id, businessDate },
     userId: user.id
   });
 
   // Force UI updates across dashboards
   revalidatePath('/dashboard/front-office');
+  revalidatePath('/dashboard/partner-report');
   
   return { success: true, paymentId: data.id };
 }
