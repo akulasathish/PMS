@@ -138,7 +138,7 @@ export default function PartnerReportPage() {
     if (!confirmClose) return;
 
     setLoading(true);
-    const res = await closeMonthFinancialAudit(propertyId, selectedMonth);
+    const res = await closeMonthFinancialAudit(propertyId, selectedMonth, retainedFloat);
     if (res.success && res.nextMonth) {
       alert(`✅ Month ${selectedMonth} closed and locked successfully! Active operational month advanced to ${res.nextMonth}.`);
       setSelectedMonth(res.nextMonth);

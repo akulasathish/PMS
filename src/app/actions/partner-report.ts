@@ -623,7 +623,8 @@ export async function getPartnerCustomDateReport(
  */
 export async function closeMonthFinancialAudit(
   propertyId: string,
-  targetMonth: string
+  targetMonth: string,
+  customRetainedReserve?: number
 ): Promise<{ success: boolean; nextMonth?: string; error?: string }> {
   try {
     const supabase = createSSRClient();
@@ -638,6 +639,13 @@ export async function closeMonthFinancialAudit(
     }
 
     const report = reportRes.data;
+    const finalReserve = customRetainedReserve !== undefined ? Math.max(0, customRetainedReserve) : (report.retainedReserveBuffer || 20000);
+    const finalNetDistributable = Math.max(0, report.netProfit - finalReserve);
+
+    const finalPayouts = report.partnerPayouts.map(p => ({
+      ...p,
+      payout_amount: Math.round((finalNetDistributable * (p.share_percentage / 100)) * 100) / 100
+    }));
 
     // Log the month-end closure in audit_logs
     const { error: logErr } = await supabase
@@ -653,11 +661,11 @@ export async function closeMonthFinancialAudit(
           upiIncome: report.upiIncome,
           totalExpenses: report.totalExpenses,
           netProfit: report.netProfit,
-          retainedReserveBuffer: report.retainedReserveBuffer,
-          netDistributableProfit: report.netDistributableProfit,
+          retainedReserveBuffer: finalReserve,
+          netDistributableProfit: finalNetDistributable,
           totalAvailableBalance: report.totalAvailableBalance,
           securityDepositsHeld: report.securityDepositsHeld,
-          partnerPayouts: report.partnerPayouts,
+          partnerPayouts: finalPayouts,
           closedAt: new Date().toISOString()
         },
         severity: 'info'
