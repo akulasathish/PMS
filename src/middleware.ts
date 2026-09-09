@@ -1,16 +1,27 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
-import { NextResponse, type NextRequest } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server';
 
 export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl
+  const { pathname } = request.nextUrl;
+  const host = request.headers.get('host') || '';
 
-  // 1. Bypass public static routes instantly without network calls
-  const publicPaths = ['/', '/login', '/signup', '/auth/callback'];
-  if (publicPaths.includes(pathname)) {
+  // 1. Handle Subdomain Routing (e.g. pg.staysync.online or pg.localhost:3000)
+  const isPgSubdomain = host.startsWith('pg.') || host.includes('pg.staysync');
+  if (isPgSubdomain) {
+    if (pathname === '/') {
+      return NextResponse.rewrite(new URL('/pg', request.url));
+    }
+    if (!pathname.startsWith('/pg') && !pathname.startsWith('/_next') && !pathname.includes('.')) {
+      return NextResponse.rewrite(new URL(`/pg${pathname}`, request.url));
+    }
+  }
+
+  // 2. Bypass public routes
+  const publicPaths = ['/', '/pg', '/login', '/signup', '/auth/callback'];
+  if (publicPaths.includes(pathname) || pathname.startsWith('/pg')) {
     return NextResponse.next();
   }
 
-  // 2. Fast check for protected dashboard routes using session cookie
+  // 3. Protected dashboard routes
   if (pathname.startsWith('/dashboard')) {
     const hasAuthCookie = request.cookies.getAll().some(c => c.name.includes('auth-token') || c.name.includes('sb-'));
     if (!hasAuthCookie) {
@@ -24,5 +35,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*'],
-}
+  matcher: [
+    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+  ],
+};
