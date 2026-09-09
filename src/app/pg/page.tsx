@@ -21,21 +21,64 @@ import {
   BadgePercent,
   Check,
   Send,
-  HelpCircle
+  User,
+  ArrowRight
 } from 'lucide-react';
 
 export default function PgPublicPage() {
   const [activeSharingFilter, setActiveSharingFilter] = useState<string>('all');
+  
+  // Visit Modal States
   const [showVisitModal, setShowVisitModal] = useState<boolean>(false);
-  const [selectedRoomForVisit, setSelectedRoomForVisit] = useState<string>('2-Sharing');
+  const [selectedRoomForVisit, setSelectedRoomForVisit] = useState<string>('2-Sharing Room');
   const [visitName, setVisitName] = useState('');
   const [visitPhone, setVisitPhone] = useState('');
   const [visitDate, setVisitDate] = useState('');
   const [visitSubmitted, setVisitSubmitted] = useState(false);
 
-  // Phone & WhatsApp details
+  // WhatsApp Quick Modal States
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState<boolean>(false);
+  const [tenantName, setTenantName] = useState('');
+  const [targetRoomName, setTargetRoomName] = useState('');
+
+  // Contact details
   const contactPhone = "8686113435";
-  const whatsappUrl = `https://wa.me/918686113435?text=${encodeURIComponent("Hi Sathish, I am interested in StaySync Premium Men's PG. Please share room pricing and availability.")}`;
+
+  const openWhatsAppModal = (roomTitle?: string) => {
+    setTargetRoomName(roomTitle || '');
+    setShowWhatsAppModal(true);
+  };
+
+  const handleWhatsAppRedirect = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const name = tenantName.trim();
+    let message = '';
+
+    if (name) {
+      if (targetRoomName) {
+        message = `Hello! My name is ${name}. I am interested in the ${targetRoomName} at StaySync Premium Men's PG. Please share the pricing and availability.`;
+      } else {
+        message = `Hello! My name is ${name}. I am interested in StaySync Premium Men's PG. Please share room sharing options and pricing.`;
+      }
+    } else {
+      if (targetRoomName) {
+        message = `Hello! I would like to check the price and availability for ${targetRoomName} at StaySync Premium Men's PG.\n\nMy name is: `;
+      } else {
+        message = `Hello! I am interested in StaySync Premium Men's PG. Please share room details and pricing.\n\nMy name is: `;
+      }
+    }
+
+    window.open(`https://wa.me/918686113435?text=${encodeURIComponent(message)}`, '_blank');
+    setShowWhatsAppModal(false);
+  };
+
+  const handleVisitSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setVisitSubmitted(true);
+    const name = visitName.trim() || 'Prospective Tenant';
+    const message = `Hello! My name is ${name}.\nI would like to schedule a visit to StaySync Premium Men's PG.\n\n👤 Name: ${visitName}\n📞 Phone: ${visitPhone}\n🛏️ Sharing Preference: ${selectedRoomForVisit}\n📅 Preferred Date: ${visitDate}`;
+    window.open(`https://wa.me/918686113435?text=${encodeURIComponent(message)}`, '_blank');
+  };
 
   const sharingRooms = [
     {
@@ -111,14 +154,6 @@ export default function PgPublicPage() {
     return true;
   });
 
-  const handleVisitSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setVisitSubmitted(true);
-    // Automatically pre-fill a WhatsApp message for instant confirmation
-    const message = `Hi Sathish, I have scheduled a visit for StaySync Premium Men's PG!\nName: ${visitName}\nPhone: ${visitPhone}\nRoom Preference: ${selectedRoomForVisit}\nPreferred Date: ${visitDate}`;
-    window.open(`https://wa.me/918686113435?text=${encodeURIComponent(message)}`, '_blank');
-  };
-
   return (
     <div className="min-h-screen bg-[#050507] text-zinc-100 selection:bg-emerald-500/30 font-sans antialiased">
       
@@ -172,15 +207,13 @@ export default function PgPublicPage() {
               <span>Call Us</span>
             </a>
 
-            <a 
-              href={whatsappUrl}
-              target="_blank" 
-              rel="noopener noreferrer"
+            <button 
+              onClick={() => openWhatsAppModal()}
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#25D366] hover:bg-[#20ba59] text-black text-xs font-black shadow-lg shadow-emerald-500/20 transition-all transform active:scale-95"
             >
               <MessageSquare className="w-4 h-4 fill-black" />
               <span>WhatsApp</span>
-            </a>
+            </button>
 
             <button 
               onClick={() => setShowVisitModal(true)}
@@ -194,7 +227,6 @@ export default function PgPublicPage() {
 
       {/* 3. HERO SECTION */}
       <section className="relative pt-12 pb-20 px-4 sm:px-6 overflow-hidden border-b border-white/[0.06]">
-        {/* Background glow effects */}
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-emerald-500/10 blur-[130px] rounded-full pointer-events-none" />
         
         <div className="max-w-6xl mx-auto text-center relative z-10">
@@ -242,15 +274,13 @@ export default function PgPublicPage() {
               <Calendar className="w-5 h-5 text-black" />
               <span>Schedule a Free Visit</span>
             </button>
-            <a 
-              href={whatsappUrl}
-              target="_blank" 
-              rel="noopener noreferrer"
+            <button 
+              onClick={() => openWhatsAppModal()}
               className="px-8 py-4 rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-white/15 text-white font-bold text-sm sm:text-base transition-all flex items-center gap-2.5"
             >
               <MessageSquare className="w-5 h-5 text-[#25D366]" />
               <span>Get Pricing on WhatsApp</span>
-            </a>
+            </button>
           </div>
 
         </div>
@@ -353,16 +383,14 @@ export default function PgPublicPage() {
                 >
                   Schedule Visit
                 </button>
-                <a
-                  href={`https://wa.me/918686113435?text=${encodeURIComponent(`Hi Sathish, what is the best monthly price for ${room.title}? Please share availability.`)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  onClick={() => openWhatsAppModal(room.title)}
                   className="py-2.5 px-3 rounded-xl bg-[#25D366]/20 hover:bg-[#25D366] text-[#25D366] hover:text-black border border-[#25D366]/30 transition-all flex items-center justify-center gap-1.5 text-xs font-bold"
                   title="Inquire on WhatsApp"
                 >
                   <MessageSquare className="w-3.5 h-3.5" />
                   <span>Price</span>
-                </a>
+                </button>
               </div>
 
             </div>
@@ -590,15 +618,13 @@ export default function PgPublicPage() {
                   <Phone className="w-4 h-4 text-emerald-400" />
                   <span>Call +91 8686113435</span>
                 </a>
-                <a
-                  href={whatsappUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  onClick={() => openWhatsAppModal()}
                   className="px-6 py-3 rounded-xl bg-[#25D366] hover:bg-[#20ba59] text-black text-xs font-black flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition-all"
                 >
                   <MessageSquare className="w-4 h-4 fill-black" />
                   <span>Chat on WhatsApp</span>
-                </a>
+                </button>
               </div>
             </div>
 
@@ -626,7 +652,7 @@ export default function PgPublicPage() {
                     <input 
                       type="text" 
                       required
-                      placeholder="e.g. Rahul Sharma" 
+                      placeholder="e.g. Sai Kumar" 
                       value={visitName}
                       onChange={(e) => setVisitName(e.target.value)}
                       className="w-full px-4 py-3 rounded-xl bg-black border border-white/10 text-white text-xs focus:border-emerald-500 focus:outline-none"
@@ -653,10 +679,10 @@ export default function PgPublicPage() {
                         onChange={(e) => setSelectedRoomForVisit(e.target.value)}
                         className="w-full px-3 py-3 rounded-xl bg-black border border-white/10 text-white text-xs focus:border-emerald-500 focus:outline-none"
                       >
-                        <option value="2-Sharing">2-Sharing</option>
-                        <option value="3-Sharing">3-Sharing</option>
-                        <option value="4-Sharing">4-Sharing</option>
-                        <option value="5-Sharing">5-Sharing</option>
+                        <option value="2-Sharing Room">2-Sharing</option>
+                        <option value="3-Sharing Room">3-Sharing</option>
+                        <option value="4-Sharing Room">4-Sharing</option>
+                        <option value="5-Sharing Room">5-Sharing</option>
                       </select>
                     </div>
 
@@ -712,7 +738,70 @@ export default function PgPublicPage() {
         </div>
       </footer>
 
-      {/* 10. MODAL: SCHEDULE VISIT */}
+      {/* 10. QUICK WHATSAPP INQUIRY MODAL (TENANT NAME PERSONALISED) */}
+      {showWhatsAppModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#09090b] rounded-3xl border border-white/10 max-w-sm w-full p-6 relative shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <button 
+              onClick={() => setShowWhatsAppModal(false)}
+              className="absolute top-4 right-4 p-2 rounded-full bg-zinc-900 text-zinc-400 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="w-12 h-12 rounded-2xl bg-[#25D366]/10 border border-[#25D366]/20 flex items-center justify-center text-[#25D366] mb-4">
+              <MessageSquare className="w-6 h-6 fill-current" />
+            </div>
+
+            <h3 className="text-lg font-black text-white">Connect on WhatsApp</h3>
+            <p className="text-xs text-zinc-400 mt-1">
+              {targetRoomName 
+                ? `Inquiring about ${targetRoomName}`
+                : "Chat directly with management for room availability & pricing."}
+            </p>
+
+            <form onSubmit={handleWhatsAppRedirect} className="mt-5 space-y-4">
+              <div>
+                <label className="text-xs font-bold text-zinc-300 block mb-1">What is your Name?</label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input 
+                    type="text" 
+                    autoFocus
+                    placeholder="e.g. Sai Kumar"
+                    value={tenantName}
+                    onChange={(e) => setTenantName(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 rounded-xl bg-black border border-white/10 text-white text-xs focus:border-[#25D366] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2 pt-2">
+                <button 
+                  type="submit"
+                  className="w-full py-3.5 rounded-xl bg-[#25D366] hover:bg-[#20ba59] text-black font-black text-xs transition-all shadow-lg shadow-[#25D366]/20 flex items-center justify-center gap-2"
+                >
+                  <MessageSquare className="w-4 h-4 fill-black" />
+                  <span>
+                    {tenantName.trim() ? `Continue as ${tenantName.trim()}` : "Open WhatsApp"}
+                  </span>
+                  <ArrowRight className="w-4 h-4 ml-1" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleWhatsAppRedirect()}
+                  className="w-full py-2 text-center text-[11px] text-zinc-400 hover:text-white"
+                >
+                  Skip name & open directly
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 11. MODAL: SCHEDULE VISIT */}
       {showVisitModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#09090b] rounded-3xl border border-white/10 max-w-md w-full p-6 sm:p-8 relative shadow-2xl">
@@ -748,7 +837,7 @@ export default function PgPublicPage() {
                   <input 
                     type="text" 
                     required
-                    placeholder="Enter full name"
+                    placeholder="e.g. Sai Kumar"
                     value={visitName}
                     onChange={(e) => setVisitName(e.target.value)}
                     className="w-full px-4 py-3 rounded-xl bg-black border border-white/10 text-white text-xs focus:border-emerald-500 focus:outline-none"
@@ -774,10 +863,10 @@ export default function PgPublicPage() {
                     onChange={(e) => setSelectedRoomForVisit(e.target.value)}
                     className="w-full px-4 py-3 rounded-xl bg-black border border-white/10 text-white text-xs focus:border-emerald-500 focus:outline-none"
                   >
-                    <option value="2-Sharing">2-Sharing Room</option>
-                    <option value="3-Sharing">3-Sharing Room</option>
-                    <option value="4-Sharing">4-Sharing Room</option>
-                    <option value="5-Sharing">5-Sharing Room</option>
+                    <option value="2-Sharing Room">2-Sharing Room</option>
+                    <option value="3-Sharing Room">3-Sharing Room</option>
+                    <option value="4-Sharing Room">4-Sharing Room</option>
+                    <option value="5-Sharing Room">5-Sharing Room</option>
                   </select>
                 </div>
 
