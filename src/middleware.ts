@@ -4,6 +4,11 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const host = request.headers.get('host') || '';
 
+  // 0. Instant bypass for SEO files
+  if (pathname === '/robots.txt' || pathname === '/sitemap.xml' || pathname === '/llms.txt') {
+    return NextResponse.next();
+  }
+
   // 1. Handle Subdomain Routing (e.g. pg.staysync.online or pg.localhost:3000)
   const isPgSubdomain = host.startsWith('pg.') || host.includes('pg.staysync');
   if (isPgSubdomain) {
@@ -36,6 +41,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|llms.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 };
