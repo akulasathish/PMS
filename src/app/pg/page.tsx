@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { 
   Wifi, 
   Zap, 
@@ -82,10 +83,11 @@ export default function PgPublicPage() {
 
   // User-specified features for ALL sharings:
   const commonFeatures = [
+    'Electricity included free — ₹0 electricity bills',
     '24/7 Power backup included',
     'Attached western washroom',
-    'Individual lockable cupboards',
-    'High-speed Wi-Fi hotspot in room',
+    'Individual lockable wooden cupboards',
+    'Dual 200 Mbps Wi-Fi routers on every floor',
     'Regular daily housekeeping',
     'Full access to 3-time meals & laundry',
     'CCTV security'
@@ -100,7 +102,8 @@ export default function PgPublicPage() {
       type: 'AC & Non-AC Available',
       bedsAvailable: 'Available Now',
       features: commonFeatures,
-      tag: 'Most Popular'
+      tag: 'Most Popular',
+      image: '/pg/rooms/2-share.jpg'
     },
     {
       id: 'room-3-share',
@@ -110,7 +113,8 @@ export default function PgPublicPage() {
       type: 'AC & Non-AC Available',
       bedsAvailable: 'Filling Fast',
       features: commonFeatures,
-      tag: 'Best Value'
+      tag: 'Best Value',
+      image: '/pg/rooms/3-share.jpg'
     },
     {
       id: 'room-4-share',
@@ -120,7 +124,8 @@ export default function PgPublicPage() {
       type: 'AC & Non-AC Available',
       bedsAvailable: 'Available',
       features: commonFeatures,
-      tag: 'Budget Friendly'
+      tag: 'Budget Friendly',
+      image: '/pg/rooms/4-share.jpg'
     },
     {
       id: 'room-5-share',
@@ -130,7 +135,8 @@ export default function PgPublicPage() {
       type: 'Non-AC Available',
       bedsAvailable: 'Limited Beds',
       features: commonFeatures,
-      tag: 'Super Saver'
+      tag: 'Super Saver',
+      image: '/pg/rooms/5-share.jpg'
     }
   ];
 
@@ -148,7 +154,7 @@ export default function PgPublicPage() {
       <div className="bg-gradient-to-r from-emerald-950/80 via-black to-emerald-950/80 border-b border-emerald-500/20 py-2.5 px-4 text-center">
         <div className="max-w-7xl mx-auto flex items-center justify-center gap-3 text-xs sm:text-sm font-semibold text-emerald-400">
           <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span>Premium Men&apos;s PG Accommodation | 3-Time Homestyle Meals (Separate Veg Cooking) | Zero Hidden Charges</span>
+          <span>Premium Men&apos;s PG in Madhapur, Hyderabad | Free Electricity | 3-Time Meals (Separate Veg Cooking) | 200 Mbps Wi-Fi</span>
         </div>
       </div>
 
@@ -227,14 +233,14 @@ export default function PgPublicPage() {
           </h1>
 
           <p className="max-w-2xl mx-auto text-base sm:text-lg text-zinc-400 mb-10 leading-relaxed">
-            High-speed Wi-Fi, 3x non-repetitive homestyle meals, daily housekeeping, 24/7 power backup, and complete living comfort.
+            Free electricity, dual 200 Mbps Wi-Fi, 3x non-repetitive homestyle meals, daily housekeeping, 24/7 power backup — all included. Madhapur, Hyderabad.
           </p>
 
           {/* Highlights Pills */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-4xl mx-auto mb-12">
-            <div className="p-4 rounded-2xl bg-black/60 border border-white/10 flex flex-col items-center justify-center text-center">
-              <span className="text-2xl font-black text-emerald-400">Pure Veg</span>
-              <span className="text-xs font-medium text-zinc-400 mt-1">Paneer / Mushroom Cooked Separately</span>
+            <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 flex flex-col items-center justify-center text-center">
+              <span className="text-2xl font-black text-emerald-400">Free ⚡</span>
+              <span className="text-xs font-medium text-zinc-400 mt-1">Electricity Included — ₹0 Bills</span>
             </div>
             <div className="p-4 rounded-2xl bg-black/60 border border-white/10 flex flex-col items-center justify-center text-center">
               <span className="text-2xl font-black text-white">3 Times</span>
@@ -245,8 +251,8 @@ export default function PgPublicPage() {
               <span className="text-xs font-medium text-zinc-400 mt-1">+ 3x Eggs Per Week</span>
             </div>
             <div className="p-4 rounded-2xl bg-black/60 border border-white/10 flex flex-col items-center justify-center text-center">
-              <span className="text-2xl font-black text-white">24/7</span>
-              <span className="text-xs font-medium text-zinc-400 mt-1">Power Backup & CCTV</span>
+              <span className="text-2xl font-black text-white">200 Mbps</span>
+              <span className="text-xs font-medium text-zinc-400 mt-1">Dual Wi-Fi Routers Per Floor</span>
             </div>
           </div>
 
@@ -277,7 +283,7 @@ export default function PgPublicPage() {
           <div>
             <div className="text-xs font-bold uppercase tracking-widest text-emerald-400 mb-2">Room Choices & Availability</div>
             <h2 className="text-3xl sm:text-4xl font-black text-white">Available Sharing Options</h2>
-            <p className="text-sm text-zinc-400 mt-2">2, 3, 4 & 5-sharing rooms with attached western washrooms, 24/7 power backup, and high-speed Wi-Fi.</p>
+            <p className="text-sm text-zinc-400 mt-2">2, 3, 4 & 5-sharing rooms with free electricity, attached western washrooms, 24/7 power backup, and dual 200 Mbps Wi-Fi. Madhapur, Hyderabad.</p>
           </div>
 
           {/* Filter Bar */}
@@ -306,13 +312,15 @@ export default function PgPublicPage() {
               className="bg-black/80 rounded-3xl border border-white/[0.08] hover:border-emerald-500/40 transition-all overflow-hidden flex flex-col justify-between group shadow-xl"
             >
               <div>
-                {/* Photo Placeholder / Image Space */}
-                <div className="relative h-48 bg-zinc-900 border-b border-white/[0.08] overflow-hidden flex flex-col items-center justify-center text-center p-4">
-                  <div className="w-12 h-12 rounded-2xl bg-zinc-800/80 border border-white/10 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
-                    <Camera className="w-5 h-5 text-emerald-400" />
-                  </div>
-                  <span className="text-xs font-semibold text-zinc-400">{room.title}</span>
-                  <span className="text-[10px] text-zinc-500 mt-0.5">Room Photos Coming Soon</span>
+                {/* Room Photo */}
+                <div className="relative h-48 bg-zinc-900 border-b border-white/[0.08] overflow-hidden">
+                  <Image
+                    src={room.image}
+                    alt={room.title}
+                    fill
+                    className="object-cover group-hover:scale-105 transition-transform duration-500"
+                    sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 25vw"
+                  />
 
                   {/* Badges */}
                   <div className="absolute top-3 left-3 px-2.5 py-1 rounded-lg bg-black/80 backdrop-blur-md border border-white/10 text-[11px] font-bold text-white">
@@ -506,17 +514,17 @@ export default function PgPublicPage() {
         <div className="text-center max-w-3xl mx-auto mb-16">
           <div className="text-xs font-bold uppercase tracking-widest text-emerald-400 mb-2">Everything You Need</div>
           <h2 className="text-3xl sm:text-4xl font-black text-white">Premium PG Amenities</h2>
-          <p className="text-sm text-zinc-400 mt-2">Zero hassle stay. From fast fiber Wi-Fi to clean laundry and uninterrupted power, we&apos;ve got you covered.</p>
+          <p className="text-sm text-zinc-400 mt-2">Free electricity, 200 Mbps Wi-Fi, clean laundry, uninterrupted power — zero hassle living in Madhapur.</p>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           {[
-            { icon: Wifi, title: "High-Speed Wi-Fi", desc: "Fiber connection on every floor" },
+            { icon: Zap, title: "Free Electricity", desc: "₹0 electricity bills — we bear all costs" },
+            { icon: Wifi, title: "200 Mbps Wi-Fi", desc: "Dual routers on every floor" },
             { icon: Zap, title: "24/7 Power Backup", desc: "Uninterrupted inverter & generator" },
             { icon: Sparkles, title: "Daily Cleaning", desc: "Rooms & washrooms sanitized daily" },
             { icon: Layers, title: "Washing Machines", desc: "Multiple automatic machines" },
-            { icon: Utensils, title: "Refrigerator", desc: "Provided on every floor" },
-            { icon: ShieldCheck, title: "24/7 CCTV & Security", desc: "Biometric & camera monitored" }
+            { icon: ShieldCheck, title: "24/7 CCTV & Security", desc: "Camera monitored property" }
           ].map((item, idx) => (
             <div 
               key={idx} 
