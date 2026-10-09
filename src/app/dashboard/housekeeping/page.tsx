@@ -69,9 +69,8 @@ export default function HousekeepingTerminal() {
          }
       }
       
-      if (activeId && activeId !== 'undefined') {
+      if (activeId && activeId !== 'undefined' && activeId !== 'null') {
           let finalRoomsQuery;
-          if (!activeId || activeId === 'undefined' || activeId === 'null') activeId = '63dad7aa-c5f9-4f0e-b21e-b0175397a42c';
           if (activeId && activeId !== 'undefined' && activeId !== 'null') {
              finalRoomsQuery = supabase.from('rooms').select('*, profiles:assigned_staff_id(full_name)').eq('property_id', activeId).or('is_deleted.eq.false,is_deleted.is.null').order('room_number');
           } else if (prof?.property_id) {

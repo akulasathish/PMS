@@ -11,28 +11,34 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 1.0,
     },
     {
-      url: 'https://pg.staysync.online/#rooms',
+      url: 'https://staysync.online',
       lastModified,
-      changeFrequency: 'weekly',
-      priority: 0.9,
+      changeFrequency: 'daily',
+      priority: 1.0,
     },
     {
-      url: 'https://pg.staysync.online/#food',
+      url: 'https://staysync.online/product/front-office',
       lastModified,
       changeFrequency: 'weekly',
       priority: 0.8,
     },
     {
-      url: 'https://pg.staysync.online/#amenities',
+      url: 'https://staysync.online/product/housekeeping',
       lastModified,
-      changeFrequency: 'monthly',
+      changeFrequency: 'weekly',
       priority: 0.8,
     },
     {
-      url: 'https://pg.staysync.online/#contact',
+      url: 'https://staysync.online/product/folio',
+      lastModified,
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    },
+    {
+      url: 'https://staysync.online/legal',
       lastModified,
       changeFrequency: 'monthly',
-      priority: 0.7,
+      priority: 0.5,
     },
   ];
 }

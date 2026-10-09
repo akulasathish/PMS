@@ -28,11 +28,20 @@ export const metadata: Metadata = {
     siteName: "StaySync Premium Men's PG",
     type: "website",
     locale: "en_IN",
+    images: [
+      {
+        url: "https://pg.staysync.online/pg/rooms/2-share.jpg",
+        width: 600,
+        height: 800,
+        alt: "StaySync Premium Men's PG Room in Madhapur",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "StaySync Premium Men's PG | Madhapur, Hyderabad",
     description: "Free electricity, 3-time meals, 200 Mbps Wi-Fi. Premium men's PG near HITEC City. Call +91 8686113435.",
+    images: ["https://pg.staysync.online/pg/rooms/2-share.jpg"],
   },
   alternates: {
     canonical: "https://pg.staysync.online",

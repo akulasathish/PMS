@@ -52,7 +52,7 @@ export default function FrontDeskLogin() {
     }
 
     router.refresh();
-    router.push('/front-desk');
+    router.push('/dashboard/front-office');
   };
 
   return (

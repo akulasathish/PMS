@@ -23,7 +23,9 @@ import {
   Send,
   User,
   ArrowRight,
-  Salad
+  Salad,
+  MapPin,
+  Menu
 } from 'lucide-react';
 
 export default function PgPublicPage() {
@@ -41,6 +43,9 @@ export default function PgPublicPage() {
   const [showWhatsAppModal, setShowWhatsAppModal] = useState<boolean>(false);
   const [tenantName, setTenantName] = useState('');
   const [targetRoomName, setTargetRoomName] = useState('');
+
+  // Mobile Navigation Drawer State
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Contact details
   const contactPhone = "8686113435";
@@ -135,8 +140,7 @@ export default function PgPublicPage() {
       type: 'Non-AC Available',
       bedsAvailable: 'Limited Beds',
       features: commonFeatures,
-      tag: 'Super Saver',
-      image: '/pg/rooms/5-share.jpg'
+      tag: 'Super Saver'
     }
   ];
 
@@ -212,8 +216,72 @@ export default function PgPublicPage() {
             >
               Book a Visit
             </button>
+
+            {/* Mobile Hamburger Toggle */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="p-2 rounded-xl bg-zinc-900 border border-white/10 text-zinc-300 hover:text-white lg:hidden"
+              aria-label="Toggle navigation menu"
+            >
+              {mobileMenuOpen ? <X className="w-5 h-5 text-emerald-400" /> : <Menu className="w-5 h-5" />}
+            </button>
           </div>
         </div>
+
+        {/* Mobile Navigation Drawer */}
+        {mobileMenuOpen && (
+          <div className="lg:hidden border-t border-white/[0.08] bg-[#070709] px-4 py-4 space-y-3">
+            <a 
+              href="#rooms" 
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:bg-zinc-900 hover:text-emerald-400"
+            >
+              Rooms & Sharing
+            </a>
+            <a 
+              href="#food" 
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:bg-zinc-900 hover:text-emerald-400"
+            >
+              Food Menu & Timetable
+            </a>
+            <a 
+              href="#amenities" 
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:bg-zinc-900 hover:text-emerald-400"
+            >
+              Amenities
+            </a>
+            <a 
+              href="#video-tour" 
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:bg-zinc-900 hover:text-emerald-400"
+            >
+              Virtual Walkthrough
+            </a>
+            <a 
+              href="#contact" 
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:bg-zinc-900 hover:text-emerald-400"
+            >
+              Contact & Address
+            </a>
+            <div className="pt-2 border-t border-white/5 flex gap-2">
+              <a
+                href={`tel:${contactPhone}`}
+                className="flex-1 py-2.5 rounded-xl bg-zinc-900 text-center text-xs font-bold text-white border border-white/10"
+              >
+                Call Us
+              </a>
+              <button
+                onClick={() => { setMobileMenuOpen(false); setShowVisitModal(true); }}
+                className="flex-1 py-2.5 rounded-xl bg-emerald-500 text-center text-xs font-black text-black"
+              >
+                Book a Visit
+              </button>
+            </div>
+          </div>
+        )}
       </nav>
 
       {/* 3. HERO SECTION */}
@@ -313,21 +381,29 @@ export default function PgPublicPage() {
             >
               <div>
                 {/* Room Photo */}
-                <div className="relative h-48 bg-zinc-900 border-b border-white/[0.08] overflow-hidden">
-                  <Image
-                    src={room.image}
-                    alt={room.title}
-                    fill
-                    className="object-cover group-hover:scale-105 transition-transform duration-500"
-                    sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 25vw"
-                  />
+                <div className="relative aspect-[4/3] sm:aspect-[3/4] max-h-72 bg-zinc-900 border-b border-white/[0.08] overflow-hidden flex items-center justify-center">
+                  {room.image ? (
+                    <Image
+                      src={room.image}
+                      alt={room.title}
+                      fill
+                      className="object-cover group-hover:scale-105 transition-transform duration-500"
+                      sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 25vw"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center text-center p-6 text-zinc-500">
+                      <Camera className="w-8 h-8 mb-2 opacity-50" />
+                      <span className="text-xs font-semibold text-zinc-400">Photo Coming Soon</span>
+                      <span className="text-[10px] text-zinc-600 mt-0.5">Contact us for room details</span>
+                    </div>
+                  )}
 
                   {/* Badges */}
-                  <div className="absolute top-3 left-3 px-2.5 py-1 rounded-lg bg-black/80 backdrop-blur-md border border-white/10 text-[11px] font-bold text-white">
+                  <div className="absolute top-3 left-3 px-2.5 py-1 rounded-lg bg-black/80 backdrop-blur-md border border-white/10 text-[11px] font-bold text-white z-10">
                     {room.sharing}-Sharing
                   </div>
 
-                  <div className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-emerald-500 text-black text-[10px] font-extrabold uppercase tracking-wide">
+                  <div className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-emerald-500 text-black text-[10px] font-extrabold uppercase tracking-wide z-10">
                     {room.tag}
                   </div>
                 </div>
@@ -549,39 +625,54 @@ export default function PgPublicPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Video Tour Placeholder */}
-          <div className="lg:col-span-2 relative h-80 sm:h-96 rounded-3xl bg-zinc-950 border border-white/10 overflow-hidden flex flex-col items-center justify-center text-center p-6 group">
-            <div className="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 group-hover:scale-110 group-hover:bg-emerald-500 group-hover:text-black transition-all cursor-pointer shadow-xl shadow-emerald-500/20 mb-4">
+          {/* Main Video Tour */}
+          <div 
+            onClick={() => openWhatsAppModal('Video Tour Request')}
+            className="lg:col-span-2 relative h-80 sm:h-96 rounded-3xl bg-zinc-950 border border-white/10 overflow-hidden flex flex-col items-center justify-center text-center p-6 group cursor-pointer hover:border-emerald-500/40 transition-all"
+          >
+            <div className="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 group-hover:scale-110 group-hover:bg-emerald-500 group-hover:text-black transition-all shadow-xl shadow-emerald-500/20 mb-4">
               <Play className="w-7 h-7 fill-current ml-1" />
             </div>
-            <h3 className="text-lg font-bold text-white">Full Video Walkthrough Coming Soon</h3>
-            <p className="text-xs text-zinc-400 max-w-md mt-1">We are finalizing high-definition video tours of the rooms, lounge, dining area, and terrace.</p>
-            <div className="absolute bottom-4 left-4 px-3 py-1.5 rounded-xl bg-black/80 border border-white/10 text-xs font-semibold text-zinc-300">
-              HD Video Tour Ready for Your Media
+            <h3 className="text-lg font-bold text-white group-hover:text-emerald-400 transition-colors">Request a Video Walkthrough</h3>
+            <p className="text-xs text-zinc-400 max-w-md mt-1">Click here to receive an instant recorded video walkthrough of the rooms, lounge, dining area, and corridors directly on WhatsApp.</p>
+            <div className="absolute bottom-4 left-4 px-3 py-1.5 rounded-xl bg-black/80 border border-white/10 text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Tap to Request Video Tour on WhatsApp</span>
             </div>
           </div>
 
-          {/* Photo Gallery Placeholders */}
+          {/* Photo Gallery */}
           <div className="grid grid-cols-2 gap-4">
             <div className="h-44 rounded-2xl bg-zinc-950 border border-white/10 flex flex-col items-center justify-center text-center p-3">
               <Camera className="w-6 h-6 text-zinc-500 mb-2" />
               <span className="text-xs font-bold text-zinc-300">Dining Area & Kitchen</span>
-              <span className="text-[10px] text-zinc-500">Photo Space</span>
+              <span className="text-[10px] text-zinc-500">Photo Updating</span>
             </div>
-            <div className="h-44 rounded-2xl bg-zinc-950 border border-white/10 flex flex-col items-center justify-center text-center p-3">
-              <Camera className="w-6 h-6 text-zinc-500 mb-2" />
-              <span className="text-xs font-bold text-zinc-300">Attached Washrooms</span>
-              <span className="text-[10px] text-zinc-500">Photo Space</span>
+            
+            {/* Attached Washrooms Photo */}
+            <div className="h-44 rounded-2xl bg-zinc-950 border border-white/10 overflow-hidden relative group">
+              <Image 
+                src="/pg/gallery/washroom.jpg" 
+                alt="Attached Western Washroom" 
+                fill 
+                className="object-cover group-hover:scale-105 transition-transform duration-500"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-3 text-left">
+                <span className="text-xs font-bold text-white">Attached Washrooms</span>
+                <span className="text-[10px] text-emerald-400">Western & Hot Water Geyser</span>
+              </div>
             </div>
+
             <div className="h-44 rounded-2xl bg-zinc-950 border border-white/10 flex flex-col items-center justify-center text-center p-3">
               <Camera className="w-6 h-6 text-zinc-500 mb-2" />
               <span className="text-xs font-bold text-zinc-300">High-Speed Wi-Fi & Lounge</span>
-              <span className="text-[10px] text-zinc-500">Photo Space</span>
+              <span className="text-[10px] text-zinc-500">Photo Updating</span>
             </div>
+            
             <div className="h-44 rounded-2xl bg-zinc-950 border border-white/10 flex flex-col items-center justify-center text-center p-3">
               <Camera className="w-6 h-6 text-zinc-500 mb-2" />
               <span className="text-xs font-bold text-zinc-300">Washing & Laundry Floor</span>
-              <span className="text-[10px] text-zinc-500">Photo Space</span>
+              <span className="text-[10px] text-zinc-500">Photo Updating</span>
             </div>
           </div>
         </div>
@@ -615,6 +706,31 @@ export default function PgPublicPage() {
                     <Phone className="w-3.5 h-3.5 text-zinc-400" />
                     <span>+91 8686113435</span>
                   </p>
+                </div>
+              </div>
+
+              {/* Location & Address Card */}
+              <div className="mt-4 p-5 rounded-2xl bg-black/60 border border-white/10 flex items-start gap-4">
+                <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-white/10 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5">
+                  <MapPin className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-xs font-bold text-white flex items-center gap-2">
+                    <span>Property Address</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-medium">Madhapur, Hyderabad</span>
+                  </div>
+                  <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
+                    Street No. 6, Chanda Naik Nagar, Opposite ITR, Madhapur, Hyderabad, Telangana 500081
+                  </p>
+                  <a
+                    href="https://maps.google.com/?q=StaySync+PG+Madhapur+Hyderabad"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 font-semibold mt-2.5 transition-colors"
+                  >
+                    <span>Open in Google Maps & Get Directions</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </a>
                 </div>
               </div>
 
@@ -732,12 +848,20 @@ export default function PgPublicPage() {
             <img src="/logo.png" alt="StaySync Logo" className="w-9 h-9 object-contain" />
             <div>
               <span className="text-sm font-black text-white tracking-tight">StaySync Premium Men&apos;s PG</span>
-              <p className="text-[11px] text-zinc-500">Exclusively for Men • StaySync Premium Men&apos;s PG</p>
+              <p className="text-[11px] text-zinc-500">Street No. 6, Chanda Naik Nagar, Opp ITR, Madhapur, Hyderabad - 500081</p>
             </div>
           </div>
 
-          <div className="text-xs text-zinc-400">
-            For urgent room bookings: Call <a href={`tel:${contactPhone}`} className="text-emerald-400 font-bold hover:underline">+91 {contactPhone}</a>
+          <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-zinc-400">
+            <a href="#rooms" className="hover:text-emerald-400 transition-colors">Rooms</a>
+            <span>•</span>
+            <a href="#food" className="hover:text-emerald-400 transition-colors">Food Menu</a>
+            <span>•</span>
+            <a href="#amenities" className="hover:text-emerald-400 transition-colors">Amenities</a>
+            <span>•</span>
+            <a href="#contact" className="hover:text-emerald-400 transition-colors">Contact</a>
+            <span>•</span>
+            <a href={`tel:${contactPhone}`} className="text-emerald-400 font-bold hover:underline">+91 {contactPhone}</a>
           </div>
 
           <div className="text-xs text-zinc-500">
