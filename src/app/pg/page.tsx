@@ -33,11 +33,11 @@ import {
 export default function PgPublicPage() {
   const [activeSharingFilter, setActiveSharingFilter] = useState<string>('all');
   
-  // Visit Modal States
+  // Visit Modal States (Pre-filled with friendly dummy data)
   const [showVisitModal, setShowVisitModal] = useState<boolean>(false);
   const [selectedRoomForVisit, setSelectedRoomForVisit] = useState<string>('2-Sharing Room');
-  const [visitName, setVisitName] = useState('');
-  const [visitPhone, setVisitPhone] = useState('');
+  const [visitName, setVisitName] = useState('Rahul Sharma');
+  const [visitPhone, setVisitPhone] = useState('9876543210');
   const [visitDate, setVisitDate] = useState('');
   const [visitSubmitted, setVisitSubmitted] = useState(false);
 
@@ -547,13 +547,13 @@ export default function PgPublicPage() {
             </div>
 
             <div className="space-y-4">
-              {/* Breakfast without tea or vada, with poha & bonda */}
+              {/* Breakfast with Wada */}
               <div className="p-4 rounded-2xl bg-zinc-950 border border-white/5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-emerald-400 uppercase tracking-wide">Breakfast (7:30 AM - 10:00 AM)</span>
                   <span className="text-xs text-zinc-400">Daily Fresh</span>
                 </div>
-                <p className="text-sm font-semibold text-white mt-1">Idli, Dosa, Puri, Upma, Poha, Mysore Bonda with Hot Sambar & 2 Chutneys</p>
+                <p className="text-sm font-semibold text-white mt-1">Idli, Wada, Dosa, Puri, Upma, Poha, Mysore Bonda with Hot Sambar & 2 Chutneys</p>
               </div>
 
               {/* Lunch */}
@@ -568,7 +568,7 @@ export default function PgPublicPage() {
               {/* Dinner with Paneer/Mushroom for vegetarians cooked separately */}
               <div className="p-4 rounded-2xl bg-zinc-950 border border-white/5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-emerald-400 uppercase tracking-wide">Dinner (7:30 PM - 10:30 PM)</span>
+                  <span className="text-xs font-bold text-emerald-400 uppercase tracking-wide">Dinner (7:30 PM - 10:00 PM)</span>
                   <span className="text-xs text-emerald-400 font-semibold">Special Non-Veg & Veg Days</span>
                 </div>
                 <p className="text-sm font-semibold text-white mt-1">Hot Phulkas/Chapatis, Rice, Curries, 2x Chicken Special, 3x Egg Curry (Paneer / Mushroom Cooked Separately for Vegetarians) & Salad</p>
@@ -838,7 +838,7 @@ export default function PgPublicPage() {
                     <input 
                       type="text" 
                       required
-                      placeholder="e.g. Sai Kumar" 
+                      placeholder="Rahul Sharma" 
                       value={visitName}
                       onChange={(e) => setVisitName(e.target.value)}
                       className="w-full px-4 py-3 rounded-xl bg-black border border-white/10 text-white text-xs focus:border-emerald-500 focus:outline-none"
@@ -850,7 +850,7 @@ export default function PgPublicPage() {
                     <input 
                       type="tel" 
                       required
-                      placeholder="e.g. 9876543210" 
+                      placeholder="9876543210" 
                       value={visitPhone}
                       onChange={(e) => setVisitPhone(e.target.value)}
                       className="w-full px-4 py-3 rounded-xl bg-black border border-white/10 text-white text-xs focus:border-emerald-500 focus:outline-none"
@@ -868,7 +868,6 @@ export default function PgPublicPage() {
                         <option value="2-Sharing Room">2-Sharing</option>
                         <option value="3-Sharing Room">3-Sharing</option>
                         <option value="4-Sharing Room">4-Sharing</option>
-                        <option value="5-Sharing Room">5-Sharing</option>
                       </select>
                     </div>
 
@@ -1031,7 +1030,7 @@ export default function PgPublicPage() {
                   <input 
                     type="text" 
                     required
-                    placeholder="e.g. Sai Kumar"
+                    placeholder="Rahul Sharma"
                     value={visitName}
                     onChange={(e) => setVisitName(e.target.value)}
                     className="w-full px-4 py-3 rounded-xl bg-black border border-white/10 text-white text-xs focus:border-emerald-500 focus:outline-none"
@@ -1043,7 +1042,7 @@ export default function PgPublicPage() {
                   <input 
                     type="tel" 
                     required
-                    placeholder="e.g. 9876543210"
+                    placeholder="9876543210"
                     value={visitPhone}
                     onChange={(e) => setVisitPhone(e.target.value)}
                     className="w-full px-4 py-3 rounded-xl bg-black border border-white/10 text-white text-xs focus:border-emerald-500 focus:outline-none"
@@ -1060,7 +1059,6 @@ export default function PgPublicPage() {
                     <option value="2-Sharing Room">2-Sharing Room</option>
                     <option value="3-Sharing Room">3-Sharing Room</option>
                     <option value="4-Sharing Room">4-Sharing Room</option>
-                    <option value="5-Sharing Room">5-Sharing Room</option>
                   </select>
                 </div>
 
