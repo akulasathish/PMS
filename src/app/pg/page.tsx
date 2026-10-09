@@ -131,16 +131,6 @@ export default function PgPublicPage() {
       features: commonFeatures,
       tag: 'Budget Friendly',
       image: '/pg/rooms/4-share.jpg'
-    },
-    {
-      id: 'room-5-share',
-      sharing: 5,
-      title: 'Economy 5-Sharing Room',
-      subtitle: 'Maximum savings with all premium food & amenities included',
-      type: 'Non-AC Available',
-      bedsAvailable: 'Limited Beds',
-      features: commonFeatures,
-      tag: 'Super Saver'
     }
   ];
 
@@ -351,12 +341,12 @@ export default function PgPublicPage() {
           <div>
             <div className="text-xs font-bold uppercase tracking-widest text-emerald-400 mb-2">Room Choices & Availability</div>
             <h2 className="text-3xl sm:text-4xl font-black text-white">Available Sharing Options</h2>
-            <p className="text-sm text-zinc-400 mt-2">2, 3, 4 & 5-sharing rooms with free electricity, attached western washrooms, 24/7 power backup, and dual 200 Mbps Wi-Fi. Madhapur, Hyderabad.</p>
+            <p className="text-sm text-zinc-400 mt-2">2, 3 & 4-sharing rooms with free electricity, attached western washrooms, 24/7 power backup, and dual 200 Mbps Wi-Fi. Madhapur, Hyderabad.</p>
           </div>
 
           {/* Filter Bar */}
           <div className="flex flex-wrap items-center gap-2 bg-black p-1.5 rounded-2xl border border-white/10">
-            {['all', '2', '3', '4', '5'].map((sh) => (
+            {['all', '2', '3', '4'].map((sh) => (
               <button
                 key={sh}
                 onClick={() => setActiveSharingFilter(sh)}
@@ -625,19 +615,32 @@ export default function PgPublicPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Video Tour */}
-          <div 
-            onClick={() => openWhatsAppModal('Video Tour Request')}
-            className="lg:col-span-2 relative h-80 sm:h-96 rounded-3xl bg-zinc-950 border border-white/10 overflow-hidden flex flex-col items-center justify-center text-center p-6 group cursor-pointer hover:border-emerald-500/40 transition-all"
-          >
-            <div className="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 group-hover:scale-110 group-hover:bg-emerald-500 group-hover:text-black transition-all shadow-xl shadow-emerald-500/20 mb-4">
-              <Play className="w-7 h-7 fill-current ml-1" />
+          {/* Main Video Tour Player */}
+          <div className="lg:col-span-2 relative rounded-3xl bg-zinc-950 border border-white/10 overflow-hidden flex flex-col items-center justify-center shadow-2xl">
+            <div className="w-full relative aspect-[9/16] sm:aspect-video max-h-[520px] bg-black flex items-center justify-center">
+              <video
+                controls
+                playsInline
+                preload="metadata"
+                poster="/pg/video/intro-poster.jpg"
+                className="w-full h-full object-contain"
+              >
+                <source src="/pg/video/intro.mp4" type="video/mp4" />
+                Your browser does not support the video tag.
+              </video>
             </div>
-            <h3 className="text-lg font-bold text-white group-hover:text-emerald-400 transition-colors">Request a Video Walkthrough</h3>
-            <p className="text-xs text-zinc-400 max-w-md mt-1">Click here to receive an instant recorded video walkthrough of the rooms, lounge, dining area, and corridors directly on WhatsApp.</p>
-            <div className="absolute bottom-4 left-4 px-3 py-1.5 rounded-xl bg-black/80 border border-white/10 text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
-              <MessageSquare className="w-3.5 h-3.5" />
-              <span>Tap to Request Video Tour on WhatsApp</span>
+            <div className="w-full p-4 bg-zinc-900/90 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-white">StaySync PG Video Walkthrough</h3>
+                <p className="text-xs text-zinc-400 mt-0.5">Explore our property in Madhapur, Hyderabad</p>
+              </div>
+              <button
+                onClick={() => openWhatsAppModal('Video Tour Request')}
+                className="px-4 py-2 rounded-xl bg-[#25D366] hover:bg-[#20ba59] text-black text-xs font-black flex items-center gap-1.5 transition-all shrink-0"
+              >
+                <MessageSquare className="w-3.5 h-3.5 fill-black" />
+                <span>Ask Questions on WhatsApp</span>
+              </button>
             </div>
           </div>
 
