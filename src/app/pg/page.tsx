@@ -736,6 +736,51 @@ export default function PgPublicPage() {
               <span className="text-xs text-emerald-400 font-medium mt-0.5">Clean Italian Tiles & 24/7 Hot Water Geyser</span>
             </div>
           </div>
+
+          {/* Chicken Biryani with Mirchi ka Salan & Raitha */}
+          <div className="group relative aspect-[3/4] max-h-96 rounded-2xl bg-zinc-950 border border-white/10 overflow-hidden shadow-xl">
+            <Image 
+              src="/pg/gallery/biryani.jpg" 
+              alt="Special Chicken Biryani with Salan & Raita" 
+              fill 
+              className="object-cover group-hover:scale-105 transition-transform duration-500"
+              sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent flex flex-col justify-end p-5">
+              <span className="text-sm font-bold text-white">Sunday Special Chicken Biryani</span>
+              <span className="text-xs text-emerald-400 font-medium mt-0.5">Served with Mirchi ka Salan & Fresh Curd Raita</span>
+            </div>
+          </div>
+
+          {/* Special Chicken Curry & Bagara Rice */}
+          <div className="group relative aspect-[3/4] max-h-96 rounded-2xl bg-zinc-950 border border-white/10 overflow-hidden shadow-xl">
+            <Image 
+              src="/pg/gallery/chicken-curry.jpg" 
+              alt="Homestyle Chicken Curry with Bagara Rice" 
+              fill 
+              className="object-cover group-hover:scale-105 transition-transform duration-500"
+              sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent flex flex-col justify-end p-5">
+              <span className="text-sm font-bold text-white">Homestyle Chicken Curry</span>
+              <span className="text-xs text-emerald-400 font-medium mt-0.5">Flavourful Bagara Rice with Onion & Lemon</span>
+            </div>
+          </div>
+
+          {/* Fresh Crispy Breakfast Wada */}
+          <div className="group relative aspect-[3/4] max-h-96 rounded-2xl bg-zinc-950 border border-white/10 overflow-hidden shadow-xl">
+            <Image 
+              src="/pg/gallery/wada.jpg" 
+              alt="Hot Crispy Medu Wada" 
+              fill 
+              className="object-cover group-hover:scale-105 transition-transform duration-500"
+              sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent flex flex-col justify-end p-5">
+              <span className="text-sm font-bold text-white">Hot Crispy Breakfast Wada</span>
+              <span className="text-xs text-emerald-400 font-medium mt-0.5">Prepared Fresh Daily with Sambar & Chutneys</span>
+            </div>
+          </div>
         </div>
       </section>
 
