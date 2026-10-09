@@ -25,7 +25,9 @@ import {
   ArrowRight,
   Salad,
   MapPin,
-  Menu
+  Menu,
+  ImageIcon,
+  Upload
 } from 'lucide-react';
 
 export default function PgPublicPage() {
@@ -148,7 +150,7 @@ export default function PgPublicPage() {
       <div className="bg-gradient-to-r from-emerald-950/80 via-black to-emerald-950/80 border-b border-emerald-500/20 py-2.5 px-4 text-center">
         <div className="max-w-7xl mx-auto flex items-center justify-center gap-3 text-xs sm:text-sm font-semibold text-emerald-400">
           <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span>Premium Men&apos;s PG in Madhapur, Hyderabad | Free Electricity | 3-Time Meals (Separate Veg Cooking) | 200 Mbps Wi-Fi</span>
+          <span>StaySync Premium Men&apos;s PG in Madhapur, Hyderabad | Free Electricity | 3-Time Meals (Separate Veg Cooking) | 200 Mbps Wi-Fi</span>
         </div>
       </div>
 
@@ -165,20 +167,21 @@ export default function PgPublicPage() {
               <div className="text-lg font-black tracking-tight text-white flex items-center gap-1.5">
                 StaySync <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Men&apos;s PG</span>
               </div>
-              <p className="text-[11px] font-medium text-zinc-400 tracking-wide uppercase">Premium Men&apos;s PG</p>
+              <p className="text-[11px] font-medium text-zinc-400 tracking-wide uppercase">StaySync Premium Men&apos;s PG</p>
             </div>
           </Link>
 
           {/* Nav Links Desktop */}
           <div className="hidden lg:flex items-center gap-8 text-sm font-medium text-zinc-400">
+            <a href="#video-tour" className="hover:text-white transition-colors flex items-center gap-1.5 text-emerald-400 font-bold">
+              <Play className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400" /> Walkthrough Video
+            </a>
             <a href="#rooms" className="hover:text-white transition-colors">Rooms & Sharing</a>
             <a href="#food" className="hover:text-white transition-colors flex items-center gap-1.5">
               <Utensils className="w-4 h-4 text-emerald-400" /> Food Menu
             </a>
             <a href="#amenities" className="hover:text-white transition-colors">Amenities</a>
-            <a href="#video-tour" className="hover:text-white transition-colors flex items-center gap-1.5">
-              <Play className="w-3.5 h-3.5 text-emerald-400" /> Video Tour
-            </a>
+            <a href="#gallery" className="hover:text-white transition-colors">Gallery</a>
             <a href="#contact" className="hover:text-white transition-colors">Contact</a>
           </div>
 
@@ -222,6 +225,13 @@ export default function PgPublicPage() {
         {mobileMenuOpen && (
           <div className="lg:hidden border-t border-white/[0.08] bg-[#070709] px-4 py-4 space-y-3">
             <a 
+              href="#video-tour" 
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 rounded-lg text-sm font-bold text-emerald-400 bg-emerald-950/30 border border-emerald-500/20"
+            >
+              🎥 Walkthrough Video Tour
+            </a>
+            <a 
               href="#rooms" 
               onClick={() => setMobileMenuOpen(false)}
               className="block px-3 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:bg-zinc-900 hover:text-emerald-400"
@@ -243,11 +253,11 @@ export default function PgPublicPage() {
               Amenities
             </a>
             <a 
-              href="#video-tour" 
+              href="#gallery" 
               onClick={() => setMobileMenuOpen(false)}
               className="block px-3 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:bg-zinc-900 hover:text-emerald-400"
             >
-              Virtual Walkthrough
+              Photo Gallery
             </a>
             <a 
               href="#contact" 
@@ -282,7 +292,7 @@ export default function PgPublicPage() {
           
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-zinc-900/90 border border-emerald-500/30 text-emerald-400 text-xs font-bold mb-6 shadow-inner">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-            Exclusively For Men • Premium Paying Guest Accommodation
+            StaySync Premium Men&apos;s PG • Madhapur, Hyderabad
           </div>
 
           <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black text-white tracking-tight leading-[1.1] mb-6">
@@ -316,19 +326,26 @@ export default function PgPublicPage() {
 
           {/* Main Action CTAs */}
           <div className="flex flex-wrap items-center justify-center gap-4">
+            <a 
+              href="#video-tour"
+              className="px-8 py-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm sm:text-base shadow-xl shadow-emerald-500/25 transition-all transform active:scale-95 flex items-center gap-2.5"
+            >
+              <Play className="w-5 h-5 fill-black" />
+              <span>Watch Video Walkthrough</span>
+            </a>
             <button 
               onClick={() => setShowVisitModal(true)}
-              className="px-8 py-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-sm sm:text-base shadow-xl shadow-emerald-500/25 transition-all transform active:scale-95 flex items-center gap-2"
+              className="px-8 py-4 rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-white/15 text-white font-bold text-sm sm:text-base transition-all flex items-center gap-2"
             >
-              <Calendar className="w-5 h-5 text-black" />
-              <span>Schedule a Free Visit</span>
+              <Calendar className="w-5 h-5 text-emerald-400" />
+              <span>Schedule a Visit</span>
             </button>
             <button 
               onClick={() => openWhatsAppModal()}
-              className="px-8 py-4 rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-white/15 text-white font-bold text-sm sm:text-base transition-all flex items-center gap-2.5"
+              className="px-8 py-4 rounded-2xl bg-[#25D366] hover:bg-[#20ba59] text-black font-extrabold text-sm sm:text-base transition-all flex items-center gap-2.5 shadow-lg shadow-emerald-500/10"
             >
-              <MessageSquare className="w-5 h-5 text-[#25D366]" />
-              <span>Get Pricing on WhatsApp</span>
+              <MessageSquare className="w-5 h-5 fill-black" />
+              <span>WhatsApp Us</span>
             </button>
           </div>
 
@@ -606,76 +623,117 @@ export default function PgPublicPage() {
         </div>
       </section>
 
-      {/* 7. VIDEO & PHOTO GALLERY TOUR (PLACEHOLDER WITH VIDEO PLAYER DESIGN) */}
+      {/* 7. VIRTUAL WALKTHROUGH VIDEO (FEATURED CINEMATIC SPOTLIGHT) */}
       <section id="video-tour" className="py-20 px-4 sm:px-6 max-w-7xl mx-auto border-b border-white/[0.06]">
-        <div className="text-center max-w-3xl mx-auto mb-12">
-          <div className="text-xs font-bold uppercase tracking-widest text-emerald-400 mb-2">Virtual Walkthrough</div>
-          <h2 className="text-3xl sm:text-4xl font-black text-white">Tour the Property</h2>
-          <p className="text-sm text-zinc-400 mt-2">See our rooms, dining area, corridors, and amenities before visiting in person.</p>
+        <div className="text-center max-w-3xl mx-auto mb-10">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold mb-3">
+            <Play className="w-3.5 h-3.5 fill-current" />
+            <span>Featured Video Tour</span>
+          </div>
+          <h2 className="text-3xl sm:text-5xl font-black text-white tracking-tight">StaySync PG Walkthrough</h2>
+          <p className="text-sm sm:text-base text-zinc-400 mt-2">
+            Experience our rooms, corridors, amenities, and living space before scheduling your in-person visit.
+          </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Video Tour Player */}
-          <div className="lg:col-span-2 relative rounded-3xl bg-zinc-950 border border-white/10 overflow-hidden flex flex-col items-center justify-center shadow-2xl">
-            <div className="w-full relative aspect-[9/16] sm:aspect-video max-h-[520px] bg-black flex items-center justify-center">
-              <video
-                controls
-                playsInline
-                preload="metadata"
-                poster="/pg/video/intro-poster.jpg"
-                className="w-full h-full object-contain"
-              >
-                <source src="/pg/video/intro.mp4" type="video/mp4" />
-                Your browser does not support the video tag.
-              </video>
+        {/* Cinematic Video Player Container */}
+        <div className="max-w-4xl mx-auto rounded-3xl bg-zinc-950 border border-emerald-500/30 overflow-hidden shadow-2xl shadow-emerald-950/20">
+          <div className="relative w-full aspect-[9/16] sm:aspect-video max-h-[560px] bg-black flex items-center justify-center">
+            <video
+              controls
+              playsInline
+              preload="metadata"
+              poster="/pg/video/intro-poster.jpg"
+              className="w-full h-full object-contain"
+            >
+              <source src="/pg/video/intro.mp4" type="video/mp4" />
+              Your browser does not support the video tag.
+            </video>
+          </div>
+          
+          <div className="p-5 sm:p-6 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <span>StaySync Premium Men&apos;s PG • Official Walkthrough</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-extrabold uppercase">HD Video</span>
+              </h3>
+              <p className="text-xs text-zinc-400 mt-1">Street No. 6, Chanda Naik Nagar, Opposite ITR, Madhapur, Hyderabad</p>
             </div>
-            <div className="w-full p-4 bg-zinc-900/90 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-bold text-white">StaySync PG Video Walkthrough</h3>
-                <p className="text-xs text-zinc-400 mt-0.5">Explore our property in Madhapur, Hyderabad</p>
-              </div>
-              <button
-                onClick={() => openWhatsAppModal('Video Tour Request')}
-                className="px-4 py-2 rounded-xl bg-[#25D366] hover:bg-[#20ba59] text-black text-xs font-black flex items-center gap-1.5 transition-all shrink-0"
-              >
-                <MessageSquare className="w-3.5 h-3.5 fill-black" />
-                <span>Ask Questions on WhatsApp</span>
-              </button>
+            <button
+              onClick={() => openWhatsAppModal('Video Tour Request')}
+              className="px-6 py-3 rounded-xl bg-[#25D366] hover:bg-[#20ba59] text-black text-xs font-black flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition-all shrink-0"
+            >
+              <MessageSquare className="w-4 h-4 fill-black" />
+              <span>Ask Questions on WhatsApp</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* 8. PROPERTY PHOTO GALLERY & OWNER UPLOAD SPACE */}
+      <section id="gallery" className="py-20 px-4 sm:px-6 max-w-7xl mx-auto border-b border-white/[0.06]">
+        <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-widest text-emerald-400 mb-2">Photo Gallery</div>
+            <h2 className="text-3xl sm:text-4xl font-black text-white">Property Gallery</h2>
+            <p className="text-sm text-zinc-400 mt-2">Authentic photos of rooms and facilities at StaySync Premium Men&apos;s PG.</p>
+          </div>
+          
+          {/* Owner Quick Upload Link */}
+          <Link
+            href="/login"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-white/10 text-xs font-bold text-zinc-300 hover:text-white transition-all self-start md:self-auto"
+            title="Owner login to upload photos"
+          >
+            <Upload className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Owner Photo Upload</span>
+          </Link>
+        </div>
+
+        {/* Gallery Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* 2-Sharing Room */}
+          <div className="group relative aspect-[3/4] max-h-96 rounded-2xl bg-zinc-950 border border-white/10 overflow-hidden shadow-xl">
+            <Image 
+              src="/pg/rooms/2-share.jpg" 
+              alt="Premium 2-Sharing Room" 
+              fill 
+              className="object-cover group-hover:scale-105 transition-transform duration-500"
+              sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent flex flex-col justify-end p-5">
+              <span className="text-sm font-bold text-white">Premium 2-Sharing Room</span>
+              <span className="text-xs text-emerald-400 font-medium mt-0.5">Spacious with Wooden Cupboards & Attached Bath</span>
             </div>
           </div>
 
-          {/* Photo Gallery */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="h-44 rounded-2xl bg-zinc-950 border border-white/10 flex flex-col items-center justify-center text-center p-3">
-              <Camera className="w-6 h-6 text-zinc-500 mb-2" />
-              <span className="text-xs font-bold text-zinc-300">Dining Area & Kitchen</span>
-              <span className="text-[10px] text-zinc-500">Photo Updating</span>
+          {/* 3-Sharing Room */}
+          <div className="group relative aspect-[3/4] max-h-96 rounded-2xl bg-zinc-950 border border-white/10 overflow-hidden shadow-xl">
+            <Image 
+              src="/pg/rooms/3-share.jpg" 
+              alt="Premium 3-Sharing Room" 
+              fill 
+              className="object-cover group-hover:scale-105 transition-transform duration-500"
+              sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent flex flex-col justify-end p-5">
+              <span className="text-sm font-bold text-white">Premium 3-Sharing Room</span>
+              <span className="text-xs text-emerald-400 font-medium mt-0.5">Well-Ventilated with High-Speed Wi-Fi</span>
             </div>
-            
-            {/* Attached Washrooms Photo */}
-            <div className="h-44 rounded-2xl bg-zinc-950 border border-white/10 overflow-hidden relative group">
-              <Image 
-                src="/pg/gallery/washroom.jpg" 
-                alt="Attached Western Washroom" 
-                fill 
-                className="object-cover group-hover:scale-105 transition-transform duration-500"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-3 text-left">
-                <span className="text-xs font-bold text-white">Attached Washrooms</span>
-                <span className="text-[10px] text-emerald-400">Western & Hot Water Geyser</span>
-              </div>
-            </div>
+          </div>
 
-            <div className="h-44 rounded-2xl bg-zinc-950 border border-white/10 flex flex-col items-center justify-center text-center p-3">
-              <Camera className="w-6 h-6 text-zinc-500 mb-2" />
-              <span className="text-xs font-bold text-zinc-300">High-Speed Wi-Fi & Lounge</span>
-              <span className="text-[10px] text-zinc-500">Photo Updating</span>
-            </div>
-            
-            <div className="h-44 rounded-2xl bg-zinc-950 border border-white/10 flex flex-col items-center justify-center text-center p-3">
-              <Camera className="w-6 h-6 text-zinc-500 mb-2" />
-              <span className="text-xs font-bold text-zinc-300">Washing & Laundry Floor</span>
-              <span className="text-[10px] text-zinc-500">Photo Updating</span>
+          {/* Attached Western Washroom */}
+          <div className="group relative aspect-[3/4] max-h-96 rounded-2xl bg-zinc-950 border border-white/10 overflow-hidden shadow-xl">
+            <Image 
+              src="/pg/gallery/washroom.jpg" 
+              alt="Attached Western Washroom" 
+              fill 
+              className="object-cover group-hover:scale-105 transition-transform duration-500"
+              sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent flex flex-col justify-end p-5">
+              <span className="text-sm font-bold text-white">Attached Western Washroom</span>
+              <span className="text-xs text-emerald-400 font-medium mt-0.5">Clean Italian Tiles & 24/7 Hot Water Geyser</span>
             </div>
           </div>
         </div>
