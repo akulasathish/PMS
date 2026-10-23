@@ -15,7 +15,7 @@ export interface QuickLedgerDueItem {
 
 export interface QuickLedgerResult {
   success: boolean;
-  type?: 'revenue' | 'expense' | 'assign' | 'dues_report' | 'today_summary';
+  type?: 'revenue' | 'expense' | 'assign' | 'dues_report' | 'today_summary' | 'update_tenant';
   message: string;
   error?: string;
   
@@ -36,13 +36,18 @@ export interface QuickLedgerResult {
   totalExpense?: number;
   expenseIds?: string[];
 
-  // Assign specific
+  // Assign / Update specific
   monthlyRent?: number;
   dueDay?: number;
   sharing?: number;
   checkInDate?: string;
   maintenanceFee?: number;
   refundableDeposit?: number;
+  prevValues?: {
+    checkIn?: string;
+    dueDay?: number;
+    monthlyRent?: number;
+  };
 
   // Dues report specific
   totalDues?: number;
@@ -463,6 +468,128 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
     }
 
     // ==========================================
+    // EXECUTE UPDATE TENANT (CHANGE DATES / RENT)
+    // ==========================================
+    if (parsed.type === 'update_tenant') {
+      const { tenantName, roomNumber, newCheckInDate, newDueDay, newMonthlyRent } = parsed as any;
+
+      if (!roomNumber && !tenantName) {
+        return {
+          success: false,
+          message: 'Please specify the room number or tenant name. Example: "change joining date of room 201 to 1st october"'
+        };
+      }
+
+      if (!newCheckInDate && !newDueDay && !newMonthlyRent) {
+        return {
+          success: false,
+          message: 'Please specify what to change (joining date, due date, or rent). Example: "change due date of room 201 to 10th"'
+        };
+      }
+
+      // Query active bookings in active property
+      const [bookingsRes, roomsRes] = await Promise.all([
+        admin
+          .from('bookings')
+          .select('id, guest_name, room_id, status, is_monthly, monthly_rent, monthly_rate, rent_due_day, check_in, check_out')
+          .eq('property_id', activePropertyId)
+          .in('status', ['Checked In', 'Confirmed', 'in_house']),
+        admin
+          .from('rooms')
+          .select('id, room_number')
+          .eq('property_id', activePropertyId)
+      ]);
+
+      if (bookingsRes.error) {
+        return { success: false, message: `Database error querying bookings: ${bookingsRes.error.message}` };
+      }
+
+      const bookings = bookingsRes.data || [];
+      const rooms = roomsRes.data || [];
+
+      if (bookings.length === 0) {
+        return { success: false, message: 'No active bookings found in this property.' };
+      }
+
+      const roomMap = new Map(rooms.map(r => [r.id, r.room_number?.toString() || '']));
+      const enrichedBookings = bookings.map(b => ({
+        ...b,
+        room_number: roomMap.get(b.room_id) || ''
+      }));
+
+      let matchedBooking = null;
+      if (roomNumber && tenantName) {
+        matchedBooking = enrichedBookings.find(b => {
+          const rNum = b.room_number.toLowerCase();
+          const gName = (b.guest_name || '').toLowerCase();
+          return rNum === roomNumber.toLowerCase() && gName.includes(tenantName.toLowerCase());
+        });
+      }
+      if (!matchedBooking && roomNumber) {
+        matchedBooking = enrichedBookings.find(b => b.room_number.toLowerCase() === roomNumber.toLowerCase());
+      }
+      if (!matchedBooking && tenantName) {
+        matchedBooking = enrichedBookings.find(b => (b.guest_name || '').toLowerCase().includes(tenantName.toLowerCase()));
+      }
+
+      if (!matchedBooking) {
+        return {
+          success: false,
+          message: `Could not find active tenant matching "${tenantName || ''}"${roomNumber ? ' in Room ' + roomNumber : ''}.`
+        };
+      }
+
+      const roomDisp = matchedBooking.room_number || roomNumber || 'Unknown';
+      const updates: any = {};
+      const changesList: string[] = [];
+
+      if (newCheckInDate) {
+        updates.check_in = newCheckInDate;
+        const [y, m, d] = newCheckInDate.split('-').map(Number);
+        updates.check_out = `${y + 1}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        changesList.push(`Joining Date: ${newCheckInDate}`);
+      }
+
+      if (newDueDay) {
+        updates.rent_due_day = newDueDay;
+        updates.billing_cycle_date = newDueDay;
+        changesList.push(`Rent Due Date: ${newDueDay}th`);
+      }
+
+      if (newMonthlyRent) {
+        updates.monthly_rent = newMonthlyRent;
+        updates.monthly_rate = newMonthlyRent;
+        changesList.push(`Monthly Rent: ₹${newMonthlyRent.toLocaleString('en-IN')}`);
+      }
+
+      const { error: updErr } = await admin
+        .from('bookings')
+        .update(updates)
+        .eq('id', matchedBooking.id);
+
+      if (updErr) {
+        return { success: false, message: `Failed to update tenant: ${updErr.message}` };
+      }
+
+      return {
+        success: true,
+        type: 'update_tenant',
+        tenantName: matchedBooking.guest_name,
+        roomNumber: roomDisp,
+        checkInDate: newCheckInDate || matchedBooking.check_in,
+        dueDay: newDueDay || matchedBooking.rent_due_day,
+        monthlyRent: newMonthlyRent || matchedBooking.monthly_rent,
+        bookingId: matchedBooking.id,
+        prevValues: {
+          checkIn: matchedBooking.check_in,
+          dueDay: matchedBooking.rent_due_day,
+          monthlyRent: matchedBooking.monthly_rent
+        },
+        message: `Updated ${matchedBooking.guest_name} (Room ${roomDisp}): ${changesList.join(' • ')}`
+      };
+    }
+
+    // ==========================================
     // EXECUTE REVENUE
     // ==========================================
     if (parsed.type === 'revenue') {
@@ -677,10 +804,15 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
 }
 
 export async function undoQuickLedgerAction(payload: {
-  type: 'revenue' | 'expense' | 'assign';
-  ids: string[];
+  type: 'revenue' | 'expense' | 'assign' | 'update_tenant';
+  ids?: string[];
   bookingId?: string;
   advAmountAdded?: number;
+  prevValues?: {
+    checkIn?: string;
+    dueDay?: number;
+    monthlyRent?: number;
+  };
 }): Promise<{ success: boolean; message: string }> {
   try {
     const admin = getSupabaseAdmin();
@@ -716,6 +848,22 @@ export async function undoQuickLedgerAction(payload: {
         if (delErr) return { success: false, message: delErr.message };
       }
       return { success: true, message: 'Tenant assignment undone successfully.' };
+    }
+
+    if (payload.type === 'update_tenant' && payload.bookingId && payload.prevValues) {
+      const updates: any = {};
+      if (payload.prevValues.checkIn) updates.check_in = payload.prevValues.checkIn;
+      if (payload.prevValues.dueDay) {
+        updates.rent_due_day = payload.prevValues.dueDay;
+        updates.billing_cycle_date = payload.prevValues.dueDay;
+      }
+      if (payload.prevValues.monthlyRent) {
+        updates.monthly_rent = payload.prevValues.monthlyRent;
+        updates.monthly_rate = payload.prevValues.monthlyRent;
+      }
+      const { error: undoErr } = await admin.from('bookings').update(updates).eq('id', payload.bookingId);
+      if (undoErr) return { success: false, message: undoErr.message };
+      return { success: true, message: 'Tenant changes reverted successfully.' };
     }
 
     return { success: false, message: 'Nothing to undo.' };

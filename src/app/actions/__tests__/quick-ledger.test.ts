@@ -222,4 +222,45 @@ describe('Quick Ledger NLP Parser', () => {
       expect(result.type).toBe('today_summary');
     });
   });
+
+  describe('Update Tenant / Change Dates & Rent Parsing', () => {
+    it('should parse "change joining date of srikanth room 201 to 1st october"', () => {
+      const result = parseQuickLedgerText('change joining date of srikanth room 201 to 1st october');
+      expect(result.type).toBe('update_tenant');
+      if (result.type === 'update_tenant') {
+        expect(result.roomNumber).toBe('201');
+        expect(result.tenantName?.toLowerCase()).toContain('srikanth');
+        expect(result.newCheckInDate).toMatch(/\d{4}-10-01/);
+      }
+    });
+
+    it('should parse "change due date of room 201 to 10th"', () => {
+      const result = parseQuickLedgerText('change due date of room 201 to 10th');
+      expect(result.type).toBe('update_tenant');
+      if (result.type === 'update_tenant') {
+        expect(result.roomNumber).toBe('201');
+        expect(result.newDueDay).toBe(10);
+      }
+    });
+
+    it('should parse "change joining date to 1st and due date to 10th for room 201 srikanth"', () => {
+      const result = parseQuickLedgerText('change joining date to 1st and due date to 10th for room 201 srikanth');
+      expect(result.type).toBe('update_tenant');
+      if (result.type === 'update_tenant') {
+        expect(result.roomNumber).toBe('201');
+        expect(result.tenantName?.toLowerCase()).toContain('srikanth');
+        expect(result.newCheckInDate).toMatch(/\d{4}-\d{2}-01/);
+        expect(result.newDueDay).toBe(10);
+      }
+    });
+
+    it('should parse "change rent of room 201 to 8500"', () => {
+      const result = parseQuickLedgerText('change rent of room 201 to 8500');
+      expect(result.type).toBe('update_tenant');
+      if (result.type === 'update_tenant') {
+        expect(result.roomNumber).toBe('201');
+        expect(result.newMonthlyRent).toBe(8500);
+      }
+    });
+  });
 });

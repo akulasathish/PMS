@@ -80,7 +80,83 @@ export function parseQuickLedgerText(input: string) {
     };
   }
 
-  // 0c. ASSIGN / NEW TENANT CHECK
+  // 0c. UPDATE TENANT / CHANGE DATES OR RENT CHECK
+  const isUpdateTenant = /\b(?:change|update|set|modify)\b/i.test(lower) &&
+                         /\b(?:joining|joined|join|due|cycle|rent|fee|date|day)\b/i.test(lower);
+  if (isUpdateTenant) {
+    let cleaned = lower;
+
+    // 1. Room Number: explicit 'room 201' / 'rm 201' or standalone 3-digit
+    let roomNumber: string | null = null;
+    const explicitRoom = cleaned.match(/\b(?:room|rm|r)\s*#?\s*(\d{1,4})\b/i);
+    if (explicitRoom) {
+      roomNumber = explicitRoom[1];
+      cleaned = cleaned.replace(explicitRoom[0], ' ');
+    } else {
+      const standaloneRoom = cleaned.match(/\b([1-9]\d{2})\b/);
+      if (standaloneRoom) {
+        roomNumber = standaloneRoom[1];
+        cleaned = cleaned.replace(standaloneRoom[0], ' ');
+      }
+    }
+
+    // 2. Due Day: 'due date to 10th', 'due to 10th', 'due 10'
+    let newDueDay: number | null = null;
+    const dueMatch = cleaned.match(/\b(?:due\s*(?:date|day)?|cycle)\b[^\d]*?(\d{1,2})(?:st|nd|rd|th)?\b/i);
+    if (dueMatch) {
+      newDueDay = parseInt(dueMatch[1], 10);
+      cleaned = cleaned.replace(dueMatch[0], ' ');
+    }
+
+    // 3. New Monthly Rent: 'rent to 8500', 'fee to 8500'
+    let newMonthlyRent: number | null = null;
+    const rentMatch = cleaned.match(/\b(?:rent|monthly\s*rent|room\s*fee|rom\s*fee|monthly)\b[^\d]*?(\d+(?:\.\d+)?)(k)?\b/i);
+    if (rentMatch) {
+      newMonthlyRent = parseFloat(rentMatch[1]) * (rentMatch[2] ? 1000 : 1);
+      cleaned = cleaned.replace(rentMatch[0], ' ');
+    }
+
+    // 4. Joining Date: 'joining date to 1st october', 'joining date to 1st', 'joining date of srikanth to 1st'
+    let newCheckInDate: string | null = null;
+    const isJoinKeyword = /\b(?:joining|joined|join|checkin|check\s*in)\b/i.test(cleaned);
+    if (isJoinKeyword) {
+      const dateMatch = cleaned.match(/\b(?:to|on|as|is)\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s+([a-z]+))?\b/i) ||
+                        cleaned.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember))\b/i) ||
+                        cleaned.match(/\b(\d{1,2})(?:st|nd|rd|th)?\b/);
+      if (dateMatch && dateMatch[1]) {
+        const day = parseInt(dateMatch[1], 10);
+        const now = new Date();
+        const year = now.getFullYear();
+        let month = now.getMonth() + 1;
+        if (dateMatch[2] && months[dateMatch[2].toLowerCase()]) {
+          month = months[dateMatch[2].toLowerCase()];
+        }
+        newCheckInDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        cleaned = cleaned.replace(dateMatch[0], ' ');
+      }
+    }
+
+    // 5. Tenant Name from remaining tokens
+    const noiseWords = new Set([
+      'change', 'update', 'set', 'modify', 'joining', 'joined', 'join', 'checkin', 'date', 'day', 'due', 'cycle',
+      'rent', 'fee', 'room', 'rm', 'to', 'for', 'of', 'and', '&', 'is', 'as', 'the', 'in', 'on', 'bed',
+      'tenant', 'october', 'oct', 'november', 'nov', 'december', 'dec', 'january', 'jan', 'february', 'feb',
+      'march', 'mar', 'april', 'apr', 'may', 'june', 'jun', 'july', 'jul', 'august', 'aug', 'september', 'sep'
+    ]);
+    const nameTokens = cleaned.split(/\s+/).filter(w => w && !noiseWords.has(w) && !/^\d+$/.test(w));
+    const tenantName = nameTokens.join(' ').trim() || undefined;
+
+    return {
+      type: 'update_tenant' as const,
+      roomNumber: roomNumber || undefined,
+      tenantName,
+      newCheckInDate: newCheckInDate || undefined,
+      newDueDay: newDueDay || undefined,
+      newMonthlyRent: newMonthlyRent || undefined
+    };
+  }
+
+  // 0d. ASSIGN / NEW TENANT CHECK
   const isAssign = /\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining|joined)\b/i.test(lower) ||
                    (/\badd\b/i.test(lower) && (/\b(?:room|rm|r)\b/i.test(lower) || /\bto\b/i.test(lower) || /\b\d{3}\b/.test(lower) || /\bshare\b/i.test(lower))) ||
                    /\b(?:maintainance|maintenance|refundable)\b/i.test(lower);

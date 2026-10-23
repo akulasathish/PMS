@@ -18,7 +18,8 @@ import {
   Sparkles,
   UserPlus,
   FileText,
-  Trash2
+  Trash2,
+  BookOpen
 } from 'lucide-react';
 import { processQuickLedger, undoQuickLedgerAction, QuickLedgerResult } from '@/app/actions/quick-ledger';
 import { useRouter, usePathname } from 'next/navigation';
@@ -34,6 +35,7 @@ interface ChatMessage {
 
 export default function QuickLedgerAssistant() {
   const [isOpen, setIsOpen] = useState(false);
+  const [showCheatSheet, setShowCheatSheet] = useState(false);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -236,6 +238,12 @@ export default function QuickLedgerAssistant() {
           ids: msg.result.paymentIds || [],
           bookingId: msg.result.bookingId
         };
+      } else if (msg.result.type === 'update_tenant') {
+        undoPayload = {
+          type: 'update_tenant',
+          bookingId: msg.result.bookingId,
+          prevValues: msg.result.prevValues
+        };
       }
 
       if (undoPayload) {
@@ -263,13 +271,60 @@ export default function QuickLedgerAssistant() {
     }
   };
 
+  const BOT_COMMAND_CATEGORIES = [
+    {
+      category: '💰 Rent & Backdated Payments',
+      items: [
+        { label: 'Backdated Rent', prompt: 'srikanth rom 201 paid 9000 on 1st' },
+        { label: 'Rent + Advance', prompt: 'sathish 101 5000 rom fee and 2000 adv paid' },
+        { label: 'Quick Rent', prompt: 'karunkar 204 paid 500' },
+        { label: 'Fee with due day', prompt: 'sathish 7000 Pg feee' }
+      ]
+    },
+    {
+      category: '👤 New Tenant Admission',
+      items: [
+        { label: 'With Maintenance & Deposit', prompt: '201 srikanth 9000 joined on 1st october 1000 maintainance and 1500 refundable ammount' },
+        { label: 'With Bed Sharing & Adv', prompt: 'add srikanth to room 201 3 share 9000 room fee and 2k advanve' },
+        { label: 'Simple Check-in', prompt: 'add akshith to room 204' }
+      ]
+    },
+    {
+      category: '✏️ Change Dates & Profile',
+      items: [
+        { label: 'Change Joining Date', prompt: 'change joining date of room 201 to 1st october' },
+        { label: 'Change Rent Due Date', prompt: 'change due date of room 201 to 10th' },
+        { label: 'Change Both Dates', prompt: 'change joining date to 1st and due date to 10th for room 201 srikanth' },
+        { label: 'Change Monthly Rent', prompt: 'change rent of room 201 to 8500' }
+      ]
+    },
+    {
+      category: '🛒 Daily Property Expenses',
+      items: [
+        { label: 'Multi-Item Grocery', prompt: 'expences 700 vegitbales 200 oil 800 varalakshmi traders' },
+        { label: 'Water Tanker Utility', prompt: 'water tanker expences 22000' },
+        { label: 'Staff Salary', prompt: 'cleaner ramesh salary 8000 expences' },
+        { label: 'Single Item', prompt: 'curd 165' }
+      ]
+    },
+    {
+      category: '📊 Reports & Daily History',
+      items: [
+        { label: 'Pending Dues Report', prompt: 'report of pending dues' },
+        { label: 'Who Has Dues?', prompt: 'who has pending dues' },
+        { label: 'Today Ledger Log', prompt: 'today history' },
+        { label: 'Today Summary', prompt: 'today summary' }
+      ]
+    }
+  ];
+
   const suggestions = [
     'today history',
     'report of pending dues',
-    'add akshith to room 204',
-    'sathish 101 5000 rom fee and 2000 adv paid',
-    'expences 700 vegitbales 200 oil 800 varalakshmi traders',
-    'water tanker expences 22000'
+    'srikanth rom 201 paid 9000 on 1st',
+    'change due date of room 201 to 10th',
+    '201 srikanth 9000 joined on 1st october 1000 maintainance and 1500 refundable ammount',
+    'expences 700 vegitbales 200 oil 800 varalakshmi traders'
   ];
 
   if (!pathname?.startsWith('/dashboard')) {
@@ -331,6 +386,19 @@ export default function QuickLedgerAssistant() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowCheatSheet(prev => !prev)}
+                    className={`text-[10px] flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-colors border ${
+                      showCheatSheet
+                        ? 'bg-indigo-500/25 text-indigo-300 border-indigo-500/40 shadow-sm'
+                        : 'bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white border-white/5'
+                    }`}
+                    title="Toggle All Commands Guide"
+                  >
+                    <BookOpen size={12} className="text-yellow-400" />
+                    <span className="font-bold">Commands</span>
+                  </button>
+
                   {messages.length > 0 && (
                     <button
                       onClick={handleClearHistory}
@@ -350,31 +418,91 @@ export default function QuickLedgerAssistant() {
                 </div>
               </div>
 
+              {/* Collapsible Commands Cheat Sheet Panel */}
+              <AnimatePresence>
+                {showCheatSheet && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden border-b border-white/[0.08] bg-black/80 backdrop-blur-xl"
+                  >
+                    <div className="p-3.5 space-y-3 max-h-72 overflow-y-auto">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400 flex items-center gap-1.5">
+                          <Sparkles size={12} className="text-yellow-400" /> All Quick Chat Commands
+                        </span>
+                        <span className="text-[9px] text-zinc-500">Tap any to load into chat</span>
+                      </div>
+
+                      <div className="space-y-3">
+                        {BOT_COMMAND_CATEGORIES.map((cat, idx) => (
+                          <div key={idx} className="space-y-1.5">
+                            <span className="text-[10px] font-bold text-zinc-300 block">{cat.category}</span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {cat.items.map((item, iIdx) => (
+                                <button
+                                  key={iIdx}
+                                  onClick={() => {
+                                    setInput(item.prompt);
+                                    setShowCheatSheet(false);
+                                    if (inputRef.current) inputRef.current.focus();
+                                  }}
+                                  className="text-left text-[10px] px-2.5 py-1 rounded-lg bg-white/5 hover:bg-indigo-500/20 border border-white/5 hover:border-indigo-500/30 text-zinc-300 hover:text-white transition-all flex items-center gap-1.5"
+                                  title={item.prompt}
+                                >
+                                  <span className="font-semibold">{item.label}</span>
+                                  <span className="text-[9px] text-zinc-500 font-mono hidden sm:inline">&bull; {item.prompt}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               {/* Chat Message List */}
               <div className="flex-1 p-4 overflow-y-auto space-y-3.5 text-xs">
                 {messages.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-4 text-zinc-400">
-                    <div className="w-14 h-14 rounded-2xl bg-white/[0.03] border border-white/[0.08] flex items-center justify-center text-zinc-300">
-                      <Sparkles size={26} className="text-indigo-400" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-white text-sm">Two Streams • Zero Hassle</p>
-                      <p className="text-[11px] text-zinc-500 mt-1 max-w-xs leading-relaxed">
-                        Log tenant rents or property expenses with a quick message. Rooms and mess ledgers update instantly.
+                  <div className="h-full flex flex-col p-2 space-y-4 text-zinc-400">
+                    <div className="text-center pt-2">
+                      <div className="w-12 h-12 mx-auto rounded-2xl bg-white/[0.03] border border-white/[0.08] flex items-center justify-center text-zinc-300 mb-2">
+                        <Sparkles size={22} className="text-indigo-400" />
+                      </div>
+                      <p className="font-bold text-white text-sm">Quick Ledger Assistant</p>
+                      <p className="text-[11px] text-zinc-500 max-w-xs mx-auto mt-0.5">
+                        Log rent, admit tenants, change joining/due dates, or track daily expenses.
                       </p>
                     </div>
 
-                    <div className="w-full text-left space-y-2 pt-2">
-                      <span className="text-[10px] uppercase font-bold tracking-widest text-zinc-500">Quick Tap Examples:</span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {suggestions.map((sug, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => handleSend(sug)}
-                            className="text-left text-[11px] px-3 py-1.5 rounded-xl bg-white/[0.03] hover:bg-indigo-500/10 border border-white/[0.08] hover:border-indigo-500/30 text-zinc-300 hover:text-white transition-all"
-                          >
-                            {sug}
-                          </button>
+                    <div className="w-full text-left space-y-3 pt-1 flex-1 overflow-y-auto pr-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] uppercase font-black tracking-widest text-zinc-400">Everything You Can Say:</span>
+                        <span className="text-[9px] text-zinc-500">Tap to load & edit</span>
+                      </div>
+                      <div className="space-y-2.5">
+                        {BOT_COMMAND_CATEGORIES.map((cat, idx) => (
+                          <div key={idx} className="space-y-1.5 bg-black/40 p-2.5 rounded-xl border border-white/5">
+                            <span className="text-[10px] font-bold text-indigo-300 block">{cat.category}</span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {cat.items.map((item, iIdx) => (
+                                <button
+                                  key={iIdx}
+                                  onClick={() => {
+                                    setInput(item.prompt);
+                                    if (inputRef.current) inputRef.current.focus();
+                                  }}
+                                  className="text-left text-[10px] px-2.5 py-1 rounded-lg bg-white/5 hover:bg-indigo-500/20 border border-white/5 hover:border-indigo-500/30 text-zinc-300 hover:text-white transition-all"
+                                  title={item.prompt}
+                                >
+                                  {item.prompt}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -513,6 +641,58 @@ export default function QuickLedgerAssistant() {
                                     <span className="text-[11px] text-zinc-400">Rent Due Day</span>
                                     <span className="text-xs font-semibold text-zinc-200">{msg.result.dueDay}th of every month</span>
                                   </div>
+                                </div>
+
+                                <div className="flex items-center justify-between pt-1">
+                                  <span className="text-[10px] text-emerald-400 font-semibold">Live in Front Office</span>
+                                  <button
+                                    onClick={() => handleUndo(msg)}
+                                    disabled={msg.undoState === 'undoing' || msg.undoState === 'undone'}
+                                    className={`flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg transition-all ${
+                                      msg.undoState === 'undone'
+                                        ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                                        : 'bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white'
+                                    }`}
+                                  >
+                                    <RotateCcw size={12} className={msg.undoState === 'undoing' ? 'animate-spin' : ''} />
+                                    {msg.undoState === 'undone' ? 'Undone' : msg.undoState === 'undoing' ? 'Undoing...' : 'Undo'}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : msg.result.type === 'update_tenant' ? (
+                              /* UPDATE TENANT SUCCESS CARD */
+                              <div className="bg-sky-950/30 border border-sky-500/30 rounded-2xl p-4 shadow-lg space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-1.5 text-sky-400 font-black text-[11px] uppercase tracking-wider">
+                                    <CheckCircle2 size={15} />
+                                    <span>Tenant Profile Updated</span>
+                                  </div>
+                                  <span className="text-[10px] text-zinc-500 font-mono">{msg.timestamp}</span>
+                                </div>
+
+                                <div className="bg-black/40 rounded-xl p-3 border border-white/5 space-y-1.5">
+                                  <div className="flex justify-between items-baseline">
+                                    <span className="text-[11px] text-zinc-400">Tenant</span>
+                                    <span className="text-xs font-bold text-white capitalize">{msg.result.tenantName} (Room {msg.result.roomNumber})</span>
+                                  </div>
+                                  {msg.result.checkInDate ? (
+                                    <div className="flex justify-between items-baseline">
+                                      <span className="text-[11px] text-zinc-400">Joining Date</span>
+                                      <span className="text-xs font-bold text-emerald-400">{msg.result.checkInDate}</span>
+                                    </div>
+                                  ) : null}
+                                  {msg.result.dueDay ? (
+                                    <div className="flex justify-between items-baseline">
+                                      <span className="text-[11px] text-zinc-400">Rent Due Date</span>
+                                      <span className="text-xs font-bold text-amber-300">{msg.result.dueDay}th of month</span>
+                                    </div>
+                                  ) : null}
+                                  {msg.result.monthlyRent ? (
+                                    <div className="flex justify-between items-baseline">
+                                      <span className="text-[11px] text-zinc-400">Monthly Rent</span>
+                                      <span className="text-xs font-bold text-indigo-300">₹{msg.result.monthlyRent.toLocaleString('en-IN')}/mo</span>
+                                    </div>
+                                  ) : null}
                                 </div>
 
                                 <div className="flex items-center justify-between pt-1">
@@ -705,7 +885,29 @@ export default function QuickLedgerAssistant() {
               </div>
 
               {/* Input Area */}
-              <div className="p-3 bg-zinc-900/60 border-t border-white/[0.08] backdrop-blur-xl">
+              <div className="p-3 bg-zinc-900/60 border-t border-white/[0.08] backdrop-blur-xl space-y-2">
+                {/* Quick chip shortcuts bar */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-[10px]">
+                  <button
+                    type="button"
+                    onClick={() => setShowCheatSheet(prev => !prev)}
+                    className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 font-bold border border-indigo-500/30 transition-all"
+                  >
+                    <BookOpen size={10} className="text-yellow-400" />
+                    <span>All Commands</span>
+                  </button>
+                  {suggestions.slice(0, 4).map((sug, sIdx) => (
+                    <button
+                      key={sIdx}
+                      type="button"
+                      onClick={() => setInput(sug)}
+                      className="flex-shrink-0 px-2.5 py-1 rounded-full bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white border border-white/5 transition-all truncate max-w-[160px]"
+                    >
+                      {sug}
+                    </button>
+                  ))}
+                </div>
+
                 <form
                   onSubmit={e => {
                     e.preventDefault();
