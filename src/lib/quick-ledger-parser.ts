@@ -48,11 +48,52 @@ export function parseQuickLedgerText(input: string) {
 
   // 0b. ASSIGN / NEW TENANT CHECK
   const isAssign = /\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining)\b/i.test(lower) ||
-                   (/\badd\b/i.test(lower) && (/\b(?:room|rm|r)\b/i.test(lower) || /\bto\b/i.test(lower) || /\b\d{3}\b/.test(lower)));
+                   (/\badd\b/i.test(lower) && (/\b(?:room|rm|r)\b/i.test(lower) || /\bto\b/i.test(lower) || /\b\d{3}\b/.test(lower) || /\bshare\b/i.test(lower)));
   if (isAssign) {
-    let cleaned = lower.replace(/\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining|add|to|in)\b/gi, ' ').trim();
+    let cleaned = lower;
 
-    // Explicit Room: 'room 201' or 'rm 201'
+    // 1. Sharing: '3 share', '2 sharing', 'single'
+    let sharing: number | null = null;
+    const shareMatch = cleaned.match(/\b([1-6])\s*(?:share|sharing|bed)\b/i);
+    if (shareMatch) {
+      sharing = parseInt(shareMatch[1], 10);
+      cleaned = cleaned.replace(shareMatch[0], ' ');
+    } else if (/\bsingle\s*(?:share|room|bed)?\b/i.test(cleaned)) {
+      sharing = 1;
+      cleaned = cleaned.replace(/\bsingle\s*(?:share|room|bed)?\b/gi, ' ');
+    }
+
+    cleaned = cleaned.replace(/\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining|add|to|in)\b/gi, ' ').trim();
+
+    // 2. Advance / Deposit: '2k advanve', 'adv 2000', '2000 adv'
+    let advAmount = 0;
+    const advAfter = cleaned.match(/\b(?:adv|advance|advan[cv]e|deposit|sec\s*deposit)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+    if (advAfter) {
+      advAmount = parseFloat(advAfter[1]) * (advAfter[2] ? 1000 : 1);
+      cleaned = cleaned.replace(advAfter[0], ' ');
+    } else {
+      const advBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:adv|advance|advan[cv]e|deposit|sec\s*deposit)\b/i);
+      if (advBefore) {
+        advAmount = parseFloat(advBefore[1]) * (advBefore[2] ? 1000 : 1);
+        cleaned = cleaned.replace(advBefore[0], ' ');
+      }
+    }
+
+    // 3. Monthly Rent / Room Fee: '9000 room fee', '9000 rent', 'rent 9000', 'room fee 9000'
+    let monthlyRent = 0;
+    const rentAfter = cleaned.match(/\b(?:rent|monthly|rom\s*fee|room\s*fee|fee|feee)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+    if (rentAfter) {
+      monthlyRent = parseFloat(rentAfter[1]) * (rentAfter[2] ? 1000 : 1);
+      cleaned = cleaned.replace(rentAfter[0], ' ');
+    } else {
+      const rentBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:rent|monthly|rom\s*fee|room\s*fee|fee|feee)\b/i);
+      if (rentBefore) {
+        monthlyRent = parseFloat(rentBefore[1]) * (rentBefore[2] ? 1000 : 1);
+        cleaned = cleaned.replace(rentBefore[0], ' ');
+      }
+    }
+
+    // 4. Explicit Room: 'room 201' or 'rm 201'
     let roomNumber: string | null = null;
     const explicitRoom = cleaned.match(/\b(?:room|rm|r)\s*#?\s*(\d{1,4})\b/i);
     if (explicitRoom) {
@@ -60,35 +101,7 @@ export function parseQuickLedgerText(input: string) {
       cleaned = cleaned.replace(explicitRoom[0], ' ');
     }
 
-    // Monthly Rent: 'rent 8000' or '8000 rent' or 'monthly 8000'
-    let monthlyRent = 0;
-    const rentAfter = cleaned.match(/\b(?:rent|monthly)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
-    if (rentAfter) {
-      monthlyRent = parseFloat(rentAfter[1]) * (rentAfter[2] ? 1000 : 1);
-      cleaned = cleaned.replace(rentAfter[0], ' ');
-    } else {
-      const rentBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:rent|monthly)\b/i);
-      if (rentBefore) {
-        monthlyRent = parseFloat(rentBefore[1]) * (rentBefore[2] ? 1000 : 1);
-        cleaned = cleaned.replace(rentBefore[0], ' ');
-      }
-    }
-
-    // Advance / Deposit: 'adv 2000' or '2000 adv' or 'deposit 2000'
-    let advAmount = 0;
-    const advAfter = cleaned.match(/\b(?:adv|advance|deposit|sec\s*deposit)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
-    if (advAfter) {
-      advAmount = parseFloat(advAfter[1]) * (advAfter[2] ? 1000 : 1);
-      cleaned = cleaned.replace(advAfter[0], ' ');
-    } else {
-      const advBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:adv|advance|deposit|sec\s*deposit)\b/i);
-      if (advBefore) {
-        advAmount = parseFloat(advBefore[1]) * (advBefore[2] ? 1000 : 1);
-        cleaned = cleaned.replace(advBefore[0], ' ');
-      }
-    }
-
-    // Due Day: 'due 28' or 'due day 28' or 'cycle 28'
+    // 5. Due Day: 'due 28' or 'due day 28' or 'cycle 28'
     let dueDay: number | null = null;
     const dueMatch = cleaned.match(/\b(?:due|cycle|due\s*day|day)\s*[:=]?\s*(\d{1,2})\b/i);
     if (dueMatch) {
@@ -96,16 +109,16 @@ export function parseQuickLedgerText(input: string) {
       cleaned = cleaned.replace(dueMatch[0], ' ');
     }
 
-    // Standalone room number if not found explicitly
+    // 6. Standalone 3-digit room number (e.g. 201, 302, 101)
     if (!roomNumber) {
-      const standaloneRoom = cleaned.match(/\b([1-9]\d{1,2})\b/);
+      const standaloneRoom = cleaned.match(/\b([1-9]\d{2})\b/);
       if (standaloneRoom) {
         roomNumber = standaloneRoom[1];
         cleaned = cleaned.replace(standaloneRoom[0], ' ');
       }
     }
 
-    // Any remaining numbers (if rent or adv wasn't caught by keyword)
+    // 7. Any remaining numbers (if rent or adv wasn't caught by keyword)
     const remNumbers = cleaned.match(/\b\d+(?:\.\d+)?(?:k)?\b/g);
     if (remNumbers) {
       for (const nStr of remNumbers) {
@@ -119,8 +132,8 @@ export function parseQuickLedgerText(input: string) {
       }
     }
 
-    // Tenant Name: remaining non-keyword tokens
-    const noiseWords = new Set(['room', 'rm', 'rent', 'monthly', 'adv', 'advance', 'deposit', 'due', 'day', 'in', 'at', 'fee', 'for', 'to']);
+    // 8. Tenant Name: remaining non-keyword tokens
+    const noiseWords = new Set(['room', 'rm', 'rent', 'monthly', 'adv', 'advance', 'advanve', 'deposit', 'due', 'day', 'in', 'at', 'fee', 'feee', 'for', 'to', 'and', '&', 'share', 'sharing', 'bed']);
     const nameTokens = cleaned.split(/\s+/).filter(w => w && !noiseWords.has(w) && !/^\d+$/.test(w));
     const tenantName = nameTokens.join(' ').trim();
 
@@ -130,6 +143,7 @@ export function parseQuickLedgerText(input: string) {
       roomNumber,
       monthlyRent,
       advAmount,
+      sharing,
       dueDay
     };
   }

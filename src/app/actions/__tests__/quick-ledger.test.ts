@@ -120,6 +120,29 @@ describe('Quick Ledger NLP Parser', () => {
       }
     });
 
+    it('should parse "add srikanth to room 201 3 share 9000 room fee and 2k advanve"', () => {
+      const result = parseQuickLedgerText('add srikanth to room 201 3 share 9000 room fee and 2k advanve');
+      expect(result.type).toBe('assign');
+      if (result.type === 'assign') {
+        expect(result.tenantName.toLowerCase()).toBe('srikanth');
+        expect(result.roomNumber).toBe('201');
+        expect(result.monthlyRent).toBe(9000);
+        expect(result.advAmount).toBe(2000);
+        expect(result.sharing).toBe(3);
+      }
+    });
+
+    it('should parse "add srikanth 3 share 9000 room fee and 2k advanve"', () => {
+      const result = parseQuickLedgerText('add srikanth 3 share 9000 room fee and 2k advanve');
+      expect(result.type).toBe('assign');
+      if (result.type === 'assign') {
+        expect(result.tenantName.toLowerCase()).toBe('srikanth');
+        expect(result.monthlyRent).toBe(9000);
+        expect(result.advAmount).toBe(2000);
+        expect(result.sharing).toBe(3);
+      }
+    });
+
     it('should parse "assign sathish 101 rent 7500 adv 1500 due 28"', () => {
       const result = parseQuickLedgerText('assign sathish 101 rent 7500 adv 1500 due 28');
       expect(result.type).toBe('assign');

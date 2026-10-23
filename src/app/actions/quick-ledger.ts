@@ -38,6 +38,7 @@ export interface QuickLedgerResult {
   // Assign specific
   monthlyRent?: number;
   dueDay?: number;
+  sharing?: number;
 
   // Dues report specific
   totalDues?: number;
@@ -222,7 +223,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
     // EXECUTE ASSIGN (NEW TENANT ADMISSION)
     // ==========================================
     if (parsed.type === 'assign') {
-      const { tenantName, roomNumber, monthlyRent, advAmount, dueDay } = parsed;
+      const { tenantName, roomNumber, monthlyRent, advAmount, sharing, dueDay } = parsed;
 
       if (!tenantName) {
         return {
@@ -234,7 +235,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       if (!roomNumber) {
         return {
           success: false,
-          message: 'Please specify room number. Example: "assign ravi room 201 rent 8000 adv 2000" or "add akshith to room 204"'
+          message: `Please specify which room to assign ${tenantName} to. Example: "add ${tenantName} to room 201 3 share 9000 room fee and 2k advance"`
         };
       }
 
@@ -286,7 +287,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       const deposit = advAmount || 0;
       const formattedName = tenantName.charAt(0).toUpperCase() + tenantName.slice(1);
 
-      // 5. Create booking
+      // 5. Create booking with custom rent and sharing notes
       const { data: newBooking, error: bookErr } = await admin
         .from('bookings')
         .insert([{
@@ -303,7 +304,8 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
           billing_cycle_date: finalDueDay,
           monthly_rent: effectiveMonthlyRent,
           monthly_rate: effectiveMonthlyRent,
-          security_deposit: deposit
+          security_deposit: deposit,
+          notes: sharing ? `${sharing}-share bed` : undefined
         }])
         .select()
         .single();
@@ -346,9 +348,10 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         monthlyRent: effectiveMonthlyRent,
         advPaid: deposit,
         dueDay: finalDueDay,
+        sharing: sharing || undefined,
         bookingId: newBooking.id,
         paymentIds,
-        message: `Assigned ${formattedName} to Room ${targetRoom.room_number}! Monthly Rent: ₹${effectiveMonthlyRent.toLocaleString('en-IN')}, Deposit: ₹${deposit.toLocaleString('en-IN')}, Rent due: ${finalDueDay}th of every month.`
+        message: `Assigned ${formattedName} to Room ${targetRoom.room_number}! ${sharing ? sharing + '-Share Bed • ' : ''}Rent: ₹${effectiveMonthlyRent.toLocaleString('en-IN')}/mo, Deposit: ₹${deposit.toLocaleString('en-IN')}, Rent due: ${finalDueDay}th of every month.`
       };
     }
 

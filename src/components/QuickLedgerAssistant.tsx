@@ -419,8 +419,14 @@ export default function QuickLedgerAssistant() {
                                     <span className="text-[11px] text-zinc-400">Assigned Room</span>
                                     <span className="text-xs font-bold text-indigo-300">Room {msg.result.roomNumber}</span>
                                   </div>
+                                  {msg.result.sharing ? (
+                                    <div className="flex justify-between items-baseline">
+                                      <span className="text-[11px] text-zinc-400">Bed Sharing</span>
+                                      <span className="text-xs font-bold text-amber-300">{msg.result.sharing}-Share Bed</span>
+                                    </div>
+                                  ) : null}
                                   <div className="flex justify-between items-baseline">
-                                    <span className="text-[11px] text-zinc-400">Monthly Rent</span>
+                                    <span className="text-[11px] text-zinc-400">Individual Rent</span>
                                     <span className="text-xs font-bold text-emerald-400">₹{msg.result.monthlyRent?.toLocaleString('en-IN')}/mo</span>
                                   </div>
                                   {msg.result.advPaid ? (
