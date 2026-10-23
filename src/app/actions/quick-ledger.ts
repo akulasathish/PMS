@@ -436,12 +436,125 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         };
       }
 
-      // 2. Check room capacity
+      // 2. Check room occupants and prevent duplicate tenant creation
       const { data: activeInRoom } = await admin
         .from('bookings')
-        .select('id, guest_name, monthly_rent, monthly_rate')
+        .select('id, guest_name, monthly_rent, monthly_rate, security_deposit, notes, check_in, rent_due_day')
         .eq('room_id', targetRoom.id)
         .in('status', ['Checked In', 'Confirmed', 'in_house']);
+
+      const existingResident = (activeInRoom || []).find(b => {
+        const bName = (b.guest_name || '').toLowerCase();
+        const tName = (tenantName || '').toLowerCase();
+        return bName.includes(tName) || tName.includes(bName);
+      });
+
+      if (existingResident) {
+        // Resident already exists in this room! Update their profile instead of creating a duplicate booking!
+        const effectiveCheckIn = parsedCheckIn || existingResident.check_in || businessDate;
+        const [inYear, inMonth, inDay] = effectiveCheckIn.split('-').map(Number);
+        const checkOut = `${inYear + 1}-${String(inMonth).padStart(2, '0')}-${String(inDay).padStart(2, '0')}`;
+        const finalDueDay = dueDay || existingResident.rent_due_day || inDay;
+        const effectiveMonthlyRent = monthlyRent || Number(existingResident.monthly_rent || existingResident.monthly_rate || 8000);
+        const maintenanceFee = parsedMaintenance || 0;
+        const refundableDeposit = parsedRefundable || advAmount || Number(existingResident.security_deposit || 0);
+
+        const noteParts: string[] = [];
+        if (sharing) noteParts.push(`${sharing}-Share Bed`);
+        if (maintenanceFee > 0) noteParts.push(`Maintenance: ₹${maintenanceFee.toLocaleString('en-IN')}`);
+        if (refundableDeposit > 0) noteParts.push(`Refundable: ₹${refundableDeposit.toLocaleString('en-IN')}`);
+        const bookingNotes = noteParts.join(' • ') || existingResident.notes;
+
+        await admin
+          .from('bookings')
+          .update({
+            check_in: parsedCheckIn ? effectiveCheckIn : undefined,
+            check_out: parsedCheckIn ? checkOut : undefined,
+            rent_due_day: finalDueDay,
+            billing_cycle_date: finalDueDay,
+            monthly_rent: effectiveMonthlyRent,
+            monthly_rate: effectiveMonthlyRent,
+            security_deposit: refundableDeposit,
+            notes: bookingNotes
+          })
+          .eq('id', existingResident.id);
+
+        const paymentIds: string[] = [];
+        const rentPaid = Number(parsedRentPaid || 0);
+
+        if (rentPaid > 0) {
+          const { data: rentPay } = await admin.from('payments').insert([{
+            booking_id: existingResident.id,
+            property_id: activePropertyId,
+            amount: rentPaid,
+            method: 'UPI',
+            payment_method: 'UPI',
+            allocation: 'Rent',
+            transaction_id: 'RENT-PAID-AT-UPDATE',
+            business_date: effectiveCheckIn
+          }]).select('id').single();
+          if (rentPay) paymentIds.push(rentPay.id);
+        }
+
+        if (maintenanceFee > 0) {
+          await admin.from('incidental_charges').insert([{
+            booking_id: existingResident.id,
+            property_id: activePropertyId,
+            description: 'Non-Refundable Maintenance Fee',
+            amount: maintenanceFee,
+            category: 'Maintenance',
+            business_date: effectiveCheckIn
+          }]);
+          const { data: maintPay } = await admin.from('payments').insert([{
+            booking_id: existingResident.id,
+            property_id: activePropertyId,
+            amount: maintenanceFee,
+            method: 'UPI',
+            payment_method: 'UPI',
+            allocation: 'Maintenance Fee (Revenue)',
+            transaction_id: 'MAINTENANCE-FEE-AT-UPDATE',
+            business_date: effectiveCheckIn
+          }]).select('id').single();
+          if (maintPay) paymentIds.push(maintPay.id);
+        }
+
+        if (refundableDeposit > 0 && refundableDeposit !== Number(existingResident.security_deposit || 0)) {
+          const { data: depPay } = await admin.from('payments').insert([{
+            booking_id: existingResident.id,
+            property_id: activePropertyId,
+            amount: refundableDeposit,
+            method: 'UPI',
+            payment_method: 'UPI',
+            allocation: 'Security Deposit',
+            transaction_id: 'REFUNDABLE-DEPOSIT-AT-UPDATE',
+            business_date: effectiveCheckIn
+          }]).select('id').single();
+          if (depPay) paymentIds.push(depPay.id);
+        }
+
+        const totalAdvance = refundableDeposit + maintenanceFee;
+        const rentStatusText = rentPaid > 0 
+          ? `Rent: ₹${effectiveMonthlyRent.toLocaleString('en-IN')}/mo (Paid: ₹${rentPaid.toLocaleString('en-IN')})` 
+          : `Rent: ₹${effectiveMonthlyRent.toLocaleString('en-IN')}/mo (Due: ₹${effectiveMonthlyRent.toLocaleString('en-IN')})`;
+
+        return {
+          success: true,
+          type: 'assign',
+          tenantName: existingResident.guest_name,
+          roomNumber: targetRoom.room_number,
+          monthlyRent: effectiveMonthlyRent,
+          advPaid: totalAdvance,
+          refundableDeposit,
+          maintenanceFee,
+          feePaid: rentPaid,
+          dueDay: finalDueDay,
+          sharing: sharing || undefined,
+          checkInDate: effectiveCheckIn,
+          bookingId: existingResident.id,
+          paymentIds,
+          message: `Updated existing resident ${existingResident.guest_name} in Room ${targetRoom.room_number}! Joined: ${effectiveCheckIn} • ${rentStatusText} • Maintenance: ₹${maintenanceFee.toLocaleString('en-IN')} • Refundable: ₹${refundableDeposit.toLocaleString('en-IN')}.`
+        };
+      }
 
       const cap = Number(targetRoom.sharing_capacity || 4);
       if (activeInRoom && activeInRoom.length >= cap) {
@@ -706,19 +819,19 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
     // EXECUTE UPDATE TENANT (CHANGE DATES / RENT)
     // ==========================================
     if (parsed.type === 'update_tenant') {
-      const { tenantName, roomNumber, newCheckInDate, newDueDay, newMonthlyRent } = parsed as any;
+      const { tenantName, roomNumber, newCheckInDate, newDueDay, newMonthlyRent, newMaintenanceFee, newRefundableDeposit, isPaid } = parsed as any;
 
       if (!roomNumber && !tenantName) {
         return {
           success: false,
-          message: 'Please specify the room number or tenant name. Example: "change joining date of room 201 to 1st october"'
+          message: 'Please specify the room number or tenant name. Example: "please modify existing tenant room 201 srikanth joining date 1st may 2026 fee 8500 paid maintainance 1000 and refundabale 1000"'
         };
       }
 
-      if (!newCheckInDate && !newDueDay && !newMonthlyRent) {
+      if (!newCheckInDate && !newDueDay && !newMonthlyRent && newMaintenanceFee === undefined && newRefundableDeposit === undefined) {
         return {
           success: false,
-          message: 'Please specify what to change (joining date, due date, or rent). Example: "change due date of room 201 to 10th"'
+          message: 'Please specify what to change (joining date, due date, rent, maintenance, or deposit). Example: "modify room 201 srikanth fee 8500"'
         };
       }
 
@@ -726,7 +839,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       const [bookingsRes, roomsRes] = await Promise.all([
         admin
           .from('bookings')
-          .select('id, guest_name, room_id, status, is_monthly, monthly_rent, monthly_rate, rent_due_day, check_in, check_out')
+          .select('id, guest_name, room_id, status, is_monthly, monthly_rent, monthly_rate, rent_due_day, check_in, check_out, security_deposit, notes')
           .eq('property_id', activePropertyId)
           .in('status', ['Checked In', 'Confirmed', 'in_house']),
         admin
@@ -757,14 +870,19 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         matchedBooking = enrichedBookings.find(b => {
           const rNum = b.room_number.toLowerCase();
           const gName = (b.guest_name || '').toLowerCase();
-          return rNum === roomNumber.toLowerCase() && gName.includes(tenantName.toLowerCase());
+          const tName = tenantName.toLowerCase();
+          return rNum === roomNumber.toLowerCase() && (gName.includes(tName) || tName.includes(gName));
+        });
+      }
+      if (!matchedBooking && tenantName) {
+        matchedBooking = enrichedBookings.find(b => {
+          const gName = (b.guest_name || '').toLowerCase();
+          const tName = tenantName.toLowerCase();
+          return gName.includes(tName) || tName.includes(gName);
         });
       }
       if (!matchedBooking && roomNumber) {
         matchedBooking = enrichedBookings.find(b => b.room_number.toLowerCase() === roomNumber.toLowerCase());
-      }
-      if (!matchedBooking && tenantName) {
-        matchedBooking = enrichedBookings.find(b => (b.guest_name || '').toLowerCase().includes(tenantName.toLowerCase()));
       }
 
       if (!matchedBooking) {
@@ -797,6 +915,32 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         changesList.push(`Monthly Rent: ₹${newMonthlyRent.toLocaleString('en-IN')}`);
       }
 
+      if (newRefundableDeposit !== undefined) {
+        updates.security_deposit = newRefundableDeposit;
+        changesList.push(`Refundable Deposit: ₹${newRefundableDeposit.toLocaleString('en-IN')}`);
+      }
+
+      if (newMaintenanceFee !== undefined || newRefundableDeposit !== undefined) {
+        const noteParts: string[] = [];
+        if (matchedBooking.notes?.includes('-Share Bed')) {
+          noteParts.push(matchedBooking.notes.split('•')[0].trim());
+        }
+        const effectiveMaint = newMaintenanceFee !== undefined ? newMaintenanceFee : 0;
+        const effectiveRef = newRefundableDeposit !== undefined ? newRefundableDeposit : Number(matchedBooking.security_deposit || 0);
+        if (effectiveMaint > 0) {
+          noteParts.push(`Maintenance: ₹${effectiveMaint.toLocaleString('en-IN')}`);
+        }
+        if (effectiveRef > 0) {
+          noteParts.push(`Refundable: ₹${effectiveRef.toLocaleString('en-IN')}`);
+        }
+        if (noteParts.length > 0) {
+          updates.notes = noteParts.join(' • ');
+          if (newMaintenanceFee !== undefined) {
+            changesList.push(`Maintenance: ₹${newMaintenanceFee.toLocaleString('en-IN')}`);
+          }
+        }
+      }
+
       const { error: updErr } = await admin
         .from('bookings')
         .update(updates)
@@ -804,6 +948,65 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
 
       if (updErr) {
         return { success: false, message: `Failed to update tenant: ${updErr.message}` };
+      }
+
+      const paymentIds: string[] = [];
+      if (isPaid) {
+        const payDate = newCheckInDate || matchedBooking.check_in || businessDate;
+        if (newMonthlyRent && newMonthlyRent > 0) {
+          const { data: rentP } = await admin.from('payments').insert([{
+            booking_id: matchedBooking.id,
+            property_id: activePropertyId,
+            amount: newMonthlyRent,
+            method: 'UPI',
+            payment_method: 'UPI',
+            allocation: 'Rent',
+            business_date: payDate,
+            transaction_id: 'MODIFIED-RENT-PAYMENT'
+          }]).select('id').single();
+          if (rentP) paymentIds.push(rentP.id);
+        }
+
+        if (newMaintenanceFee && newMaintenanceFee > 0) {
+          await admin.from('incidental_charges').insert([{
+            booking_id: matchedBooking.id,
+            property_id: activePropertyId,
+            description: 'Non-Refundable Maintenance Fee',
+            amount: newMaintenanceFee,
+            category: 'Maintenance',
+            business_date: payDate
+          }]);
+          const { data: maintP } = await admin.from('payments').insert([{
+            booking_id: matchedBooking.id,
+            property_id: activePropertyId,
+            amount: newMaintenanceFee,
+            method: 'UPI',
+            payment_method: 'UPI',
+            allocation: 'Maintenance Fee (Revenue)',
+            business_date: payDate,
+            transaction_id: 'MODIFIED-MAINTENANCE-PAYMENT'
+          }]).select('id').single();
+          if (maintP) paymentIds.push(maintP.id);
+        }
+
+        if (newRefundableDeposit && newRefundableDeposit > 0) {
+          const { data: depP } = await admin.from('payments').insert([{
+            booking_id: matchedBooking.id,
+            property_id: activePropertyId,
+            amount: newRefundableDeposit,
+            method: 'UPI',
+            payment_method: 'UPI',
+            allocation: 'Security Deposit',
+            business_date: payDate,
+            transaction_id: 'MODIFIED-DEPOSIT-PAYMENT'
+          }]).select('id').single();
+          if (depP) paymentIds.push(depP.id);
+        }
+
+        const totalPaid = (newMonthlyRent || 0) + (newMaintenanceFee || 0) + (newRefundableDeposit || 0);
+        if (totalPaid > 0) {
+          changesList.push(`Payments Logged: ₹${totalPaid.toLocaleString('en-IN')} paid`);
+        }
       }
 
       return {
@@ -814,7 +1017,10 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         checkInDate: newCheckInDate || matchedBooking.check_in,
         dueDay: newDueDay || matchedBooking.rent_due_day,
         monthlyRent: newMonthlyRent || matchedBooking.monthly_rent,
+        maintenanceFee: newMaintenanceFee,
+        refundableDeposit: newRefundableDeposit,
         bookingId: matchedBooking.id,
+        paymentIds,
         prevValues: {
           checkIn: matchedBooking.check_in,
           dueDay: matchedBooking.rent_due_day,

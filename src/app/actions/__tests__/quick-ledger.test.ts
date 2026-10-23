@@ -337,5 +337,19 @@ describe('Quick Ledger NLP Parser', () => {
         expect(result.newMonthlyRent).toBe(8500);
       }
     });
+
+    it('should parse full modify command "please modify existing tenant room 201 srikanth joining date 1st may 2026 fee 8500 paid maintainance 1000 and refundabale 1000"', () => {
+      const result = parseQuickLedgerText('please modify existing tenant room 201 srikanth joining date 1st may 2026 fee 8500 paid maintainance 1000 and refundabale 1000');
+      expect(result.type).toBe('update_tenant');
+      if (result.type === 'update_tenant') {
+        expect(result.roomNumber).toBe('201');
+        expect(result.tenantName?.toLowerCase()).toBe('srikanth');
+        expect(result.newCheckInDate).toBe('2026-05-01');
+        expect(result.newMonthlyRent).toBe(8500);
+        expect((result as any).newMaintenanceFee).toBe(1000);
+        expect((result as any).newRefundableDeposit).toBe(1000);
+        expect((result as any).isPaid).toBe(true);
+      }
+    });
   });
 });

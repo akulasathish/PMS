@@ -96,8 +96,8 @@ export function parseQuickLedgerText(input: string) {
   }
 
   // 0c. UPDATE TENANT / CHANGE DATES OR RENT CHECK
-  const isUpdateTenant = /\b(?:change|update|set|modify)\b/i.test(lower) &&
-                         /\b(?:joining|joined|join|due|cycle|rent|fee|date|day)\b/i.test(lower);
+  const isUpdateTenant = /\b(?:change|update|set|modify|edit|correct)\b/i.test(lower) &&
+                         /\b(?:joining|joined|join|due|cycle|rent|fee|date|day|tenant|resident|maintainance|maintenance|maintance|refundable|deposit|adv)\b/i.test(lower);
   if (isUpdateTenant) {
     let cleaned = lower;
 
@@ -115,50 +115,103 @@ export function parseQuickLedgerText(input: string) {
       }
     }
 
-    // 2. Due Day: 'due date to 10th', 'due to 10th', 'due 10'
+    // 2. Joining Date: e.g. 'joining date 1st may 2026', 'joining date to 1st october', '10/05/2026'
+    let newCheckInDate: string | null = null;
+    const joinMatch = cleaned.match(/\b(?:joining\s*date|joining|checkin|join)\s*(?:is|to|on)?\s*(\d{1,2})(?:st|nd|rd|th)?\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember))(?:\s+(20\d{2}))?\b/i) ||
+                      cleaned.match(/\b(?:joining\s*date|joining|checkin|join)\s*(?:is|to|on)?\s*(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/i) ||
+                      cleaned.match(/\b(?:joining\s*date|checkin)\s*(?:is|to|on)?\s*(\d{1,2})(?:st|nd|rd|th)?\b/i);
+    if (joinMatch) {
+      if (joinMatch[2] && months[joinMatch[2].toLowerCase()]) {
+        const day = parseInt(joinMatch[1], 10);
+        const month = months[joinMatch[2].toLowerCase()];
+        const year = joinMatch[3] ? parseInt(joinMatch[3], 10) : new Date().getFullYear();
+        newCheckInDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      } else if (joinMatch[1] && joinMatch[2] && joinMatch[3]) {
+        const day = parseInt(joinMatch[1], 10);
+        const month = parseInt(joinMatch[2], 10);
+        let year = parseInt(joinMatch[3], 10);
+        if (year < 100) year += 2000;
+        newCheckInDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      } else if (joinMatch[1]) {
+        const day = parseInt(joinMatch[1], 10);
+        const now = new Date();
+        newCheckInDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      }
+      cleaned = cleaned.replace(joinMatch[0], ' ');
+    } else {
+      const isJoinKeyword = /\b(?:joining|joined|join|checkin|check\s*in)\b/i.test(cleaned);
+      if (isJoinKeyword) {
+        const dateMatch = cleaned.match(/\b(?:to|on|as|is)\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s+([a-z]+))?\b/i) ||
+                          cleaned.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember))\b/i) ||
+                          cleaned.match(/\b(\d{1,2})(?:st|nd|rd|th)?\b/);
+        if (dateMatch && dateMatch[1]) {
+          const day = parseInt(dateMatch[1], 10);
+          const now = new Date();
+          let year = now.getFullYear();
+          let month = now.getMonth() + 1;
+          if (dateMatch[2] && months[dateMatch[2].toLowerCase()]) {
+            month = months[dateMatch[2].toLowerCase()];
+          }
+          newCheckInDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          cleaned = cleaned.replace(dateMatch[0], ' ');
+        }
+      }
+    }
+
+    // 3. Due Day: 'due date to 10th', 'due to 10th', 'due 10', 'due date 1st'
     let newDueDay: number | null = null;
-    const dueMatch = cleaned.match(/\b(?:due\s*(?:date|day)?|cycle)\b[^\d]*?(\d{1,2})(?:st|nd|rd|th)?\b/i);
+    const dueMatch = cleaned.match(/\b(?:due\s*(?:date|day|dat)?|cycle)\b[^\d]*?(\d{1,2})(?:st|nd|rd|th)?\b/i);
     if (dueMatch) {
       newDueDay = parseInt(dueMatch[1], 10);
       cleaned = cleaned.replace(dueMatch[0], ' ');
     }
 
-    // 3. New Monthly Rent: 'rent to 8500', 'fee to 8500'
+    // 4. New Monthly Rent / Fee: 'rent 8500', 'fee 8500', 'rent to 8500'
     let newMonthlyRent: number | null = null;
-    const rentMatch = cleaned.match(/\b(?:rent|monthly\s*rent|room\s*fee|rom\s*fee|monthly)\b[^\d]*?(\d+(?:\.\d+)?)(k)?\b/i);
+    const rentMatch = cleaned.match(/\b(?:rent|monthly\s*rent|room\s*fee|rom\s*fee|fee|monthly)\b[^\d]*?(\d+(?:\.\d+)?)(k)?\b/i);
     if (rentMatch) {
       newMonthlyRent = parseFloat(rentMatch[1]) * (rentMatch[2] ? 1000 : 1);
       cleaned = cleaned.replace(rentMatch[0], ' ');
-    }
-
-    // 4. Joining Date: 'joining date to 1st october', 'joining date to 1st', 'joining date of srikanth to 1st'
-    let newCheckInDate: string | null = null;
-    const isJoinKeyword = /\b(?:joining|joined|join|checkin|check\s*in)\b/i.test(cleaned);
-    if (isJoinKeyword) {
-      const dateMatch = cleaned.match(/\b(?:to|on|as|is)\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s+([a-z]+))?\b/i) ||
-                        cleaned.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember))\b/i) ||
-                        cleaned.match(/\b(\d{1,2})(?:st|nd|rd|th)?\b/);
-      if (dateMatch && dateMatch[1]) {
-        const day = parseInt(dateMatch[1], 10);
-        const now = new Date();
-        const year = now.getFullYear();
-        let month = now.getMonth() + 1;
-        if (dateMatch[2] && months[dateMatch[2].toLowerCase()]) {
-          month = months[dateMatch[2].toLowerCase()];
-        }
-        newCheckInDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        cleaned = cleaned.replace(dateMatch[0], ' ');
+    } else {
+      const rentBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:rent|room\s*fee|rom\s*fee|fee)\b/i);
+      if (rentBefore) {
+        newMonthlyRent = parseFloat(rentBefore[1]) * (rentBefore[2] ? 1000 : 1);
+        cleaned = cleaned.replace(rentBefore[0], ' ');
       }
     }
 
-    // 5. Tenant Name from remaining tokens
+    // 5. Maintenance Fee: 'maintainance 1000', '1000 maintainance'
+    let newMaintenanceFee: number | null = null;
+    const maintMatch = cleaned.match(/\b(?:maintainance|maintenance|maintance|non\s*refundable)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i) ||
+                       cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:maintainance|maintenance|maintance|non\s*refundable)\b/i);
+    if (maintMatch) {
+      newMaintenanceFee = parseFloat(maintMatch[1]) * (maintMatch[2] ? 1000 : 1);
+      cleaned = cleaned.replace(maintMatch[0], ' ');
+    }
+
+    // 6. Refundable Deposit: 'refundabale 1000', '1000 refundable'
+    let newRefundableDeposit: number | null = null;
+    const refMatch = cleaned.match(/\b(?:refundable|refundabale|security\s*deposit|sec\s*deposit|deposit|adv|advance)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i) ||
+                     cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:refundable|refundabale|security\s*deposit|sec\s*deposit|deposit|adv|advance)\b/i);
+    if (refMatch) {
+      newRefundableDeposit = parseFloat(refMatch[1]) * (refMatch[2] ? 1000 : 1);
+      cleaned = cleaned.replace(refMatch[0], ' ');
+    }
+
+    // 7. Payment intention
+    const isPaid = /\b(?:paid|sent)\b/i.test(lower);
+
+    // 8. Tenant Name from remaining tokens
     const noiseWords = new Set([
-      'change', 'update', 'set', 'modify', 'joining', 'joined', 'join', 'checkin', 'date', 'day', 'due', 'cycle',
-      'rent', 'fee', 'room', 'rm', 'to', 'for', 'of', 'and', '&', 'is', 'as', 'the', 'in', 'on', 'bed',
-      'tenant', 'october', 'oct', 'november', 'nov', 'december', 'dec', 'january', 'jan', 'february', 'feb',
-      'march', 'mar', 'april', 'apr', 'may', 'june', 'jun', 'july', 'jul', 'august', 'aug', 'september', 'sep'
+      'please', 'existing', 'modify', 'change', 'update', 'set', 'edit', 'correct',
+      'tenant', 'resident', 'guest', 'room', 'rm', 'rent', 'fee', 'to', 'for', 'of',
+      'and', '&', 'is', 'as', 'the', 'in', 'on', 'bed', 'paid', 'sent',
+      'maintainance', 'maintenance', 'maintance', 'refundable', 'refundabale', 'deposit',
+      'adv', 'advance', 'due', 'date', 'day', 'joining', 'joined', 'join', 'non',
+      'january', 'jan', 'february', 'feb', 'march', 'mar', 'april', 'apr', 'may', 'june', 'jun',
+      'july', 'jul', 'august', 'aug', 'september', 'sep', 'october', 'oct', 'november', 'nov', 'december', 'dec'
     ]);
-    const nameTokens = cleaned.split(/\s+/).filter(w => w && !noiseWords.has(w) && !/^\d+$/.test(w));
+    const nameTokens = cleaned.split(/\s+/).filter(w => w && !noiseWords.has(w) && !/^\d+(?:st|nd|rd|th)?$/i.test(w));
     const tenantName = nameTokens.join(' ').trim() || undefined;
 
     return {
@@ -167,7 +220,10 @@ export function parseQuickLedgerText(input: string) {
       tenantName,
       newCheckInDate: newCheckInDate || undefined,
       newDueDay: newDueDay || undefined,
-      newMonthlyRent: newMonthlyRent || undefined
+      newMonthlyRent: newMonthlyRent || undefined,
+      newMaintenanceFee: newMaintenanceFee !== null ? newMaintenanceFee : undefined,
+      newRefundableDeposit: newRefundableDeposit !== null ? newRefundableDeposit : undefined,
+      isPaid
     };
   }
 
