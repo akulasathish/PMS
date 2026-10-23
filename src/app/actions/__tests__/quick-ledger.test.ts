@@ -38,9 +38,25 @@ describe('Quick Ledger NLP Parser', () => {
       expect(result.items![0].amount).toBe(8000);
       expect(result.items![0].category).toBe('Staff');
     });
+    it('should parse "curd 165" as expense automatically without typing expences', () => {
+      const result = parseQuickLedgerText('curd 165');
+      expect(result.type).toBe('expense');
+      expect(result.items!.length).toBe(1);
+      expect(result.items![0].amount).toBe(165);
+      expect(result.items![0].description.toLowerCase()).toContain('curd');
+      expect(result.items![0].category).toBe('Food');
+    });
   });
 
   describe('Revenue Parsing', () => {
+    it('should parse "karunkar 204 paid 500"', () => {
+      const result = parseQuickLedgerText('karunkar 204 paid 500');
+      expect(result.type).toBe('revenue');
+      expect(result.roomNumber).toBe('204');
+      expect(result.tenantName?.toLowerCase()).toBe('karunkar');
+      expect(result.feeAmount).toBe(500);
+      expect(result.totalAmount).toBe(500);
+    });
     it('should parse room fee and advance "sathish 101 5000 rom fee and 2000 adv paid"', () => {
       const result = parseQuickLedgerText('sathish 101 5000 rom fee and 2000 adv paid');
       expect(result.type).toBe('revenue');

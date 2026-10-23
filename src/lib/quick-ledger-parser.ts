@@ -5,21 +5,30 @@ export interface QuickLedgerItem {
   category: string;
 }
 
+const FOOD_AND_EXPENSE_WORDS = new Set([
+  'curd', 'milk', 'rice', 'oil', 'vegitbale', 'vegitbales', 'vegetable', 'vegetables',
+  'chicken', 'egg', 'eggs', 'tea', 'coffee', 'sugar', 'gas', 'cylinder', 'tanker', 'water',
+  'diesel', 'petrol', 'salary', 'acid', 'broom', 'mop', 'soap', 'salt', 'chilli', 'masala',
+  'paneer', 'dal', 'dall', 'atta', 'flour', 'wheat', 'onion', 'onions', 'potato', 'potatoes',
+  'tomato', 'tomatoes', 'trader', 'traders', 'rythu', 'bidda', 'kirana', 'grocer', 'groceries',
+  'mess', 'food', 'breakfast', 'lunch', 'dinner', 'plumber', 'repair', 'electrician', 'cleaning'
+]);
+
 export function categorizeExpense(description: string): string {
   const lower = description.toLowerCase();
-  if (/(?:rice|oil|vegitbale|vegetable|chicken|grocer|kirana|trader|milk|gas|cylinder|mess|food|breakfast|lunch|dinner|egg|tea|coffee|curd|tomato|onion|dall|dal)/i.test(lower)) {
+  if (/(?:rice|oil|vegitbale|vegetable|chicken|grocer|kirana|trader|milk|gas|cylinder|mess|food|breakfast|lunch|dinner|egg|tea|coffee|curd|tomato|onion|dall|dal|paneer|atta|flour|wheat|potato|sugar|salt|chilli|masala)/i.test(lower)) {
     return 'Food';
   }
-  if (/(?:water|tanker|electricity|current|power|bill|eb|wifi|internet|recharge)/i.test(lower)) {
+  if (/(?:water|tanker|electricity|current|power|bill|eb|wifi|internet|recharge|diesel|petrol)/i.test(lower)) {
     return 'Utilities';
   }
   if (/(?:salary|cleaner|cook|helper|security|manager|sweep|maid|payroll|staff)/i.test(lower)) {
     return 'Staff';
   }
-  if (/(?:plumber|plumbing|pipe|tap|repair|carpenter|paint|bulb|light|fan|switch|ac|drain|hardware|maintenance)/i.test(lower)) {
+  if (/(?:plumber|plumbing|pipe|tap|repair|carpenter|paint|bulb|light|fan|switch|ac|drain|hardware|maintenance|electrician)/i.test(lower)) {
     return 'Maintenance';
   }
-  if (/(?:laundry|washing|detergent|soap)/i.test(lower)) {
+  if (/(?:laundry|washing|detergent|soap|acid|cleaning|broom|mop)/i.test(lower)) {
     return 'Laundry';
   }
   return 'Others';
@@ -29,11 +38,16 @@ export function parseQuickLedgerText(input: string) {
   const text = (input || '').trim();
   const lower = text.toLowerCase();
 
-  // 1. EXPENSES CHECK (Explicit keywords)
+  // 1. EXPENSES CHECK (Explicit keywords or known expense item words)
   const isExplicitExpense = /(?:^|\b)(?:expences|expenses|expence|expense|exp)\b/.test(lower);
+  const words = lower.split(/[\s,]+/);
+  const hasExpenseWord = words.some(w => FOOD_AND_EXPENSE_WORDS.has(w));
+  const hasRevenueWord = /\b(?:revenue|rent|rom\s*fee|room\s*fee|fee|feee|paid|sent|adv|advance|deposit|due)\b/.test(lower);
 
-  if (isExplicitExpense) {
-    const cleaned = lower.replace(/(?:^|\b)(?:expences|expenses|expence|expense|exp)\b/g, ' ').trim();
+  const isExpense = isExplicitExpense || (hasExpenseWord && !hasRevenueWord);
+
+  if (isExpense) {
+    const cleaned = lower.replace(/\b(?:expences|expenses|expence|expense|exp)\b/g, ' ').trim();
     const tokens = cleaned.split(/\s+/).filter(Boolean);
     const items: { amount: number; description: string; category: string }[] = [];
 
@@ -82,59 +96,68 @@ export function parseQuickLedgerText(input: string) {
   }
 
   // 2. REVENUE CHECK
-  let cleaned = lower.replace(/(?:^|\b)(?:revenue)\b/g, ' ').trim();
+  let cleaned = lower.replace(/\b(?:revenue)\b/g, ' ').trim();
 
-  // Explicit Room match: 'room 101', 'rm 101', 'r 101'
-  let roomNumber: string | null = null;
-  const explicitRoomRegex = /(?:room|rm|r)\s*#?\s*(\d{1,4})\b/i;
-  const explicitRoomMatch = cleaned.match(explicitRoomRegex);
-  if (explicitRoomMatch) {
-    roomNumber = explicitRoomMatch[1];
-    cleaned = cleaned.replace(explicitRoomMatch[0], ' ');
-  }
-
-  // Advance / Deposit
+  // 1. Advance: 'adv 2000' or '2000 adv'
   let advAmount = 0;
-  const advRegex = /(\d+(?:\.\d+)?)(k)?\s*(?:adv|advance|deposit|dp)/i;
-  const advMatch = cleaned.match(advRegex);
-  if (advMatch) {
-    advAmount = parseFloat(advMatch[1]) * (advMatch[2] ? 1000 : 1);
-    cleaned = cleaned.replace(advMatch[0], ' ');
-  }
-
-  // Room Fee / Rent with keywords
-  let feeAmount = 0;
-  const feeRegex = /(\d+(?:\.\d+)?)(k)?\s*(?:rom\s*fee|room\s*fee|rent|fee|feee|paid|sent)/i;
-  const feeMatch = cleaned.match(feeRegex);
-  if (feeMatch) {
-    feeAmount = parseFloat(feeMatch[1]) * (feeMatch[2] ? 1000 : 1);
-    cleaned = cleaned.replace(feeMatch[0], ' ');
-  }
-
-  // If room number not explicitly prefixed, match standard 2-3 digit number (10-999)
-  if (!roomNumber) {
-    const candidateMatch = cleaned.match(/\b([1-9]\d{1,2})\b/);
-    if (candidateMatch) {
-      roomNumber = candidateMatch[1];
-      cleaned = cleaned.replace(new RegExp('\\b' + candidateMatch[1] + '\\b'), ' ');
+  const advAfter = cleaned.match(/\b(?:adv|advance|deposit)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/);
+  if (advAfter) {
+    advAmount = parseFloat(advAfter[1]) * (advAfter[2] ? 1000 : 1);
+    cleaned = cleaned.replace(advAfter[0], ' ');
+  } else {
+    const advBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:adv|advance|deposit)\b/);
+    if (advBefore) {
+      advAmount = parseFloat(advBefore[1]) * (advBefore[2] ? 1000 : 1);
+      cleaned = cleaned.replace(advBefore[0], ' ');
     }
   }
 
-  // Any remaining number?
-  const remainingNumbers = cleaned.match(/\b\d+(?:\.\d+)?(?:k)?\b/gi);
-  if (remainingNumbers && remainingNumbers.length > 0) {
+  // 2. Room Fee / Rent / Paid: 'paid 500' or '500 paid' or 'rent 5000'
+  let feeAmount = 0;
+  const feeAfter = cleaned.match(/\b(?:paid|sent|fee|feee|rent|rom\s*fee|room\s*fee)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/);
+  if (feeAfter) {
+    feeAmount = parseFloat(feeAfter[1]) * (feeAfter[2] ? 1000 : 1);
+    cleaned = cleaned.replace(feeAfter[0], ' ');
+  } else {
+    const feeBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:paid|sent|fee|feee|rent|rom\s*fee|room\s*fee)\b/);
+    if (feeBefore) {
+      feeAmount = parseFloat(feeBefore[1]) * (feeBefore[2] ? 1000 : 1);
+      cleaned = cleaned.replace(feeBefore[0], ' ');
+    }
+  }
+
+  // 3. Explicit room match: 'room 204' or 'rm 204' or 'r 204'
+  let roomNumber: string | null = null;
+  const explicitRoom = cleaned.match(/\b(?:room|rm|r)\s*#?\s*(\d{1,4})\b/);
+  if (explicitRoom) {
+    roomNumber = explicitRoom[1];
+    cleaned = cleaned.replace(explicitRoom[0], ' ');
+  }
+
+  // 4. Standalone 2-3 digit number (standard room numbers e.g. 101, 204)
+  if (!roomNumber) {
+    const standaloneRoom = cleaned.match(/\b([1-9]\d{1,2})\b/);
+    if (standaloneRoom) {
+      roomNumber = standaloneRoom[1];
+      cleaned = cleaned.replace(standaloneRoom[0], ' ');
+    }
+  }
+
+  // 5. Any remaining number
+  const remainingNumbers = cleaned.match(/\b\d+(?:\.\d+)?(?:k)?\b/g);
+  if (remainingNumbers) {
     for (const nStr of remainingNumbers) {
-      const parsed = parseFloat(nStr) * (nStr.toLowerCase().includes('k') ? 1000 : 1);
+      const parsed = parseFloat(nStr) * (nStr.includes('k') ? 1000 : 1);
       if (feeAmount === 0) {
         feeAmount = parsed;
       } else if (advAmount === 0 && !lower.includes('due')) {
         advAmount = parsed;
       }
-      cleaned = cleaned.replace(new RegExp('\\b' + nStr + '\\b'), ' ');
+      cleaned = cleaned.replace(nStr, ' ');
     }
   }
 
-  // Extract Name (clean remaining words)
+  // 6. Name
   const noiseWords = ['rom', 'room', 'fee', 'rent', 'and', '&', 'paid', 'sent', 'adv', 'advance', 'due', 'for', 'of', 'pg', 'feee', 'revenue'];
   const nameTokens = cleaned.split(/\s+/).filter(w => w && !noiseWords.includes(w) && !/^\d+$/.test(w));
   const tenantName = nameTokens.join(' ').trim();

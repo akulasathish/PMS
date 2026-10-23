@@ -113,52 +113,67 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         };
       }
 
-      // Fetch active bookings in this property
-      const { data: bookings, error: bookingsError } = await admin
-        .from('bookings')
-        .select(`
-          id,
-          guest_name,
-          room_id,
-          status,
-          is_monthly,
-          monthly_rent,
-          monthly_rate,
-          security_deposit,
-          total_amount,
-          rooms ( id, room_number )
-        `)
-        .eq('property_id', activePropertyId)
-        .in('status', ['Checked In', 'Confirmed', 'in_house']);
+      // Fetch active bookings in this property (query bookings and rooms separately to prevent relationship ambiguity)
+      const [bookingsRes, roomsRes] = await Promise.all([
+        admin
+          .from('bookings')
+          .select(`
+            id,
+            guest_name,
+            room_id,
+            status,
+            is_monthly,
+            monthly_rent,
+            monthly_rate,
+            security_deposit,
+            total_amount
+          `)
+          .eq('property_id', activePropertyId)
+          .in('status', ['Checked In', 'Confirmed', 'in_house']),
+        admin
+          .from('rooms')
+          .select('id, room_number')
+          .eq('property_id', activePropertyId)
+      ]);
 
-      if (bookingsError) {
-        return { success: false, message: `Database error querying bookings: ${bookingsError.message}` };
+      if (bookingsRes.error) {
+        return { success: false, message: `Database error querying bookings: ${bookingsRes.error.message}` };
       }
 
-      if (!bookings || bookings.length === 0) {
+      const bookings = bookingsRes.data || [];
+      const rooms = roomsRes.data || [];
+
+      if (bookings.length === 0) {
         return { success: false, message: 'No active bookings found in this property.' };
       }
+
+      // Map room numbers to bookings
+      const roomMap = new Map(rooms.map(r => [r.id, r.room_number?.toString() || '']));
+      const enrichedBookings = bookings.map(b => ({
+        ...b,
+        room_number: roomMap.get(b.room_id) || ''
+      }));
 
       // Match booking by Room and/or Tenant Name
       let matchedBooking = null;
 
       if (roomNumber && tenantName) {
-        matchedBooking = bookings.find(b => {
-          const rNum = (b.rooms as any)?.room_number?.toString()?.toLowerCase();
+        matchedBooking = enrichedBookings.find(b => {
+          const rNum = b.room_number.toLowerCase();
           const gName = (b.guest_name || '').toLowerCase();
           return rNum === roomNumber.toLowerCase() && gName.includes(tenantName.toLowerCase());
         });
       }
 
       if (!matchedBooking && roomNumber) {
-        matchedBooking = bookings.find(b => {
-          const rNum = (b.rooms as any)?.room_number?.toString()?.toLowerCase();
+        matchedBooking = enrichedBookings.find(b => {
+          const rNum = b.room_number.toLowerCase();
           return rNum === roomNumber.toLowerCase();
         });
       }
 
       if (!matchedBooking && tenantName) {
-        matchedBooking = bookings.find(b => {
+        matchedBooking = enrichedBookings.find(b => {
           const gName = (b.guest_name || '').toLowerCase();
           return gName.includes(tenantName.toLowerCase());
         });
@@ -241,7 +256,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         : Number(matchedBooking.total_amount || 0);
 
       const newBalanceDue = Math.max(0, roomCharge - rentPaid);
-      const roomDisp = (matchedBooking.rooms as any)?.room_number || roomNumber || 'Unknown';
+      const roomDisp = matchedBooking.room_number || roomNumber || 'Unknown';
 
       return {
         success: true,
