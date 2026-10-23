@@ -290,6 +290,14 @@ export default function QuickLedgerAssistant() {
       ]
     },
     {
+      category: '📅 Daily Basis Guests (Short Stay)',
+      items: [
+        { label: 'Daily with Partial Pay', prompt: 'kiran joined room 204 daily basis per day 600 total 2 days paid only for 1 day 600 pedning 600' },
+        { label: 'Daily with Full Pay', prompt: 'guest rajesh room 201 3 days 1500 paid' },
+        { label: 'Daily 2 Days @ 500', prompt: 'add guest suresh room 301 2 days 500 per day paid 500' }
+      ]
+    },
+    {
       category: '✏️ Change Dates & Profile',
       items: [
         { label: 'Change Joining Date', prompt: 'change joining date of room 201 to 1st october' },
@@ -596,51 +604,84 @@ export default function QuickLedgerAssistant() {
 
                                 <div className="bg-black/40 rounded-xl p-3 border border-white/5 space-y-1.5">
                                   <div className="flex justify-between items-baseline">
-                                    <span className="text-[11px] text-zinc-400">Tenant</span>
+                                    <span className="text-[11px] text-zinc-400">Tenant / Guest</span>
                                     <span className="text-xs font-bold text-white capitalize">{msg.result.tenantName}</span>
                                   </div>
                                   <div className="flex justify-between items-baseline">
                                     <span className="text-[11px] text-zinc-400">Assigned Room</span>
                                     <span className="text-xs font-bold text-indigo-300">Room {msg.result.roomNumber}</span>
                                   </div>
-                                  {msg.result.checkInDate ? (
-                                    <div className="flex justify-between items-baseline">
-                                      <span className="text-[11px] text-zinc-400">Joined Date</span>
-                                      <span className="text-xs font-bold text-amber-300">{msg.result.checkInDate}</span>
-                                    </div>
-                                  ) : null}
-                                  {msg.result.sharing ? (
-                                    <div className="flex justify-between items-baseline">
-                                      <span className="text-[11px] text-zinc-400">Bed Sharing</span>
-                                      <span className="text-xs font-bold text-amber-300">{msg.result.sharing}-Share Bed</span>
-                                    </div>
-                                  ) : null}
-                                  <div className="flex justify-between items-baseline">
-                                    <span className="text-[11px] text-zinc-400">Individual Rent</span>
-                                    <span className="text-xs font-bold text-emerald-400">₹{msg.result.monthlyRent?.toLocaleString('en-IN')}/mo</span>
-                                  </div>
-                                  {msg.result.refundableDeposit ? (
-                                    <div className="flex justify-between items-baseline">
-                                      <span className="text-[11px] text-zinc-400">Refundable Amount</span>
-                                      <span className="text-xs font-bold text-emerald-400">₹{msg.result.refundableDeposit.toLocaleString('en-IN')}</span>
-                                    </div>
-                                  ) : null}
-                                  {msg.result.maintenanceFee ? (
-                                    <div className="flex justify-between items-baseline">
-                                      <span className="text-[11px] text-zinc-400">Maintenance (Non-Ref)</span>
-                                      <span className="text-xs font-bold text-amber-400">₹{msg.result.maintenanceFee.toLocaleString('en-IN')}</span>
-                                    </div>
-                                  ) : null}
-                                  {!msg.result.refundableDeposit && !msg.result.maintenanceFee && msg.result.advPaid ? (
-                                    <div className="flex justify-between items-baseline">
-                                      <span className="text-[11px] text-zinc-400">Security Deposit / Adv</span>
-                                      <span className="text-xs font-bold text-cyan-400">₹{msg.result.advPaid.toLocaleString('en-IN')}</span>
-                                    </div>
-                                  ) : null}
-                                  <div className="flex justify-between items-baseline pt-1 border-t border-white/10">
-                                    <span className="text-[11px] text-zinc-400">Rent Due Day</span>
-                                    <span className="text-xs font-semibold text-zinc-200">{msg.result.dueDay}th of every month</span>
-                                  </div>
+                                  {msg.result.isDaily ? (
+                                    <>
+                                      <div className="flex justify-between items-baseline">
+                                        <span className="text-[11px] text-zinc-400">Stay Type</span>
+                                        <span className="text-[10px] font-bold text-amber-300 bg-amber-500/15 px-2 py-0.5 rounded border border-amber-500/25">Daily Basis ({msg.result.stayDays} Day{msg.result.stayDays && msg.result.stayDays > 1 ? 's' : ''})</span>
+                                      </div>
+                                      <div className="flex justify-between items-baseline">
+                                        <span className="text-[11px] text-zinc-400">Duration</span>
+                                        <span className="text-xs font-mono font-bold text-zinc-200">{msg.result.checkInDate} &rarr; {msg.result.checkOutDate}</span>
+                                      </div>
+                                      <div className="flex justify-between items-baseline">
+                                        <span className="text-[11px] text-zinc-400">Daily Tariff Rate</span>
+                                        <span className="text-xs font-bold text-white font-mono">₹{msg.result.perDayRate?.toLocaleString('en-IN')}/day</span>
+                                      </div>
+                                      <div className="flex justify-between items-baseline pt-1 border-t border-white/10">
+                                        <span className="text-[11px] font-semibold text-zinc-300">Total Tariff</span>
+                                        <span className="text-sm font-black text-white font-mono">₹{msg.result.totalTariff?.toLocaleString('en-IN')}</span>
+                                      </div>
+                                      <div className="flex justify-between items-baseline">
+                                        <span className="text-[11px] text-zinc-400">Paid Now</span>
+                                        <span className="text-xs font-bold text-emerald-400 font-mono">₹{msg.result.paidAmount?.toLocaleString('en-IN')}</span>
+                                      </div>
+                                      <div className="flex justify-between items-baseline pt-1 border-t border-white/10">
+                                        <span className="text-[11px] font-bold text-rose-300">Pending Balance Due</span>
+                                        <span className={`text-sm font-black font-mono ${msg.result.newBalanceDue && msg.result.newBalanceDue > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                                          ₹{msg.result.newBalanceDue?.toLocaleString('en-IN')}
+                                        </span>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <>
+                                      {msg.result.checkInDate ? (
+                                        <div className="flex justify-between items-baseline">
+                                          <span className="text-[11px] text-zinc-400">Joined Date</span>
+                                          <span className="text-xs font-bold text-amber-300">{msg.result.checkInDate}</span>
+                                        </div>
+                                      ) : null}
+                                      {msg.result.sharing ? (
+                                        <div className="flex justify-between items-baseline">
+                                          <span className="text-[11px] text-zinc-400">Bed Sharing</span>
+                                          <span className="text-xs font-bold text-amber-300">{msg.result.sharing}-Share Bed</span>
+                                        </div>
+                                      ) : null}
+                                      <div className="flex justify-between items-baseline">
+                                        <span className="text-[11px] text-zinc-400">Individual Rent</span>
+                                        <span className="text-xs font-bold text-emerald-400">₹{msg.result.monthlyRent?.toLocaleString('en-IN')}/mo</span>
+                                      </div>
+                                      {msg.result.refundableDeposit ? (
+                                        <div className="flex justify-between items-baseline">
+                                          <span className="text-[11px] text-zinc-400">Refundable Amount</span>
+                                          <span className="text-xs font-bold text-emerald-400">₹{msg.result.refundableDeposit.toLocaleString('en-IN')}</span>
+                                        </div>
+                                      ) : null}
+                                      {msg.result.maintenanceFee ? (
+                                        <div className="flex justify-between items-baseline">
+                                          <span className="text-[11px] text-zinc-400">Maintenance (Non-Ref)</span>
+                                          <span className="text-xs font-bold text-amber-400">₹{msg.result.maintenanceFee.toLocaleString('en-IN')}</span>
+                                        </div>
+                                      ) : null}
+                                      {!msg.result.refundableDeposit && !msg.result.maintenanceFee && msg.result.advPaid ? (
+                                        <div className="flex justify-between items-baseline">
+                                          <span className="text-[11px] text-zinc-400">Security Deposit / Adv</span>
+                                          <span className="text-xs font-bold text-cyan-400">₹{msg.result.advPaid.toLocaleString('en-IN')}</span>
+                                        </div>
+                                      ) : null}
+                                      <div className="flex justify-between items-baseline pt-1 border-t border-white/10">
+                                        <span className="text-[11px] text-zinc-400">Rent Due Day</span>
+                                        <span className="text-xs font-semibold text-zinc-200">{msg.result.dueDay}th of every month</span>
+                                      </div>
+                                    </>
+                                  )}
                                 </div>
 
                                 <div className="flex items-center justify-between pt-1">

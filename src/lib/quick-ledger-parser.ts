@@ -157,13 +157,104 @@ export function parseQuickLedgerText(input: string) {
   }
 
   // 0d. ASSIGN / NEW TENANT CHECK
-  const isAssign = /\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining|joined)\b/i.test(lower) ||
-                   (/\badd\b/i.test(lower) && (/\b(?:room|rm|r)\b/i.test(lower) || /\bto\b/i.test(lower) || /\b\d{3}\b/.test(lower) || /\bshare\b/i.test(lower))) ||
+  const isAssign = /\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining|joined|guest|daily|daily\s*basis)\b/i.test(lower) ||
+                   (/\b(?:add|guest)\b/i.test(lower) && (/\b(?:room|rm|r)\b/i.test(lower) || /\bto\b/i.test(lower) || /\b\d{3}\b/.test(lower) || /\bshare\b/i.test(lower) || /\bdays?\b/i.test(lower))) ||
                    /\b(?:maintainance|maintenance|refundable)\b/i.test(lower);
   if (isAssign) {
-    let cleaned = lower;
+    let cleaned = lower.replace(/[\\/]/g, ' ');
     if (dateRawStr) {
       cleaned = cleaned.replace(dateRawStr, ' ');
+    }
+
+    // 0. Daily Basis Stay Check (Short stays: e.g. "per day 600 total 2 days paid 600", "daily basis", "3 days")
+    const isDaily = /\b(?:daily|daily\s*basis|per\s*day|\bdays\b)\b/i.test(cleaned);
+    if (isDaily) {
+      // 1. Pending mention (e.g. "pedning 600", "pending 600", "balance 600")
+      const pendMatch = cleaned.match(/\b(?:pending|pedning|bal|balance)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+      if (pendMatch) {
+        cleaned = cleaned.replace(pendMatch[0], ' ');
+      }
+
+      // 2. Stay Days (e.g. "total 2 days", "2 days", "for 3 days")
+      let stayDays = 1;
+      const daysMatch = cleaned.match(/\b(?:total\s*)?(\d{1,2})\s*days?\b/i) || cleaned.match(/\bfor\s*(\d{1,2})\s*days?\b/i);
+      if (daysMatch) {
+        stayDays = parseInt(daysMatch[1], 10);
+        cleaned = cleaned.replace(daysMatch[0], ' ');
+      }
+
+      // 3. Per Day Rate (e.g. "per day 600", "600 per day", "day 600")
+      let perDayRate = 0;
+      const perDayMatch = cleaned.match(/\b(?:per\s*day|day\s*rate|rate\s*per\s*day|day\s*fee)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i) ||
+                          cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:per\s*day|\/\s*day)\b/i);
+      if (perDayMatch) {
+        perDayRate = parseFloat(perDayMatch[1]) * (perDayMatch[2] ? 1000 : 1);
+        cleaned = cleaned.replace(perDayMatch[0], ' ');
+      }
+
+      // 4. Paid Amount (e.g. "paid only for 1 day 600", "paid 600", "600 paid")
+      let paidAmount = 0;
+      const paidMatch = cleaned.match(/\b(?:paid|sent|given)\s*(?:only\s*)?(?:for\s*\d+\s*days?)?\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i) ||
+                        cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:paid|sent)\b/i);
+      if (paidMatch) {
+        paidAmount = parseFloat(paidMatch[1]) * (paidMatch[2] ? 1000 : 1);
+        cleaned = cleaned.replace(paidMatch[0], ' ');
+      }
+
+      // 5. Total Tariff
+      let totalTariff = perDayRate > 0 ? (perDayRate * stayDays) : 0;
+      const totalMatch = cleaned.match(/\b(?:total|tariff|amount)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+      if (totalMatch) {
+        totalTariff = parseFloat(totalMatch[1]) * (totalMatch[2] ? 1000 : 1);
+        cleaned = cleaned.replace(totalMatch[0], ' ');
+      } else if (totalTariff === 0 && paidAmount > 0) {
+        totalTariff = paidAmount;
+      }
+
+      if (perDayRate === 0 && stayDays > 0 && totalTariff > 0) {
+        perDayRate = totalTariff / stayDays;
+      }
+
+      // 6. Explicit Room: 'room 204' or standalone 3-digit
+      let roomNumber: string | null = null;
+      const explicitRoom = cleaned.match(/\b(?:room|rm|r)\s*#?\s*(\d{1,4})\b/i);
+      if (explicitRoom) {
+        roomNumber = explicitRoom[1];
+        cleaned = cleaned.replace(explicitRoom[0], ' ');
+      } else {
+        const standaloneRoom = cleaned.match(/\b([1-9]\d{2})\b/);
+        if (standaloneRoom) {
+          roomNumber = standaloneRoom[1];
+          cleaned = cleaned.replace(standaloneRoom[0], ' ');
+        }
+      }
+
+      // 7. Tenant Name from remaining tokens
+      const noiseWords = new Set([
+        'assign', 'new', 'tenant', 'guest', 'add', 'joined', 'joining', 'join', 'to', 'in', 'room', 'rm',
+        'daily', 'basis', 'per', 'day', 'days', 'total', 'paid', 'sent', 'only', 'for', 'pending', 'pedning',
+        'bal', 'balance', 'fee', 'rent', 'and', '&', 'at'
+      ]);
+      const nameTokens = cleaned.split(/\s+/).filter(w => w && !noiseWords.has(w) && !/^\d+$/.test(w) && !/^[^\w]+$/.test(w));
+      const tenantName = nameTokens.join(' ').replace(/[^\w\s]/g, '').trim();
+
+      return {
+        type: 'assign' as const,
+        tenantName,
+        roomNumber,
+        isDaily: true,
+        stayDays,
+        perDayRate,
+        totalAmount: totalTariff,
+        paidAmount,
+        monthlyRent: 0,
+        advAmount: 0,
+        refundableDeposit: 0,
+        maintenanceFee: 0,
+        sharing: null,
+        checkInDate: customDate,
+        dueDay: null
+      };
     }
 
     // 1. Sharing: '3 share', '2 sharing', 'single'

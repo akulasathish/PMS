@@ -177,6 +177,33 @@ describe('Quick Ledger NLP Parser', () => {
         expect(result.dueDay).toBe(1);
       }
     });
+
+    it('should parse user daily stay example "kiran joined/add to room 204 daily basis per day 600 total 2 days paid only for 1 day 600 pedning 600"', () => {
+      const result = parseQuickLedgerText('kiran joined/add to room 204 daily basis per day 600 total 2 days paid only for 1 day 600 pedning 600');
+      expect(result.type).toBe('assign');
+      if (result.type === 'assign') {
+        expect(result.tenantName.toLowerCase()).toBe('kiran');
+        expect(result.roomNumber).toBe('204');
+        expect((result as any).isDaily).toBe(true);
+        expect((result as any).stayDays).toBe(2);
+        expect((result as any).perDayRate).toBe(600);
+        expect((result as any).totalAmount).toBe(1200);
+        expect((result as any).paidAmount).toBe(600);
+      }
+    });
+
+    it('should parse short daily stay "guest rajesh room 201 3 days 1500 paid"', () => {
+      const result = parseQuickLedgerText('guest rajesh room 201 3 days 1500 paid');
+      expect(result.type).toBe('assign');
+      if (result.type === 'assign') {
+        expect(result.tenantName.toLowerCase()).toBe('rajesh');
+        expect(result.roomNumber).toBe('201');
+        expect((result as any).isDaily).toBe(true);
+        expect((result as any).stayDays).toBe(3);
+        expect((result as any).totalAmount).toBe(1500);
+        expect((result as any).paidAmount).toBe(1500);
+      }
+    });
   });
 
   describe('Pending Dues Report Parsing', () => {

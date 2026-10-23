@@ -41,8 +41,14 @@ export interface QuickLedgerResult {
   dueDay?: number;
   sharing?: number;
   checkInDate?: string;
+  checkOutDate?: string;
   maintenanceFee?: number;
   refundableDeposit?: number;
+  isDaily?: boolean;
+  stayDays?: number;
+  perDayRate?: number;
+  totalTariff?: number;
+  paidAmount?: number;
   prevValues?: {
     checkIn?: string;
     dueDay?: number;
@@ -330,6 +336,95 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         return {
           success: false,
           message: `Room ${roomNumber} is at maximum capacity (${activeInRoom.length}/${cap} beds occupied: ${activeInRoom.map(b => b.guest_name).join(', ')}).`
+        };
+      }
+
+      // ==========================================
+      // 2b. IF DAILY BASIS GUEST (SHORT STAY)
+      // ==========================================
+      const isDaily = Boolean((parsed as any).isDaily);
+      if (isDaily) {
+        const stayDays = (parsed as any).stayDays || 1;
+        const perDayRate = (parsed as any).perDayRate || 0;
+        const totalAmount = (parsed as any).totalAmount || (stayDays * perDayRate);
+        const paidAmount = (parsed as any).paidAmount || 0;
+        const pendingDue = Math.max(0, totalAmount - paidAmount);
+
+        const effectiveCheckIn = parsedCheckIn || businessDate;
+        const inDate = new Date(effectiveCheckIn);
+        inDate.setDate(inDate.getDate() + stayDays);
+        const checkOut = inDate.toISOString().split('T')[0];
+
+        const formattedName = tenantName.charAt(0).toUpperCase() + tenantName.slice(1);
+        const bookingNotes = `Daily Basis: ${stayDays} Day${stayDays > 1 ? 's' : ''} @ ₹${perDayRate.toLocaleString('en-IN')}/day • Total: ₹${totalAmount.toLocaleString('en-IN')}`;
+
+        const { data: newBooking, error: bookErr } = await admin
+          .from('bookings')
+          .insert([{
+            property_id: activePropertyId,
+            room_id: targetRoom.id,
+            guest_name: formattedName,
+            check_in: effectiveCheckIn,
+            check_out: checkOut,
+            amount: totalAmount,
+            total_amount: totalAmount,
+            status: 'Checked In',
+            is_monthly: false,
+            rent_due_day: null,
+            billing_cycle_date: null,
+            monthly_rent: 0,
+            monthly_rate: 0,
+            security_deposit: 0,
+            notes: bookingNotes
+          }])
+          .select()
+          .single();
+
+        if (bookErr || !newBooking) {
+          return {
+            success: false,
+            message: `Failed to check in daily guest: ${bookErr?.message || 'Database error'}`
+          };
+        }
+
+        const paymentIds: string[] = [];
+        if (paidAmount > 0) {
+          const { data: payData } = await admin
+            .from('payments')
+            .insert([{
+              booking_id: newBooking.id,
+              property_id: activePropertyId,
+              amount: paidAmount,
+              method: 'Cash',
+              payment_method: 'Cash',
+              allocation: 'Daily Room Tariff',
+              transaction_id: 'DAILY-TARIFF-PAYMENT',
+              business_date: effectiveCheckIn
+            }])
+            .select('id')
+            .single();
+
+          if (payData) {
+            paymentIds.push(payData.id);
+          }
+        }
+
+        return {
+          success: true,
+          type: 'assign',
+          tenantName: formattedName,
+          roomNumber: targetRoom.room_number,
+          isDaily: true,
+          stayDays,
+          perDayRate,
+          totalTariff: totalAmount,
+          paidAmount,
+          newBalanceDue: pendingDue,
+          checkInDate: effectiveCheckIn,
+          checkOutDate: checkOut,
+          bookingId: newBooking.id,
+          paymentIds,
+          message: `Checked in Daily Guest ${formattedName} to Room ${targetRoom.room_number}! Stay: ${stayDays} Days (${effectiveCheckIn} to ${checkOut}) @ ₹${perDayRate.toLocaleString('en-IN')}/day • Total: ₹${totalAmount.toLocaleString('en-IN')} • Paid: ₹${paidAmount.toLocaleString('en-IN')} • Pending Due: ₹${pendingDue.toLocaleString('en-IN')}`
         };
       }
 

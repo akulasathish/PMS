@@ -3488,9 +3488,9 @@ export default function FrontOfficeTerminal() {
         return activeRoomBookings.some(booking => {
           const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
           const guestPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
-          const roomAmount = Number(booking.monthly_rent || booking.monthly_rate || 0);
+          const roomAmount = booking.is_monthly !== false ? Number(booking.monthly_rent || booking.monthly_rate || 0) : Number(booking.amount || booking.total_amount || 0);
           const totalCharged = roomAmount + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
-          const rentPaid = guestPayments.filter(p => p.allocation === 'Rent' || !p.allocation || !p.transaction_id?.toUpperCase().includes('DEPOSIT')).reduce((sum, p) => sum + Number(p.amount), 0);
+          const rentPaid = guestPayments.filter(p => p.allocation === 'Rent' || p.allocation === 'Daily Room Tariff' || !p.allocation || !p.transaction_id?.toUpperCase().includes('DEPOSIT')).reduce((sum, p) => sum + Number(p.amount), 0);
           return (totalCharged - rentPaid) > 0.01;
         });
       });
@@ -3533,7 +3533,8 @@ export default function FrontOfficeTerminal() {
       activeRoomBookings.forEach(booking => {
         const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
         const guestPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
-        const totalCharged = Number(booking.monthly_rent || booking.monthly_rate || 0) + Number(booking.security_deposit || 0) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
+        const roomCharge = booking.is_monthly !== false ? Number(booking.monthly_rent || booking.monthly_rate || 0) : Number(booking.amount || booking.total_amount || 0);
+        const totalCharged = roomCharge + Number(booking.security_deposit || 0) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
         const totalPaid = guestPayments.reduce((sum, p) => sum + Number(p.amount), 0);
         const due = totalCharged - totalPaid;
         if (due > 0) {
@@ -3965,7 +3966,8 @@ export default function FrontOfficeTerminal() {
                                 if (booking) {
                                   const guestIncidentals = incidentals.filter(inc => inc.booking_id === booking.id);
                                   const guestPayments = payments.filter(p => p.booking_id === booking.id && !p.is_void);
-                                  const totalCharged = Number(booking.monthly_rent || booking.monthly_rate || 0) + Number(booking.security_deposit || 0) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
+                                  const roomCharge = booking.is_monthly !== false ? Number(booking.monthly_rent || booking.monthly_rate || 0) : Number(booking.amount || booking.total_amount || 0);
+                                  const totalCharged = roomCharge + Number(booking.security_deposit || 0) + guestIncidentals.reduce((sum, inc) => sum + Number(inc.amount), 0);
                                   const totalPaid = guestPayments.reduce((sum, p) => sum + Number(p.amount), 0);
                                   const balanceDue = totalCharged - totalPaid;
 
@@ -5389,37 +5391,66 @@ export default function FrontOfficeTerminal() {
 
               {property?.property_category === 'PG' ? (
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                  {/* 1. TENANT OVERVIEW & NEXT RENT DUE DATE */}
-                  <div className="p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl space-y-2">
-                    <div className="flex justify-between items-center text-xs font-bold">
-                      <span className="text-zinc-400">Monthly Rent:</span>
-                      <span className="text-white font-mono">₹{Number(selectedBooking.monthly_rent || selectedBooking.monthly_rate || 0).toLocaleString('en-IN')}/mo</span>
+                  {/* 1. TENANT OVERVIEW & NEXT RENT DUE DATE / DAILY TARIFF */}
+                  {selectedBooking.is_monthly === false ? (
+                    <div className="p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl space-y-2">
+                      <div className="flex justify-between items-center text-xs font-bold">
+                        <span className="text-zinc-400">Stay Type:</span>
+                        <span className="text-amber-300 font-mono font-black uppercase text-[10px] bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30">Daily Basis Guest</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs font-bold">
+                        <span className="text-zinc-400">Total Room Tariff:</span>
+                        <span className="text-white font-mono font-black text-sm">₹{Number(selectedBooking.amount || selectedBooking.total_amount || 0).toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs font-bold">
+                        <span className="text-zinc-400">Stay Dates:</span>
+                        <span className="text-emerald-400 font-mono">{selectedBooking.check_in} &rarr; {selectedBooking.check_out}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs font-bold pt-2 border-t border-white/5">
+                        <span className="text-rose-400">Pending Balance:</span>
+                        <span className="text-rose-400 font-mono font-black">
+                          ₹{Math.max(0, Number(selectedBooking.amount || selectedBooking.total_amount || 0) - payments.filter(p => p.booking_id === selectedBooking.id && !p.is_void).reduce((s, p) => s + Number(p.amount), 0)).toLocaleString('en-IN')}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex justify-between items-center text-xs font-bold">
-                      <span className="text-zinc-400">Joining Date:</span>
-                      <span className="text-emerald-400 font-mono">{new Date(selectedBooking.check_in).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                  ) : (
+                    <div className="p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl space-y-2">
+                      <div className="flex justify-between items-center text-xs font-bold">
+                        <span className="text-zinc-400">Monthly Rent:</span>
+                        <span className="text-white font-mono">₹{Number(selectedBooking.monthly_rent || selectedBooking.monthly_rate || 0).toLocaleString('en-IN')}/mo</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs font-bold">
+                        <span className="text-zinc-400">Joining Date:</span>
+                        <span className="text-emerald-400 font-mono">{new Date(selectedBooking.check_in).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs font-bold pt-2 border-t border-white/5">
+                        <span className="text-amber-400">Next Rent Due Date:</span>
+                        <span className="text-amber-400 font-mono font-black">{getNextRentDueDateStr(selectedBooking)}</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between items-center text-xs font-bold pt-2 border-t border-white/5">
-                      <span className="text-amber-400">Next Rent Due Date:</span>
-                      <span className="text-amber-400 font-mono font-black">{getNextRentDueDateStr(selectedBooking)}</span>
-                    </div>
-                  </div>
+                  )}
 
                   {/* 2. LOG PAYMENT BUTTON WITH DUE DATE IN BRACKETS */}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
+                      const guestPayments = payments.filter(p => p.booking_id === selectedBooking.id && !p.is_void);
+                      const currentPaid = guestPayments.reduce((s, p) => s + Number(p.amount), 0);
+                      const defaultAmount = selectedBooking.is_monthly === false
+                        ? Math.max(0, Number(selectedBooking.amount || selectedBooking.total_amount || 0) - currentPaid)
+                        : Number(selectedBooking.monthly_rent || selectedBooking.monthly_rate || 0);
+
                       setActiveCheckoutBooking({
                         bookingId: selectedBooking.id,
                         roomId: selectedBooking.room_id,
                         guestName: selectedBooking.guest_name,
-                        amount: Number(selectedBooking.monthly_rent || selectedBooking.monthly_rate || 0)
+                        amount: defaultAmount
                       });
                     }}
                     className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 rounded-2xl text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg active:scale-95"
                   >
                     <Banknote size={16} />
-                    Log Payment (Due: {getNextRentDueDateStr(selectedBooking)})
+                    {selectedBooking.is_monthly === false ? 'Log Payment' : `Log Payment (Due: ${getNextRentDueDateStr(selectedBooking)})`}
                   </button>
 
                   {/* 3. ADVANCE & DEPOSIT BREAKDOWN (REFUNDABLE & MAINTENANCE) */}
