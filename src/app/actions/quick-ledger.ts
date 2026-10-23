@@ -3,9 +3,19 @@
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { parseQuickLedgerText, QuickLedgerItem } from '@/lib/quick-ledger-parser';
 
+export interface QuickLedgerDueItem {
+  bookingId: string;
+  guestName: string;
+  roomNumber: string;
+  monthlyRent: number;
+  paid: number;
+  due: number;
+  dueDay: number;
+}
+
 export interface QuickLedgerResult {
   success: boolean;
-  type?: 'revenue' | 'expense' | 'assign';
+  type?: 'revenue' | 'expense' | 'assign' | 'dues_report';
   message: string;
   error?: string;
   
@@ -28,6 +38,11 @@ export interface QuickLedgerResult {
   // Assign specific
   monthlyRent?: number;
   dueDay?: number;
+
+  // Dues report specific
+  totalDues?: number;
+  duesCount?: number;
+  duesList?: QuickLedgerDueItem[];
 }
 
 export async function processQuickLedger(input: string, propertyId?: string): Promise<QuickLedgerResult> {
@@ -59,6 +74,105 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
 
     // 3. Parse input
     const parsed = parseQuickLedgerText(input);
+
+    // ==========================================
+    // EXECUTE PENDING DUES REPORT
+    // ==========================================
+    if (parsed.type === 'dues_report') {
+      const [bookingsRes, roomsRes, paymentsRes, incidentalsRes] = await Promise.all([
+        admin
+          .from('bookings')
+          .select('id, guest_name, room_id, status, is_monthly, monthly_rent, monthly_rate, total_amount, rent_due_day, check_in')
+          .eq('property_id', activePropertyId)
+          .in('status', ['Checked In', 'Confirmed', 'in_house']),
+        admin
+          .from('rooms')
+          .select('id, room_number')
+          .eq('property_id', activePropertyId),
+        admin
+          .from('payments')
+          .select('booking_id, amount, allocation, is_void')
+          .eq('property_id', activePropertyId),
+        admin
+          .from('incidental_charges')
+          .select('booking_id, amount, description')
+          .eq('property_id', activePropertyId)
+      ]);
+
+      if (bookingsRes.error) {
+        return { success: false, message: `Database error querying bookings: ${bookingsRes.error.message}` };
+      }
+
+      const bookings = bookingsRes.data || [];
+      const rooms = roomsRes.data || [];
+      const payments = paymentsRes.data || [];
+      const incidentals = incidentalsRes.data || [];
+
+      const roomMap = new Map(rooms.map(r => [r.id, r.room_number?.toString() || '']));
+
+      // Group payments by booking_id (excluding deposits)
+      const rentPaymentsByBooking = new Map<string, number>();
+      for (const p of payments) {
+        if (!p.is_void && (p.allocation === 'Rent' || !p.allocation)) {
+          rentPaymentsByBooking.set(
+            p.booking_id,
+            (rentPaymentsByBooking.get(p.booking_id) || 0) + Number(p.amount || 0)
+          );
+        }
+      }
+
+      // Group incidentals by booking_id (excluding deposit charges)
+      const incidentalsByBooking = new Map<string, number>();
+      for (const inc of incidentals) {
+        if (!inc.description?.startsWith('Security Deposit')) {
+          incidentalsByBooking.set(
+            inc.booking_id,
+            (incidentalsByBooking.get(inc.booking_id) || 0) + Number(inc.amount || 0)
+          );
+        }
+      }
+
+      const duesList: QuickLedgerDueItem[] = [];
+
+      for (const b of bookings) {
+        const roomDisp = roomMap.get(b.room_id) || 'Unknown';
+        const monthlyRent = Number(b.monthly_rent || b.monthly_rate || (b.is_monthly ? 0 : b.total_amount) || 0);
+        const incAmt = incidentalsByBooking.get(b.id) || 0;
+        const totalCharged = monthlyRent + incAmt;
+        const rentPaid = rentPaymentsByBooking.get(b.id) || 0;
+        const due = Math.max(0, totalCharged - rentPaid);
+        const checkInDay = b.check_in ? parseInt(b.check_in.split('-')[2], 10) : 1;
+        const dueDay = (b as any).rent_due_day || (b as any).billing_cycle_date || checkInDay;
+
+        if (due > 0.01) {
+          duesList.push({
+            bookingId: b.id,
+            guestName: b.guest_name || 'Guest',
+            roomNumber: roomDisp,
+            monthlyRent,
+            paid: rentPaid,
+            due,
+            dueDay
+          });
+        }
+      }
+
+      // Sort by due amount descending
+      duesList.sort((a, b) => b.due - a.due);
+
+      const totalDues = duesList.reduce((sum, item) => sum + item.due, 0);
+
+      return {
+        success: true,
+        type: 'dues_report',
+        totalDues,
+        duesCount: duesList.length,
+        duesList,
+        message: duesList.length === 0
+          ? '🎉 All active tenants are cleared till date! No pending dues.'
+          : `Found ${duesList.length} tenant(s) with pending dues totaling ₹${totalDues.toLocaleString('en-IN')}.`
+      };
+    }
 
     // ==========================================
     // EXECUTE EXPENSE

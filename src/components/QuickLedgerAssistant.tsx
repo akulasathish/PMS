@@ -16,7 +16,8 @@ import {
   Loader2,
   Building2,
   Sparkles,
-  UserPlus
+  UserPlus,
+  FileText
 } from 'lucide-react';
 import { processQuickLedger, undoQuickLedgerAction, QuickLedgerResult } from '@/app/actions/quick-ledger';
 import { useRouter, usePathname } from 'next/navigation';
@@ -225,12 +226,12 @@ export default function QuickLedgerAssistant() {
   };
 
   const suggestions = [
+    'report of pending dues',
+    'add akshith to room 204',
     'assign ravi room 201 rent 8000 adv 2000',
     'sathish 101 5000 rom fee and 2000 adv paid',
     'expences 700 vegitbales 200 oil 800 varalakshmi traders',
-    'revenue room 103 kiran 10000',
-    'water tanker expences 22000',
-    'cleaner ramesh salary 8000 expences'
+    'water tanker expences 22000'
   ];
 
   if (!pathname?.startsWith('/dashboard')) {
@@ -449,6 +450,80 @@ export default function QuickLedgerAssistant() {
                                     {msg.undoState === 'undone' ? 'Undone' : msg.undoState === 'undoing' ? 'Undoing...' : 'Undo'}
                                   </button>
                                 </div>
+                              </div>
+                            ) : msg.result.type === 'dues_report' ? (
+                              /* PENDING DUES REPORT CARD */
+                              <div className="bg-amber-950/25 border border-amber-500/30 rounded-2xl p-4 shadow-lg space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-1.5 text-amber-400 font-black text-[11px] uppercase tracking-wider">
+                                    <FileText size={15} />
+                                    <span>Pending Dues Report</span>
+                                  </div>
+                                  <span className="text-[10px] text-zinc-500 font-mono">{msg.timestamp}</span>
+                                </div>
+
+                                {msg.result.duesCount === 0 ? (
+                                  <div className="bg-black/40 rounded-xl p-4 border border-white/5 text-center space-y-1">
+                                    <div className="text-emerald-400 font-bold text-sm">🎉 All Clear!</div>
+                                    <p className="text-[11px] text-zinc-400">Every active tenant is cleared till date with ₹0 pending dues.</p>
+                                  </div>
+                                ) : (
+                                  <>
+                                    {/* Summary Banner */}
+                                    <div className="bg-black/50 rounded-xl p-3 border border-amber-500/20 flex items-center justify-between">
+                                      <div>
+                                        <div className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">Total Pending Dues</div>
+                                        <div className="text-lg font-black text-amber-400">
+                                          ₹{msg.result.totalDues?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                        </div>
+                                      </div>
+                                      <div className="text-right">
+                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold">
+                                          {msg.result.duesCount} {msg.result.duesCount === 1 ? 'Tenant' : 'Tenants'}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {/* Tenant Dues List */}
+                                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                                      {msg.result.duesList?.map((d, idx) => (
+                                        <div
+                                          key={idx}
+                                          className="bg-black/40 rounded-xl p-2.5 px-3 border border-white/5 hover:border-amber-500/30 transition-all flex items-center justify-between"
+                                        >
+                                          <div>
+                                            <div className="font-bold text-white text-xs capitalize flex items-center gap-1.5">
+                                              <span>{d.guestName}</span>
+                                              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-300">
+                                                Room {d.roomNumber}
+                                              </span>
+                                            </div>
+                                            <div className="text-[10px] text-zinc-400 mt-0.5">
+                                              Rent: ₹{d.monthlyRent.toLocaleString('en-IN')}/mo • Due day: {d.dueDay}th
+                                            </div>
+                                          </div>
+
+                                          <div className="text-right">
+                                            <div className="text-xs font-black text-amber-400">
+                                              ₹{d.due.toLocaleString('en-IN')}
+                                            </div>
+                                            {d.paid > 0 ? (
+                                              <div className="text-[9px] text-emerald-400">
+                                                Paid: ₹{d.paid.toLocaleString('en-IN')}
+                                              </div>
+                                            ) : (
+                                              <div className="text-[9px] text-zinc-500">Unpaid</div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+
+                                    <div className="pt-1 text-[10px] text-zinc-500 flex items-center justify-between">
+                                      <span>To pay: <span className="text-zinc-400 italic">"[name] [room] [amt]"</span></span>
+                                    </div>
+                                  </>
+                                )}
                               </div>
                             ) : (
                               /* EXPENSE SUCCESS CARD */

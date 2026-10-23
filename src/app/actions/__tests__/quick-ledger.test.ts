@@ -132,4 +132,26 @@ describe('Quick Ledger NLP Parser', () => {
       }
     });
   });
+
+  describe('Pending Dues Report Parsing', () => {
+    it('should parse "i need report of pending dues"', () => {
+      const result = parseQuickLedgerText('i need report of pending dues');
+      expect(result.type).toBe('dues_report');
+    });
+
+    it('should parse "pending dues report"', () => {
+      const result = parseQuickLedgerText('pending dues report');
+      expect(result.type).toBe('dues_report');
+    });
+
+    it('should parse "who has pending dues"', () => {
+      const result = parseQuickLedgerText('who has pending dues');
+      expect(result.type).toBe('dues_report');
+    });
+
+    it('should parse simple "pending dues"', () => {
+      const result = parseQuickLedgerText('pending dues');
+      expect(result.type).toBe('dues_report');
+    });
+  });
 });

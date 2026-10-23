@@ -38,7 +38,15 @@ export function parseQuickLedgerText(input: string) {
   const text = (input || '').trim();
   const lower = text.toLowerCase();
 
-  // 0. ASSIGN / NEW TENANT CHECK
+  // 0a. PENDING DUES REPORT CHECK
+  const isDuesReport = /(?:^|\b)(?:(?:report\s+of\s+)?pending\s+dues|pending\s+due|dues\s+report|due\s+report|pending\s+rent|pending\s+list|who\s+has\s+dues|who\s+has\s+pending\s+dues|dues\s+list|show\s+dues|show\s+pending\s+dues|check\s+dues|list\s+dues)(?:\b|$)/i.test(lower);
+  if (isDuesReport) {
+    return {
+      type: 'dues_report' as const
+    };
+  }
+
+  // 0b. ASSIGN / NEW TENANT CHECK
   const isAssign = /\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining)\b/i.test(lower) ||
                    (/\badd\b/i.test(lower) && (/\b(?:room|rm|r)\b/i.test(lower) || /\bto\b/i.test(lower) || /\b\d{3}\b/.test(lower)));
   if (isAssign) {
