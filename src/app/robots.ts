@@ -23,7 +23,7 @@ export default function robots(): MetadataRoute.Robots {
         allow: '/',
       },
     ],
-    sitemap: 'https://pg.staysync.online/sitemap.xml',
-    host: 'https://pg.staysync.online',
+    sitemap: 'https://staysync.online/sitemap.xml',
+    host: 'https://staysync.online',
   };
 }

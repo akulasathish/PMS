@@ -635,6 +635,12 @@ export default function FrontOfficeTerminal() {
 
   useEffect(() => {
     loadDashboardData();
+
+    const handleQuickLedger = () => {
+      loadDashboardData();
+    };
+    window.addEventListener('pms_quick_ledger_updated', handleQuickLedger);
+    return () => window.removeEventListener('pms_quick_ledger_updated', handleQuickLedger);
   }, [loadDashboardData]);
 
   // Global Realtime listener for ROOM status changes (Housekeeping Sync)
