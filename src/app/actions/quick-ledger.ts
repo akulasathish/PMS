@@ -120,14 +120,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       if (!roomNumber) {
         return {
           success: false,
-          message: 'Please specify room number. Example: "assign ravi room 201 rent 8000 adv 2000"'
-        };
-      }
-
-      if (!monthlyRent || monthlyRent <= 0) {
-        return {
-          success: false,
-          message: 'Please specify monthly rent. Example: "assign ravi room 201 rent 8000 adv 2000"'
+          message: 'Please specify room number. Example: "assign ravi room 201 rent 8000 adv 2000" or "add akshith to room 204"'
         };
       }
 
@@ -149,7 +142,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       // 2. Check room capacity
       const { data: activeInRoom } = await admin
         .from('bookings')
-        .select('id, guest_name')
+        .select('id, guest_name, monthly_rent, monthly_rate')
         .eq('room_id', targetRoom.id)
         .in('status', ['Checked In', 'Confirmed', 'in_house']);
 
@@ -161,14 +154,25 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         };
       }
 
-      // 3. Calculate dates
+      // 3. Resolve monthly rent (if not specified, inherit from roommate or default to 8,000)
+      let effectiveMonthlyRent = monthlyRent;
+      if (!effectiveMonthlyRent || effectiveMonthlyRent <= 0) {
+        const roommateWithRent = (activeInRoom || []).find(b => Number(b.monthly_rent || b.monthly_rate || 0) > 0);
+        if (roommateWithRent) {
+          effectiveMonthlyRent = Number(roommateWithRent.monthly_rent || roommateWithRent.monthly_rate);
+        } else {
+          effectiveMonthlyRent = 8000;
+        }
+      }
+
+      // 4. Calculate dates
       const [inYear, inMonth, inDay] = businessDate.split('-').map(Number);
       const checkOut = `${inYear + 1}-${String(inMonth).padStart(2, '0')}-${String(inDay).padStart(2, '0')}`;
       const finalDueDay = dueDay || inDay;
       const deposit = advAmount || 0;
       const formattedName = tenantName.charAt(0).toUpperCase() + tenantName.slice(1);
 
-      // 4. Create booking
+      // 5. Create booking
       const { data: newBooking, error: bookErr } = await admin
         .from('bookings')
         .insert([{
@@ -183,8 +187,8 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
           is_monthly: true,
           rent_due_day: finalDueDay,
           billing_cycle_date: finalDueDay,
-          monthly_rent: monthlyRent,
-          monthly_rate: monthlyRent,
+          monthly_rent: effectiveMonthlyRent,
+          monthly_rate: effectiveMonthlyRent,
           security_deposit: deposit
         }])
         .select()
@@ -197,7 +201,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         };
       }
 
-      // 5. If advance / deposit paid, record payment
+      // 6. If advance / deposit paid, record payment
       const paymentIds: string[] = [];
       if (deposit > 0) {
         const { data: payData } = await admin
@@ -225,12 +229,12 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         type: 'assign',
         tenantName: formattedName,
         roomNumber: targetRoom.room_number,
-        monthlyRent: monthlyRent,
+        monthlyRent: effectiveMonthlyRent,
         advPaid: deposit,
         dueDay: finalDueDay,
         bookingId: newBooking.id,
         paymentIds,
-        message: `Assigned ${formattedName} to Room ${targetRoom.room_number}! Monthly Rent: ₹${monthlyRent.toLocaleString('en-IN')}, Deposit: ₹${deposit.toLocaleString('en-IN')}, Rent due: ${finalDueDay}th of every month.`
+        message: `Assigned ${formattedName} to Room ${targetRoom.room_number}! Monthly Rent: ₹${effectiveMonthlyRent.toLocaleString('en-IN')}, Deposit: ₹${deposit.toLocaleString('en-IN')}, Rent due: ${finalDueDay}th of every month.`
       };
     }
 

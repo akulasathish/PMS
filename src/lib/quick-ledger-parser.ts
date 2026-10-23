@@ -39,9 +39,10 @@ export function parseQuickLedgerText(input: string) {
   const lower = text.toLowerCase();
 
   // 0. ASSIGN / NEW TENANT CHECK
-  const isAssign = /\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining)\b/i.test(lower);
+  const isAssign = /\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining)\b/i.test(lower) ||
+                   (/\badd\b/i.test(lower) && (/\b(?:room|rm|r)\b/i.test(lower) || /\bto\b/i.test(lower) || /\b\d{3}\b/.test(lower)));
   if (isAssign) {
-    let cleaned = lower.replace(/\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining|to)\b/gi, ' ').trim();
+    let cleaned = lower.replace(/\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining|add|to|in)\b/gi, ' ').trim();
 
     // Explicit Room: 'room 201' or 'rm 201'
     let roomNumber: string | null = null;

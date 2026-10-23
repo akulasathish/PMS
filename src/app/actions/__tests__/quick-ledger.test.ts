@@ -109,6 +109,17 @@ describe('Quick Ledger NLP Parser', () => {
       }
     });
 
+    it('should parse "add akshith to room 204"', () => {
+      const result = parseQuickLedgerText('add akshith to room 204');
+      expect(result.type).toBe('assign');
+      if (result.type === 'assign') {
+        expect(result.tenantName.toLowerCase()).toBe('akshith');
+        expect(result.roomNumber).toBe('204');
+        expect(result.monthlyRent).toBe(0);
+        expect(result.advAmount).toBe(0);
+      }
+    });
+
     it('should parse "assign sathish 101 rent 7500 adv 1500 due 28"', () => {
       const result = parseQuickLedgerText('assign sathish 101 rent 7500 adv 1500 due 28');
       expect(result.type).toBe('assign');
