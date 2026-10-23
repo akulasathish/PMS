@@ -1148,8 +1148,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
 
       // Execute checkout
       const checkOutUpdates: any = {
-        status: 'Checked Out',
-        actual_check_out: new Date().toISOString()
+        status: 'Checked Out'
       };
 
       if (isForce && balanceDue > 0.01) {
@@ -1471,7 +1470,7 @@ export async function undoQuickLedgerAction(payload: {
     if (payload.type === 'checkout' && payload.bookingId) {
       const { error: undoErr } = await admin
         .from('bookings')
-        .update({ status: 'Checked In', actual_check_out: null })
+        .update({ status: 'Checked In' })
         .eq('id', payload.bookingId);
       if (undoErr) return { success: false, message: undoErr.message };
       return { success: true, message: 'Checkout undone. Resident status restored to Checked In.' };
