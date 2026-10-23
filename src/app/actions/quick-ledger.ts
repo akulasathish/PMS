@@ -29,6 +29,7 @@ export interface QuickLedgerResult {
   paymentIds?: string[];
   bookingId?: string;
   advAmountAdded?: number;
+  paymentDate?: string;
 
   // Expense specific
   items?: QuickLedgerItem[];
@@ -39,6 +40,9 @@ export interface QuickLedgerResult {
   monthlyRent?: number;
   dueDay?: number;
   sharing?: number;
+  checkInDate?: string;
+  maintenanceFee?: number;
+  refundableDeposit?: number;
 
   // Dues report specific
   totalDues?: number;
@@ -268,19 +272,29 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
     // EXECUTE ASSIGN (NEW TENANT ADMISSION)
     // ==========================================
     if (parsed.type === 'assign') {
-      const { tenantName, roomNumber, monthlyRent, advAmount, sharing, dueDay } = parsed;
+      const {
+        tenantName,
+        roomNumber,
+        monthlyRent,
+        advAmount,
+        refundableDeposit: parsedRefundable,
+        maintenanceFee: parsedMaintenance,
+        sharing,
+        checkInDate: parsedCheckIn,
+        dueDay
+      } = parsed as any;
 
       if (!tenantName) {
         return {
           success: false,
-          message: 'Please specify tenant name. Example: "assign ravi room 201 rent 8000 adv 2000"'
+          message: 'Please specify tenant name. Example: "201 srikanth 9000 joined on 1st october 1000 maintainance and 1500 refundable ammount"'
         };
       }
 
       if (!roomNumber) {
         return {
           success: false,
-          message: `Please specify which room to assign ${tenantName} to. Example: "add ${tenantName} to room 201 3 share 9000 room fee and 2k advance"`
+          message: `Please specify which room to assign ${tenantName} to. Example: "201 ${tenantName} 9000 joined on 1st october 1000 maintainance and 1500 refundable ammount"`
         };
       }
 
@@ -325,32 +339,42 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         }
       }
 
-      // 4. Calculate dates
-      const [inYear, inMonth, inDay] = businessDate.split('-').map(Number);
+      // 4. Calculate dates and fees
+      const effectiveCheckIn = parsedCheckIn || businessDate;
+      const [inYear, inMonth, inDay] = effectiveCheckIn.split('-').map(Number);
       const checkOut = `${inYear + 1}-${String(inMonth).padStart(2, '0')}-${String(inDay).padStart(2, '0')}`;
       const finalDueDay = dueDay || inDay;
-      const deposit = advAmount || 0;
+
+      const maintenanceFee = parsedMaintenance || 0;
+      const refundableDeposit = parsedRefundable || advAmount || 0;
       const formattedName = tenantName.charAt(0).toUpperCase() + tenantName.slice(1);
 
-      // 5. Create booking with custom rent and sharing notes
+      // Build notes string for clear display in profile
+      const noteParts: string[] = [];
+      if (sharing) noteParts.push(`${sharing}-Share Bed`);
+      if (maintenanceFee > 0) noteParts.push(`Maintenance: ₹${maintenanceFee.toLocaleString('en-IN')}`);
+      if (refundableDeposit > 0) noteParts.push(`Refundable: ₹${refundableDeposit.toLocaleString('en-IN')}`);
+      const bookingNotes = noteParts.join(' • ') || undefined;
+
+      // 5. Create booking with custom rent, refundable deposit and notes
       const { data: newBooking, error: bookErr } = await admin
         .from('bookings')
         .insert([{
           property_id: activePropertyId,
           room_id: targetRoom.id,
           guest_name: formattedName,
-          check_in: businessDate,
+          check_in: effectiveCheckIn,
           check_out: checkOut,
-          amount: deposit,
-          total_amount: deposit,
+          amount: refundableDeposit,
+          total_amount: refundableDeposit,
           status: 'Checked In',
           is_monthly: true,
           rent_due_day: finalDueDay,
           billing_cycle_date: finalDueDay,
           monthly_rent: effectiveMonthlyRent,
           monthly_rate: effectiveMonthlyRent,
-          security_deposit: deposit,
-          notes: sharing ? `${sharing}-share bed` : undefined
+          security_deposit: refundableDeposit,
+          notes: bookingNotes
         }])
         .select()
         .single();
@@ -362,41 +386,79 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         };
       }
 
-      // 6. If advance / deposit paid, record payment
       const paymentIds: string[] = [];
-      if (deposit > 0) {
-        const { data: payData } = await admin
+
+      // 6a. If maintenance fee paid, record incidental charge & payment
+      if (maintenanceFee > 0) {
+        await admin
+          .from('incidental_charges')
+          .insert([{
+            booking_id: newBooking.id,
+            property_id: activePropertyId,
+            description: 'Non-Refundable Maintenance Fee',
+            amount: maintenanceFee,
+            category: 'Maintenance',
+            business_date: effectiveCheckIn
+          }]);
+
+        const { data: maintPay } = await admin
           .from('payments')
           .insert([{
             booking_id: newBooking.id,
             property_id: activePropertyId,
-            amount: deposit,
+            amount: maintenanceFee,
             method: 'UPI',
             payment_method: 'UPI',
-            allocation: 'Security Deposit',
-            transaction_id: 'PREPAID-DEPOSIT-AT-CREATION',
-            business_date: businessDate
+            allocation: 'Maintenance Fee (Revenue)',
+            transaction_id: 'MAINTENANCE-FEE-AT-CREATION',
+            business_date: effectiveCheckIn
           }])
           .select('id')
           .single();
 
-        if (payData) {
-          paymentIds.push(payData.id);
+        if (maintPay) {
+          paymentIds.push(maintPay.id);
         }
       }
 
+      // 6b. If refundable deposit paid, record payment
+      if (refundableDeposit > 0) {
+        const { data: depPay } = await admin
+          .from('payments')
+          .insert([{
+            booking_id: newBooking.id,
+            property_id: activePropertyId,
+            amount: refundableDeposit,
+            method: 'UPI',
+            payment_method: 'UPI',
+            allocation: 'Security Deposit',
+            transaction_id: 'REFUNDABLE-DEPOSIT-AT-CREATION',
+            business_date: effectiveCheckIn
+          }])
+          .select('id')
+          .single();
+
+        if (depPay) {
+          paymentIds.push(depPay.id);
+        }
+      }
+
+      const totalAdvance = refundableDeposit + maintenanceFee;
       return {
         success: true,
         type: 'assign',
         tenantName: formattedName,
         roomNumber: targetRoom.room_number,
         monthlyRent: effectiveMonthlyRent,
-        advPaid: deposit,
+        advPaid: totalAdvance,
+        refundableDeposit,
+        maintenanceFee,
         dueDay: finalDueDay,
         sharing: sharing || undefined,
+        checkInDate: effectiveCheckIn,
         bookingId: newBooking.id,
         paymentIds,
-        message: `Assigned ${formattedName} to Room ${targetRoom.room_number}! ${sharing ? sharing + '-Share Bed • ' : ''}Rent: ₹${effectiveMonthlyRent.toLocaleString('en-IN')}/mo, Deposit: ₹${deposit.toLocaleString('en-IN')}, Rent due: ${finalDueDay}th of every month.`
+        message: `Assigned ${formattedName} to Room ${targetRoom.room_number}! Joined: ${effectiveCheckIn} • Rent: ₹${effectiveMonthlyRent.toLocaleString('en-IN')}/mo • Refundable: ₹${refundableDeposit.toLocaleString('en-IN')} • Maintenance: ₹${maintenanceFee.toLocaleString('en-IN')}.`
       };
     }
 
@@ -405,6 +467,8 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
     // ==========================================
     if (parsed.type === 'revenue') {
       const { roomNumber, tenantName, feeAmount, advAmount, totalAmount } = parsed;
+      const effectivePaymentDate = (parsed as any).paymentDate || businessDate;
+      const isBackdated = Boolean((parsed as any).paymentDate);
 
       if (totalAmount <= 0) {
         return {
@@ -491,7 +555,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       const roomDisp = matchedBooking.room_number || roomNumber || 'Unknown';
 
       // ============================================================
-      // GUARDRAIL: Prevent false rent collections if cleared till date
+      // GUARDRAIL / BACKDATE CHECK
       // ============================================================
       const [allPaymentsRes, allIncidentalsRes] = await Promise.all([
         admin.from('payments').select('amount, allocation, is_void').eq('booking_id', matchedBooking.id),
@@ -518,11 +582,11 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       const dueDay = (matchedBooking as any).rent_due_day || (matchedBooking as any).billing_cycle_date || checkInDay;
       const todayDay = parseInt(businessDate.split('-')[2], 10);
 
-      // If tenant has ₹0 pending rent due, today is before their rent due day, and user entered room rent (feeAmount > 0)
-      if (feeAmount > 0 && currentBalanceDue <= 0.01 && todayDay < dueDay) {
+      // Only warn if tenant has ₹0 pending rent due, today is before dueDay, payment is NOT backdated, and input didn't explicitly specify 'paid' or 'fee'
+      if (!isBackdated && feeAmount > 0 && currentBalanceDue <= 0.01 && todayDay < dueDay && !input.toLowerCase().includes('paid')) {
         return {
           success: false,
-          message: `⚠️ ${matchedBooking.guest_name} (Room ${roomDisp}) has ₹0 pending rent due! Rent is already cleared till date (Next rent due date: ${dueDay}th). If this payment is for security deposit or advance, please specify 'adv' (e.g. "${matchedBooking.guest_name} ${roomDisp} ${feeAmount} adv").`
+          message: `⚠️ ${matchedBooking.guest_name} (Room ${roomDisp}) has ₹0 pending rent due! Rent is already cleared till date (Next rent due date: ${dueDay}th). If this payment was made earlier (e.g. on 1st), type "paid on 1st". If for security deposit or advance, specify 'adv' (e.g. "${matchedBooking.guest_name} ${roomDisp} ${feeAmount} adv").`
         };
       }
 
@@ -538,7 +602,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
           method: 'UPI',
           payment_method: 'UPI',
           allocation: 'Rent',
-          business_date: businessDate,
+          business_date: effectivePaymentDate,
           transaction_id: 'QUICK-LEDGER-FEE'
         });
       }
@@ -552,7 +616,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
           method: 'UPI',
           payment_method: 'UPI',
           allocation: 'Security Deposit',
-          business_date: businessDate,
+          business_date: effectivePaymentDate,
           transaction_id: 'QUICK-LEDGER-ADV'
         });
       }
@@ -593,11 +657,12 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         feePaid: feeAmount,
         advPaid: advAmount,
         totalPaid: totalAmount,
+        paymentDate: effectivePaymentDate,
         newBalanceDue,
         paymentIds,
         bookingId: matchedBooking.id,
         advAmountAdded: advAmount,
-        message: `Recorded payment for ${matchedBooking.guest_name} (Room ${roomDisp}): ₹${feeAmount.toLocaleString('en-IN')} Room Fee${advAmount > 0 ? ' + ₹' + advAmount.toLocaleString('en-IN') + ' Advance' : ''}. Updated Pending Due: ₹${newBalanceDue.toLocaleString('en-IN')}`
+        message: `Recorded payment for ${matchedBooking.guest_name} (Room ${roomDisp}) on ${effectivePaymentDate}: ₹${feeAmount.toLocaleString('en-IN')} Room Fee${advAmount > 0 ? ' + ₹' + advAmount.toLocaleString('en-IN') + ' Advance' : ''}. Updated Pending Due: ₹${newBalanceDue.toLocaleString('en-IN')}`
       };
     }
 
@@ -646,6 +711,7 @@ export async function undoQuickLedgerAction(payload: {
         await admin.from('payments').delete().in('id', payload.ids);
       }
       if (payload.bookingId) {
+        await admin.from('incidental_charges').delete().eq('booking_id', payload.bookingId);
         const { error: delErr } = await admin.from('bookings').delete().eq('id', payload.bookingId);
         if (delErr) return { success: false, message: delErr.message };
       }

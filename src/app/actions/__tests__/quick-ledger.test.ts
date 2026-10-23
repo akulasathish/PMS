@@ -84,6 +84,15 @@ describe('Quick Ledger NLP Parser', () => {
       expect(result.feeAmount).toBe(7000);
       expect(result.totalAmount).toBe(7000);
     });
+
+    it('should parse backdated payment "srikanth rom 201 paid 9000 on 1st"', () => {
+      const result = parseQuickLedgerText('srikanth rom 201 paid 9000 on 1st');
+      expect(result.type).toBe('revenue');
+      expect(result.roomNumber).toBe('201');
+      expect(result.tenantName?.toLowerCase()).toContain('srikanth');
+      expect(result.feeAmount).toBe(9000);
+      expect(result.paymentDate).toMatch(/\d{4}-\d{2}-01/);
+    });
   });
 
   describe('Tenant Admission / Assign Parsing', () => {
@@ -152,6 +161,20 @@ describe('Quick Ledger NLP Parser', () => {
         expect(result.monthlyRent).toBe(7500);
         expect(result.advAmount).toBe(1500);
         expect(result.dueDay).toBe(28);
+      }
+    });
+
+    it('should parse user example "201 srikanth 9000 joined on 1st october 1000 maintainance and 1500 refundable ammount"', () => {
+      const result = parseQuickLedgerText('201 srikanth 9000 joined on 1st october 1000 maintainance and 1500 refundable ammount');
+      expect(result.type).toBe('assign');
+      if (result.type === 'assign') {
+        expect(result.tenantName.toLowerCase()).toBe('srikanth');
+        expect(result.roomNumber).toBe('201');
+        expect(result.monthlyRent).toBe(9000);
+        expect(result.maintenanceFee).toBe(1000);
+        expect(result.refundableDeposit).toBe(1500);
+        expect(result.checkInDate).toMatch(/\d{4}-10-01/);
+        expect(result.dueDay).toBe(1);
       }
     });
   });

@@ -38,6 +38,32 @@ export function parseQuickLedgerText(input: string) {
   const text = (input || '').trim();
   const lower = text.toLowerCase();
 
+  // Date extraction: 'on 1st', 'on 1st october', 'joined on 1st october', 'paid on 1st', 'on 5th', etc.
+  const months: Record<string, number> = {
+    jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
+    apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
+    aug: 8, august: 8, sep: 9, sept: 9, september: 9, oct: 10, october: 10,
+    nov: 11, november: 11, dec: 12, december: 12
+  };
+
+  let customDate: string | null = null;
+  let customDay: number | null = null;
+  let dateRawStr = '';
+
+  const dateMatch = lower.match(/(?:(?:joined|paid)\s+)?on\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s+([a-z]+))?/i);
+  if (dateMatch) {
+    const day = parseInt(dateMatch[1], 10);
+    const now = new Date();
+    const year = now.getFullYear();
+    let month = now.getMonth() + 1;
+    if (dateMatch[2] && months[dateMatch[2]]) {
+      month = months[dateMatch[2]];
+    }
+    customDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    customDay = day;
+    dateRawStr = dateMatch[0];
+  }
+
   // 0a. PENDING DUES REPORT CHECK
   const isDuesReport = /(?:^|\b)(?:(?:report\s+of\s+)?pending\s+dues|pending\s+due|dues\s+report|due\s+report|pending\s+rent|pending\s+list|who\s+has\s+dues|who\s+has\s+pending\s+dues|dues\s+list|show\s+dues|show\s+pending\s+dues|check\s+dues|list\s+dues)(?:\b|$)/i.test(lower);
   if (isDuesReport) {
@@ -55,10 +81,14 @@ export function parseQuickLedgerText(input: string) {
   }
 
   // 0c. ASSIGN / NEW TENANT CHECK
-  const isAssign = /\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining)\b/i.test(lower) ||
-                   (/\badd\b/i.test(lower) && (/\b(?:room|rm|r)\b/i.test(lower) || /\bto\b/i.test(lower) || /\b\d{3}\b/.test(lower) || /\bshare\b/i.test(lower)));
+  const isAssign = /\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining|joined)\b/i.test(lower) ||
+                   (/\badd\b/i.test(lower) && (/\b(?:room|rm|r)\b/i.test(lower) || /\bto\b/i.test(lower) || /\b\d{3}\b/.test(lower) || /\bshare\b/i.test(lower))) ||
+                   /\b(?:maintainance|maintenance|refundable)\b/i.test(lower);
   if (isAssign) {
     let cleaned = lower;
+    if (dateRawStr) {
+      cleaned = cleaned.replace(dateRawStr, ' ');
+    }
 
     // 1. Sharing: '3 share', '2 sharing', 'single'
     let sharing: number | null = null;
@@ -71,23 +101,23 @@ export function parseQuickLedgerText(input: string) {
       cleaned = cleaned.replace(/\bsingle\s*(?:share|room|bed)?\b/gi, ' ');
     }
 
-    cleaned = cleaned.replace(/\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining|add|to|in)\b/gi, ' ').trim();
-
-    // 2. Advance / Deposit: '2k advanve', 'adv 2000', '2000 adv'
-    let advAmount = 0;
-    const advAfter = cleaned.match(/\b(?:adv|advance|advan[cv]e|deposit|sec\s*deposit)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
-    if (advAfter) {
-      advAmount = parseFloat(advAfter[1]) * (advAfter[2] ? 1000 : 1);
-      cleaned = cleaned.replace(advAfter[0], ' ');
-    } else {
-      const advBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:adv|advance|advan[cv]e|deposit|sec\s*deposit)\b/i);
-      if (advBefore) {
-        advAmount = parseFloat(advBefore[1]) * (advBefore[2] ? 1000 : 1);
-        cleaned = cleaned.replace(advBefore[0], ' ');
-      }
+    // 2. Explicit Room: 'room 201' or 'rm 201'
+    let roomNumber: string | null = null;
+    const explicitRoom = cleaned.match(/\b(?:room|rm|r)\s*#?\s*(\d{1,4})\b/i);
+    if (explicitRoom) {
+      roomNumber = explicitRoom[1];
+      cleaned = cleaned.replace(explicitRoom[0], ' ');
     }
 
-    // 3. Monthly Rent / Room Fee: '9000 room fee', '9000 rent', 'rent 9000', 'room fee 9000'
+    // 3. Due Day: 'due 28' or 'due day 28' or from date
+    let dueDay: number | null = customDay;
+    const dueMatch = cleaned.match(/\b(?:due|cycle|due\s*day|day)\s*[:=]?\s*(\d{1,2})\b/i);
+    if (dueMatch) {
+      dueDay = parseInt(dueMatch[1], 10);
+      cleaned = cleaned.replace(dueMatch[0], ' ');
+    }
+
+    // 4. Monthly Rent / Room Fee (check prefix 'rent 8000' first, then suffix '8000 rent')
     let monthlyRent = 0;
     const rentAfter = cleaned.match(/\b(?:rent|monthly|rom\s*fee|room\s*fee|fee|feee)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
     if (rentAfter) {
@@ -101,23 +131,35 @@ export function parseQuickLedgerText(input: string) {
       }
     }
 
-    // 4. Explicit Room: 'room 201' or 'rm 201'
-    let roomNumber: string | null = null;
-    const explicitRoom = cleaned.match(/\b(?:room|rm|r)\s*#?\s*(\d{1,4})\b/i);
-    if (explicitRoom) {
-      roomNumber = explicitRoom[1];
-      cleaned = cleaned.replace(explicitRoom[0], ' ');
+    // 5. Maintenance Fee (Non-refundable) (check prefix 'maintainance 1000' first, then suffix '1000 maintainance')
+    let maintenanceFee = 0;
+    const maintAfter = cleaned.match(/\b(?:maintainance|maintenance|non\s*refundable)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+    if (maintAfter) {
+      maintenanceFee = parseFloat(maintAfter[1]) * (maintAfter[2] ? 1000 : 1);
+      cleaned = cleaned.replace(maintAfter[0], ' ');
+    } else {
+      const maintBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:maintainance|maintenance|non\s*refundable)\b/i);
+      if (maintBefore) {
+        maintenanceFee = parseFloat(maintBefore[1]) * (maintBefore[2] ? 1000 : 1);
+        cleaned = cleaned.replace(maintBefore[0], ' ');
+      }
     }
 
-    // 5. Due Day: 'due 28' or 'due day 28' or 'cycle 28'
-    let dueDay: number | null = null;
-    const dueMatch = cleaned.match(/\b(?:due|cycle|due\s*day|day)\s*[:=]?\s*(\d{1,2})\b/i);
-    if (dueMatch) {
-      dueDay = parseInt(dueMatch[1], 10);
-      cleaned = cleaned.replace(dueMatch[0], ' ');
+    // 6. Refundable Security Deposit / Advance (check prefix 'adv 2000' first, then suffix '2000 adv')
+    let refundableDeposit = 0;
+    const refAfter = cleaned.match(/\b(?:refundable\s*(?:ammount|amount|deposit)?|security\s*deposit|sec\s*deposit|adv|advance|advan[cv]e)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+    if (refAfter) {
+      refundableDeposit = parseFloat(refAfter[1]) * (refAfter[2] ? 1000 : 1);
+      cleaned = cleaned.replace(refAfter[0], ' ');
+    } else {
+      const refBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:refundable\s*(?:ammount|amount|deposit)?|security\s*deposit|sec\s*deposit|adv|advance|advan[cv]e)\b/i);
+      if (refBefore) {
+        refundableDeposit = parseFloat(refBefore[1]) * (refBefore[2] ? 1000 : 1);
+        cleaned = cleaned.replace(refBefore[0], ' ');
+      }
     }
 
-    // 6. Standalone 3-digit room number (e.g. 201, 302, 101)
+    // 7. Standalone 3-digit room number (e.g. 201, 302, 101)
     if (!roomNumber) {
       const standaloneRoom = cleaned.match(/\b([1-9]\d{2})\b/);
       if (standaloneRoom) {
@@ -126,22 +168,23 @@ export function parseQuickLedgerText(input: string) {
       }
     }
 
-    // 7. Any remaining numbers (if rent or adv wasn't caught by keyword)
+    // 8. Any remaining numbers (if rent or adv wasn't caught by keyword)
     const remNumbers = cleaned.match(/\b\d+(?:\.\d+)?(?:k)?\b/g);
     if (remNumbers) {
       for (const nStr of remNumbers) {
         const parsedNum = parseFloat(nStr) * (nStr.toLowerCase().includes('k') ? 1000 : 1);
         if (monthlyRent === 0) {
           monthlyRent = parsedNum;
-        } else if (advAmount === 0) {
-          advAmount = parsedNum;
+        } else if (refundableDeposit === 0) {
+          refundableDeposit = parsedNum;
         }
         cleaned = cleaned.replace(nStr, ' ');
       }
     }
 
-    // 8. Tenant Name: remaining non-keyword tokens
-    const noiseWords = new Set(['room', 'rm', 'rent', 'monthly', 'adv', 'advance', 'advanve', 'deposit', 'due', 'day', 'in', 'at', 'fee', 'feee', 'for', 'to', 'and', '&', 'share', 'sharing', 'bed']);
+    // 9. Clean noise words for Tenant Name
+    cleaned = cleaned.replace(/\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining|joined|add|to|in)\b/gi, ' ').trim();
+    const noiseWords = new Set(['room', 'rm', 'rent', 'monthly', 'adv', 'advance', 'advanve', 'deposit', 'due', 'day', 'in', 'at', 'fee', 'feee', 'for', 'to', 'and', '&', 'share', 'sharing', 'bed', 'joined', 'on', 'maintainance', 'maintenance', 'refundable', 'ammount', 'amount']);
     const nameTokens = cleaned.split(/\s+/).filter(w => w && !noiseWords.has(w) && !/^\d+$/.test(w));
     const tenantName = nameTokens.join(' ').trim();
 
@@ -150,8 +193,11 @@ export function parseQuickLedgerText(input: string) {
       tenantName,
       roomNumber,
       monthlyRent,
-      advAmount,
+      advAmount: refundableDeposit,
+      refundableDeposit,
+      maintenanceFee,
       sharing,
+      checkInDate: customDate,
       dueDay
     };
   }
@@ -215,6 +261,9 @@ export function parseQuickLedgerText(input: string) {
 
   // 2. REVENUE CHECK
   let cleaned = lower.replace(/\b(?:revenue)\b/g, ' ').trim();
+  if (dateRawStr) {
+    cleaned = cleaned.replace(dateRawStr, ' ');
+  }
 
   // 1. Advance: 'adv 2000' or '2000 adv'
   let advAmount = 0;
@@ -276,7 +325,7 @@ export function parseQuickLedgerText(input: string) {
   }
 
   // 6. Name
-  const noiseWords = ['rom', 'room', 'fee', 'rent', 'and', '&', 'paid', 'sent', 'adv', 'advance', 'due', 'for', 'of', 'pg', 'feee', 'revenue'];
+  const noiseWords = ['rom', 'room', 'fee', 'rent', 'and', '&', 'paid', 'sent', 'adv', 'advance', 'due', 'for', 'of', 'pg', 'feee', 'revenue', 'on'];
   const nameTokens = cleaned.split(/\s+/).filter(w => w && !noiseWords.includes(w) && !/^\d+$/.test(w));
   const tenantName = nameTokens.join(' ').trim();
 
@@ -286,6 +335,7 @@ export function parseQuickLedgerText(input: string) {
     tenantName,
     feeAmount,
     advAmount,
-    totalAmount: feeAmount + advAmount
+    totalAmount: feeAmount + advAmount,
+    paymentDate: customDate
   };
 }

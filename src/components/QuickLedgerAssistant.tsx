@@ -409,6 +409,12 @@ export default function QuickLedgerAssistant() {
                                     <span className="text-[11px] text-zinc-400">Tenant</span>
                                     <span className="text-xs font-bold text-white capitalize">{msg.result.tenantName} (Room {msg.result.roomNumber})</span>
                                   </div>
+                                  {msg.result.paymentDate ? (
+                                    <div className="flex justify-between items-baseline">
+                                      <span className="text-[11px] text-zinc-400">Payment Date</span>
+                                      <span className="text-xs font-bold text-amber-300">{msg.result.paymentDate}</span>
+                                    </div>
+                                  ) : null}
                                   {msg.result.feePaid ? (
                                     <div className="flex justify-between items-baseline">
                                       <span className="text-[11px] text-zinc-400">Room Fee Paid</span>
@@ -469,6 +475,12 @@ export default function QuickLedgerAssistant() {
                                     <span className="text-[11px] text-zinc-400">Assigned Room</span>
                                     <span className="text-xs font-bold text-indigo-300">Room {msg.result.roomNumber}</span>
                                   </div>
+                                  {msg.result.checkInDate ? (
+                                    <div className="flex justify-between items-baseline">
+                                      <span className="text-[11px] text-zinc-400">Joined Date</span>
+                                      <span className="text-xs font-bold text-amber-300">{msg.result.checkInDate}</span>
+                                    </div>
+                                  ) : null}
                                   {msg.result.sharing ? (
                                     <div className="flex justify-between items-baseline">
                                       <span className="text-[11px] text-zinc-400">Bed Sharing</span>
@@ -479,7 +491,19 @@ export default function QuickLedgerAssistant() {
                                     <span className="text-[11px] text-zinc-400">Individual Rent</span>
                                     <span className="text-xs font-bold text-emerald-400">₹{msg.result.monthlyRent?.toLocaleString('en-IN')}/mo</span>
                                   </div>
-                                  {msg.result.advPaid ? (
+                                  {msg.result.refundableDeposit ? (
+                                    <div className="flex justify-between items-baseline">
+                                      <span className="text-[11px] text-zinc-400">Refundable Amount</span>
+                                      <span className="text-xs font-bold text-emerald-400">₹{msg.result.refundableDeposit.toLocaleString('en-IN')}</span>
+                                    </div>
+                                  ) : null}
+                                  {msg.result.maintenanceFee ? (
+                                    <div className="flex justify-between items-baseline">
+                                      <span className="text-[11px] text-zinc-400">Maintenance (Non-Ref)</span>
+                                      <span className="text-xs font-bold text-amber-400">₹{msg.result.maintenanceFee.toLocaleString('en-IN')}</span>
+                                    </div>
+                                  ) : null}
+                                  {!msg.result.refundableDeposit && !msg.result.maintenanceFee && msg.result.advPaid ? (
                                     <div className="flex justify-between items-baseline">
                                       <span className="text-[11px] text-zinc-400">Security Deposit / Adv</span>
                                       <span className="text-xs font-bold text-cyan-400">₹{msg.result.advPaid.toLocaleString('en-IN')}</span>

@@ -5422,32 +5422,59 @@ export default function FrontOfficeTerminal() {
                     Log Payment (Due: {getNextRentDueDateStr(selectedBooking)})
                   </button>
 
-                  {/* 3. SECURITY DEPOSIT STATUS */}
+                  {/* 3. ADVANCE & DEPOSIT BREAKDOWN (REFUNDABLE & MAINTENANCE) */}
                   {(() => {
                     const guestPayments = payments.filter(p => p.booking_id === selectedBooking.id && !p.is_void);
                     const depositPayments = guestPayments.filter(p => p.allocation === 'Security Deposit');
-                    const totalDepositPaid = depositPayments.reduce((sum, p) => sum + Number(p.amount), 0);
-                    const depositRequired = Number(selectedBooking.security_deposit || selectedBooking.amount || 0);
+                    let totalDepositPaid = depositPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+                    if (totalDepositPaid === 0 && selectedBooking.security_deposit) {
+                      totalDepositPaid = Number(selectedBooking.security_deposit);
+                    }
+
+                    const maintenancePayments = guestPayments.filter(p => p.allocation?.toLowerCase().includes('maintenance'));
+                    const guestMaintenanceIncidentals = incidentals.filter(i => i.booking_id === selectedBooking.id && (i.category?.toLowerCase() === 'maintenance' || i.description?.toLowerCase().includes('maintenance')));
+
+                    let maintenanceFee = maintenancePayments.reduce((sum, p) => sum + Number(p.amount), 0);
+                    if (maintenanceFee === 0 && guestMaintenanceIncidentals.length > 0) {
+                      maintenanceFee = guestMaintenanceIncidentals.reduce((sum, i) => sum + Number(i.amount), 0);
+                    }
+                    if (maintenanceFee === 0 && selectedBooking.notes) {
+                      const match = selectedBooking.notes.match(/maintenance:\s*₹?([\d,]+)/i);
+                      if (match) maintenanceFee = parseFloat(match[1].replace(/,/g, ''));
+                    }
+
+                    const totalAdvance = totalDepositPaid + maintenanceFee;
 
                     return (
                       <div className="p-4 bg-white/[0.02] border border-white/[0.06] rounded-2xl space-y-3">
-                        <h3 className="text-xs font-bold text-indigo-400 uppercase tracking-widest flex items-center gap-2">
-                          <ShieldCheck size={14} /> Security Deposit Status
-                        </h3>
-                        <div className="grid grid-cols-3 gap-2 text-center">
-                          <div className="p-2.5 bg-black/40 rounded-xl border border-white/5">
-                            <span className="text-[9px] text-zinc-500 font-bold uppercase block">Required</span>
-                            <span className="text-xs font-mono font-bold text-white">₹{depositRequired.toLocaleString('en-IN')}</span>
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-xs font-bold text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+                            <ShieldCheck size={14} /> Advance & Deposit Breakdown
+                          </h3>
+                          {totalAdvance > 0 && (
+                            <span className="text-[10px] font-bold text-zinc-400 bg-white/5 px-2 py-0.5 rounded-full border border-white/5">
+                              Total Adv: ₹{totalAdvance.toLocaleString('en-IN')}
+                            </span>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-center">
+                          <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                            <span className="text-[9px] text-emerald-400 font-bold uppercase block tracking-wider">Refundable Amount</span>
+                            <span className="text-sm font-mono font-black text-white">₹{totalDepositPaid.toLocaleString('en-IN')}</span>
+                            <span className="text-[8px] text-zinc-500 block mt-0.5">Security Deposit</span>
                           </div>
-                          <div className="p-2.5 bg-black/40 rounded-xl border border-white/5">
-                            <span className="text-[9px] text-zinc-500 font-bold uppercase block">Paid</span>
-                            <span className="text-xs font-mono font-bold text-emerald-400">₹{totalDepositPaid.toLocaleString('en-IN')}</span>
-                          </div>
-                          <div className="p-2.5 bg-black/40 rounded-xl border border-white/5">
-                            <span className="text-[9px] text-zinc-500 font-bold uppercase block">Refundable</span>
-                            <span className="text-xs font-mono font-bold text-indigo-400">₹{totalDepositPaid.toLocaleString('en-IN')}</span>
+                          <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+                            <span className="text-[9px] text-amber-400 font-bold uppercase block tracking-wider">Maintenance</span>
+                            <span className="text-sm font-mono font-black text-white">₹{maintenanceFee.toLocaleString('en-IN')}</span>
+                            <span className="text-[8px] text-zinc-500 block mt-0.5">Non-Refundable</span>
                           </div>
                         </div>
+                        {selectedBooking.notes && (
+                          <div className="p-2.5 bg-black/40 rounded-xl border border-white/5 text-[11px] text-zinc-400">
+                            <span className="text-[9px] font-bold uppercase text-zinc-500 block mb-0.5">Booking Notes</span>
+                            {selectedBooking.notes}
+                          </div>
+                        )}
                       </div>
                     );
                   })()}
