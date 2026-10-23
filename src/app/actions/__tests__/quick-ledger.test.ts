@@ -177,4 +177,26 @@ describe('Quick Ledger NLP Parser', () => {
       expect(result.type).toBe('dues_report');
     });
   });
+
+  describe('Today Summary / History Parsing', () => {
+    it('should parse "today history"', () => {
+      const result = parseQuickLedgerText('today history');
+      expect(result.type).toBe('today_summary');
+    });
+
+    it('should parse "today summary"', () => {
+      const result = parseQuickLedgerText('today summary');
+      expect(result.type).toBe('today_summary');
+    });
+
+    it('should parse "what did i log today"', () => {
+      const result = parseQuickLedgerText('what did i log today');
+      expect(result.type).toBe('today_summary');
+    });
+
+    it('should parse "today ledger"', () => {
+      const result = parseQuickLedgerText('today ledger');
+      expect(result.type).toBe('today_summary');
+    });
+  });
 });

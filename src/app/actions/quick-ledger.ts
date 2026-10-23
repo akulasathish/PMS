@@ -15,7 +15,7 @@ export interface QuickLedgerDueItem {
 
 export interface QuickLedgerResult {
   success: boolean;
-  type?: 'revenue' | 'expense' | 'assign' | 'dues_report';
+  type?: 'revenue' | 'expense' | 'assign' | 'dues_report' | 'today_summary';
   message: string;
   error?: string;
   
@@ -44,6 +44,14 @@ export interface QuickLedgerResult {
   totalDues?: number;
   duesCount?: number;
   duesList?: QuickLedgerDueItem[];
+
+  // Today summary specific
+  todayRevenue?: number;
+  todayExpense?: number;
+  todayNet?: number;
+  todayRevenueCount?: number;
+  todayExpenseCount?: number;
+  todayDateStr?: string;
 }
 
 export async function processQuickLedger(input: string, propertyId?: string): Promise<QuickLedgerResult> {
@@ -172,6 +180,43 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         message: duesList.length === 0
           ? '🎉 All active tenants are cleared till date! No pending dues.'
           : `Found ${duesList.length} tenant(s) with pending dues totaling ₹${totalDues.toLocaleString('en-IN')}.`
+      };
+    }
+
+    // ==========================================
+    // EXECUTE TODAY SUMMARY / HISTORY
+    // ==========================================
+    if (parsed.type === 'today_summary') {
+      const [paymentsRes, expensesRes] = await Promise.all([
+        admin
+          .from('payments')
+          .select('amount, allocation, method, is_void')
+          .eq('property_id', activePropertyId)
+          .eq('business_date', businessDate),
+        admin
+          .from('expenses')
+          .select('amount, description, category')
+          .eq('property_id', activePropertyId)
+          .eq('business_date', businessDate)
+      ]);
+
+      const validPayments = (paymentsRes.data || []).filter(p => !p.is_void);
+      const todayRevenue = validPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+      const expenses = expensesRes.data || [];
+      const todayExpense = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+      const todayNet = todayRevenue - todayExpense;
+
+      return {
+        success: true,
+        type: 'today_summary',
+        todayRevenue,
+        todayExpense,
+        todayNet,
+        todayRevenueCount: validPayments.length,
+        todayExpenseCount: expenses.length,
+        todayDateStr: businessDate,
+        message: `Today's Summary (${businessDate}): Collected ₹${todayRevenue.toLocaleString('en-IN')}, Spent ₹${todayExpense.toLocaleString('en-IN')}. Net: ₹${todayNet.toLocaleString('en-IN')}.`
       };
     }
 

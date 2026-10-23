@@ -17,7 +17,8 @@ import {
   Building2,
   Sparkles,
   UserPlus,
-  FileText
+  FileText,
+  Trash2
 } from 'lucide-react';
 import { processQuickLedger, undoQuickLedgerAction, QuickLedgerResult } from '@/app/actions/quick-ledger';
 import { useRouter, usePathname } from 'next/navigation';
@@ -57,6 +58,43 @@ export default function QuickLedgerAssistant() {
     window.addEventListener('storage', updateActiveProp);
     return () => window.removeEventListener('storage', updateActiveProp);
   }, []);
+
+  // Load saved chat history on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('pms_quick_ledger_history');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setMessages(parsed);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load quick ledger history:', e);
+      }
+    }
+  }, []);
+
+  // Save chat history whenever messages change (keeps last 50 messages)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && messages.length > 0) {
+      try {
+        localStorage.setItem('pms_quick_ledger_history', JSON.stringify(messages.slice(-50)));
+      } catch (e) {
+        console.warn('Failed to save quick ledger history:', e);
+      }
+    }
+  }, [messages]);
+
+  const handleClearHistory = () => {
+    if (confirm('Clear chat history? (Transactions already saved in database will NOT be deleted)')) {
+      setMessages([]);
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('pms_quick_ledger_history');
+      }
+    }
+  };
 
   // Initialize Speech Recognition if supported
   useEffect(() => {
@@ -226,9 +264,9 @@ export default function QuickLedgerAssistant() {
   };
 
   const suggestions = [
+    'today history',
     'report of pending dues',
     'add akshith to room 204',
-    'assign ravi room 201 rent 8000 adv 2000',
     'sathish 101 5000 rom fee and 2000 adv paid',
     'expences 700 vegitbales 200 oil 800 varalakshmi traders',
     'water tanker expences 22000'
@@ -292,12 +330,24 @@ export default function QuickLedgerAssistant() {
                   </div>
                 </div>
 
-                <button
-                  onClick={() => setIsOpen(false)}
-                  className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white flex items-center justify-center transition-colors"
-                >
-                  <X size={16} />
-                </button>
+                <div className="flex items-center gap-2">
+                  {messages.length > 0 && (
+                    <button
+                      onClick={handleClearHistory}
+                      className="text-[10px] flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/5 hover:bg-rose-500/20 text-zinc-400 hover:text-rose-300 transition-colors border border-white/5"
+                      title="Clear chat history"
+                    >
+                      <Trash2 size={12} />
+                      <span className="hidden sm:inline">Clear Chat</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setIsOpen(false)}
+                    className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white flex items-center justify-center transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
               </div>
 
               {/* Chat Message List */}
@@ -530,6 +580,45 @@ export default function QuickLedgerAssistant() {
                                     </div>
                                   </>
                                 )}
+                              </div>
+                            ) : msg.result.type === 'today_summary' ? (
+                              /* TODAY SUMMARY CARD */
+                              <div className="bg-gradient-to-br from-indigo-950/40 via-purple-950/30 to-zinc-900 border border-indigo-500/30 rounded-2xl p-4 shadow-lg space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-1.5 text-indigo-400 font-black text-[11px] uppercase tracking-wider">
+                                    <Sparkles size={15} />
+                                    <span>Today's Ledger Summary</span>
+                                  </div>
+                                  <span className="text-[10px] text-zinc-500 font-mono">{msg.result.todayDateStr}</span>
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-2 text-center">
+                                  <div className="bg-black/50 rounded-xl p-2.5 border border-white/5">
+                                    <div className="text-[9px] uppercase font-bold text-zinc-400">Revenue</div>
+                                    <div className="text-xs font-black text-emerald-400 mt-0.5">
+                                      ₹{msg.result.todayRevenue?.toLocaleString('en-IN')}
+                                    </div>
+                                    <div className="text-[8px] text-zinc-500">{msg.result.todayRevenueCount} payment(s)</div>
+                                  </div>
+                                  <div className="bg-black/50 rounded-xl p-2.5 border border-white/5">
+                                    <div className="text-[9px] uppercase font-bold text-zinc-400">Expenses</div>
+                                    <div className="text-xs font-black text-rose-400 mt-0.5">
+                                      ₹{msg.result.todayExpense?.toLocaleString('en-IN')}
+                                    </div>
+                                    <div className="text-[8px] text-zinc-500">{msg.result.todayExpenseCount} bill(s)</div>
+                                  </div>
+                                  <div className="bg-black/50 rounded-xl p-2.5 border border-white/5">
+                                    <div className="text-[9px] uppercase font-bold text-zinc-400">Net Cash</div>
+                                    <div className={`text-xs font-black mt-0.5 ${(msg.result.todayNet || 0) >= 0 ? 'text-cyan-400' : 'text-amber-400'}`}>
+                                      ₹{msg.result.todayNet?.toLocaleString('en-IN')}
+                                    </div>
+                                    <div className="text-[8px] text-zinc-500">In / Out</div>
+                                  </div>
+                                </div>
+
+                                <p className="text-[10px] text-zinc-400 text-center italic">
+                                  Scroll up in chat to view your full action history and one-tap undo buttons.
+                                </p>
                               </div>
                             ) : (
                               /* EXPENSE SUCCESS CARD */

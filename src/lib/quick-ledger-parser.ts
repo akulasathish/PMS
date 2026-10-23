@@ -46,7 +46,15 @@ export function parseQuickLedgerText(input: string) {
     };
   }
 
-  // 0b. ASSIGN / NEW TENANT CHECK
+  // 0b. TODAY LEDGER SUMMARY / HISTORY CHECK
+  const isTodaySummary = /(?:^|\b)(?:today\s*(?:summary|history|report|ledger|entries|log)|what\s*(?:did\s*i|was)\s*log(?:ged)?\s*today|chat\s*history|history)(?:\b|$)/i.test(lower);
+  if (isTodaySummary) {
+    return {
+      type: 'today_summary' as const
+    };
+  }
+
+  // 0c. ASSIGN / NEW TENANT CHECK
   const isAssign = /\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining)\b/i.test(lower) ||
                    (/\badd\b/i.test(lower) && (/\b(?:room|rm|r)\b/i.test(lower) || /\bto\b/i.test(lower) || /\b\d{3}\b/.test(lower) || /\bshare\b/i.test(lower)));
   if (isAssign) {
