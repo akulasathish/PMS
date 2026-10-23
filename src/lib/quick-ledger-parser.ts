@@ -409,7 +409,7 @@ export function parseQuickLedgerText(input: string) {
       'feee', 'for', 'to', 'and', '&', 'share', 'sharing', 'bed', 'joined', 'on', 'maintainance', 'maintenance', 'maintance', 'maint',
       'refundable', 'refundabale', 'ammount', 'amount', 'date', 'paid', 'sent', 'joined', 'joining', 'join',
       'non', 'today', 'total', 'but', 'only', 'is', 'guest', 'new', 'resident', 'person', 'staying', 'stay',
-      'charges', 'charge', 'pedning', 'pending',
+      'charges', 'charge', 'pedning', 'pending', 'see', 'look',
       'january', 'jan', 'february', 'feb', 'march', 'mar', 'april', 'apr', 'may', 'june', 'jun',
       'july', 'jul', 'august', 'aug', 'september', 'sep', 'october', 'oct', 'november', 'nov', 'december', 'dec'
     ]);

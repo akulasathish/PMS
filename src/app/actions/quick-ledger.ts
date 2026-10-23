@@ -303,6 +303,117 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         };
       }
 
+      // 0. Check if this is a payment log for an ALREADY ACTIVE resident
+      const isPaymentIntent = /\b(?:paid|sent)\b/i.test(input) || (parsedRentPaid && parsedRentPaid > 0);
+      let existingBooking: any = null;
+
+      if (tenantName) {
+        let query = admin
+          .from('bookings')
+          .select('id, guest_name, room_id, security_deposit, rooms!inner(room_number)')
+          .eq('property_id', activePropertyId)
+          .in('status', ['Checked In', 'Confirmed', 'in_house']);
+        
+        if (roomNumber) {
+          query = query.ilike('rooms.room_number', roomNumber);
+        }
+        query = query.ilike('guest_name', `%${tenantName}%`);
+        const { data: matched } = await query.maybeSingle();
+        existingBooking = matched;
+      }
+
+      if (existingBooking && isPaymentIntent) {
+        // Log payments directly for existing resident
+        const effectivePaymentDate = parsedCheckIn || businessDate;
+        const paymentRows: any[] = [];
+        const paymentIds: string[] = [];
+        const feeAmount = Number(parsedRentPaid || monthlyRent || 0);
+        const maintenanceFee = Number(parsedMaintenance || 0);
+        const refundableDeposit = Number(parsedRefundable || advAmount || 0);
+
+        if (feeAmount > 0) {
+          paymentRows.push({
+            booking_id: existingBooking.id,
+            property_id: activePropertyId,
+            amount: feeAmount,
+            method: 'UPI',
+            payment_method: 'UPI',
+            allocation: 'Rent',
+            business_date: effectivePaymentDate,
+            transaction_id: 'QUICK-LEDGER-RENT'
+          });
+        }
+
+        if (maintenanceFee > 0) {
+          await admin
+            .from('incidental_charges')
+            .insert([{
+              booking_id: existingBooking.id,
+              property_id: activePropertyId,
+              description: 'Non-Refundable Maintenance Fee',
+              amount: maintenanceFee,
+              category: 'Maintenance',
+              business_date: effectivePaymentDate
+            }]);
+
+          paymentRows.push({
+            booking_id: existingBooking.id,
+            property_id: activePropertyId,
+            amount: maintenanceFee,
+            method: 'UPI',
+            payment_method: 'UPI',
+            allocation: 'Maintenance Fee (Revenue)',
+            business_date: effectivePaymentDate,
+            transaction_id: 'QUICK-LEDGER-MAINTENANCE'
+          });
+        }
+
+        if (refundableDeposit > 0) {
+          paymentRows.push({
+            booking_id: existingBooking.id,
+            property_id: activePropertyId,
+            amount: refundableDeposit,
+            method: 'UPI',
+            payment_method: 'UPI',
+            allocation: 'Security Deposit',
+            business_date: effectivePaymentDate,
+            transaction_id: 'QUICK-LEDGER-DEPOSIT'
+          });
+
+          await admin
+            .from('bookings')
+            .update({
+              security_deposit: Number(existingBooking.security_deposit || 0) + refundableDeposit
+            })
+            .eq('id', existingBooking.id);
+        }
+
+        if (paymentRows.length > 0) {
+          const { data: inserted } = await admin
+            .from('payments')
+            .insert(paymentRows)
+            .select('id');
+
+          if (inserted) {
+            paymentIds.push(...inserted.map(p => p.id));
+          }
+        }
+
+        const totalLogged = feeAmount + maintenanceFee + refundableDeposit;
+        const roomDisp = (existingBooking.rooms as any)?.room_number || roomNumber || 'Unknown';
+        return {
+          success: true,
+          type: 'revenue',
+          tenantName: existingBooking.guest_name,
+          roomNumber: roomDisp,
+          feePaid: feeAmount,
+          advPaid: refundableDeposit,
+          totalPaid: totalLogged,
+          paymentIds,
+          message: `Recorded payment for ${existingBooking.guest_name} (Room ${roomDisp}): Room Rent: ₹${feeAmount.toLocaleString('en-IN')} • Maintenance: ₹${maintenanceFee.toLocaleString('en-IN')} • Refundable Deposit: ₹${refundableDeposit.toLocaleString('en-IN')}. Total paid: ₹${totalLogged.toLocaleString('en-IN')} on ${effectivePaymentDate}.`
+        };
+      }
+
       if (!roomNumber) {
         return {
           success: false,
