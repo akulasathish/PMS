@@ -85,4 +85,40 @@ describe('Quick Ledger NLP Parser', () => {
       expect(result.totalAmount).toBe(7000);
     });
   });
+
+  describe('Tenant Admission / Assign Parsing', () => {
+    it('should parse "assign ravi room 201 rent 8000 adv 2000"', () => {
+      const result = parseQuickLedgerText('assign ravi room 201 rent 8000 adv 2000');
+      expect(result.type).toBe('assign');
+      if (result.type === 'assign') {
+        expect(result.tenantName.toLowerCase()).toBe('ravi');
+        expect(result.roomNumber).toBe('201');
+        expect(result.monthlyRent).toBe(8000);
+        expect(result.advAmount).toBe(2000);
+      }
+    });
+
+    it('should parse "new tenant rahul room 302 rent 9000 adv 2000"', () => {
+      const result = parseQuickLedgerText('new tenant rahul room 302 rent 9000 adv 2000');
+      expect(result.type).toBe('assign');
+      if (result.type === 'assign') {
+        expect(result.tenantName.toLowerCase()).toBe('rahul');
+        expect(result.roomNumber).toBe('302');
+        expect(result.monthlyRent).toBe(9000);
+        expect(result.advAmount).toBe(2000);
+      }
+    });
+
+    it('should parse "assign sathish 101 rent 7500 adv 1500 due 28"', () => {
+      const result = parseQuickLedgerText('assign sathish 101 rent 7500 adv 1500 due 28');
+      expect(result.type).toBe('assign');
+      if (result.type === 'assign') {
+        expect(result.tenantName.toLowerCase()).toBe('sathish');
+        expect(result.roomNumber).toBe('101');
+        expect(result.monthlyRent).toBe(7500);
+        expect(result.advAmount).toBe(1500);
+        expect(result.dueDay).toBe(28);
+      }
+    });
+  });
 });

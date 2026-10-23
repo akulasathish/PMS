@@ -38,6 +38,93 @@ export function parseQuickLedgerText(input: string) {
   const text = (input || '').trim();
   const lower = text.toLowerCase();
 
+  // 0. ASSIGN / NEW TENANT CHECK
+  const isAssign = /\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining)\b/i.test(lower);
+  if (isAssign) {
+    let cleaned = lower.replace(/\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining|to)\b/gi, ' ').trim();
+
+    // Explicit Room: 'room 201' or 'rm 201'
+    let roomNumber: string | null = null;
+    const explicitRoom = cleaned.match(/\b(?:room|rm|r)\s*#?\s*(\d{1,4})\b/i);
+    if (explicitRoom) {
+      roomNumber = explicitRoom[1];
+      cleaned = cleaned.replace(explicitRoom[0], ' ');
+    }
+
+    // Monthly Rent: 'rent 8000' or '8000 rent' or 'monthly 8000'
+    let monthlyRent = 0;
+    const rentAfter = cleaned.match(/\b(?:rent|monthly)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+    if (rentAfter) {
+      monthlyRent = parseFloat(rentAfter[1]) * (rentAfter[2] ? 1000 : 1);
+      cleaned = cleaned.replace(rentAfter[0], ' ');
+    } else {
+      const rentBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:rent|monthly)\b/i);
+      if (rentBefore) {
+        monthlyRent = parseFloat(rentBefore[1]) * (rentBefore[2] ? 1000 : 1);
+        cleaned = cleaned.replace(rentBefore[0], ' ');
+      }
+    }
+
+    // Advance / Deposit: 'adv 2000' or '2000 adv' or 'deposit 2000'
+    let advAmount = 0;
+    const advAfter = cleaned.match(/\b(?:adv|advance|deposit|sec\s*deposit)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+    if (advAfter) {
+      advAmount = parseFloat(advAfter[1]) * (advAfter[2] ? 1000 : 1);
+      cleaned = cleaned.replace(advAfter[0], ' ');
+    } else {
+      const advBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:adv|advance|deposit|sec\s*deposit)\b/i);
+      if (advBefore) {
+        advAmount = parseFloat(advBefore[1]) * (advBefore[2] ? 1000 : 1);
+        cleaned = cleaned.replace(advBefore[0], ' ');
+      }
+    }
+
+    // Due Day: 'due 28' or 'due day 28' or 'cycle 28'
+    let dueDay: number | null = null;
+    const dueMatch = cleaned.match(/\b(?:due|cycle|due\s*day|day)\s*[:=]?\s*(\d{1,2})\b/i);
+    if (dueMatch) {
+      dueDay = parseInt(dueMatch[1], 10);
+      cleaned = cleaned.replace(dueMatch[0], ' ');
+    }
+
+    // Standalone room number if not found explicitly
+    if (!roomNumber) {
+      const standaloneRoom = cleaned.match(/\b([1-9]\d{1,2})\b/);
+      if (standaloneRoom) {
+        roomNumber = standaloneRoom[1];
+        cleaned = cleaned.replace(standaloneRoom[0], ' ');
+      }
+    }
+
+    // Any remaining numbers (if rent or adv wasn't caught by keyword)
+    const remNumbers = cleaned.match(/\b\d+(?:\.\d+)?(?:k)?\b/g);
+    if (remNumbers) {
+      for (const nStr of remNumbers) {
+        const parsedNum = parseFloat(nStr) * (nStr.toLowerCase().includes('k') ? 1000 : 1);
+        if (monthlyRent === 0) {
+          monthlyRent = parsedNum;
+        } else if (advAmount === 0) {
+          advAmount = parsedNum;
+        }
+        cleaned = cleaned.replace(nStr, ' ');
+      }
+    }
+
+    // Tenant Name: remaining non-keyword tokens
+    const noiseWords = new Set(['room', 'rm', 'rent', 'monthly', 'adv', 'advance', 'deposit', 'due', 'day', 'in', 'at', 'fee', 'for', 'to']);
+    const nameTokens = cleaned.split(/\s+/).filter(w => w && !noiseWords.has(w) && !/^\d+$/.test(w));
+    const tenantName = nameTokens.join(' ').trim();
+
+    return {
+      type: 'assign' as const,
+      tenantName,
+      roomNumber,
+      monthlyRent,
+      advAmount,
+      dueDay
+    };
+  }
+
   // 1. EXPENSES CHECK (Explicit keywords or known expense item words)
   const isExplicitExpense = /(?:^|\b)(?:expences|expenses|expence|expense|exp)\b/.test(lower);
   const words = lower.split(/[\s,]+/);

@@ -15,7 +15,8 @@ import {
   TrendingDown, 
   Loader2,
   Building2,
-  Sparkles
+  Sparkles,
+  UserPlus
 } from 'lucide-react';
 import { processQuickLedger, undoQuickLedgerAction, QuickLedgerResult } from '@/app/actions/quick-ledger';
 import { useRouter, usePathname } from 'next/navigation';
@@ -190,6 +191,12 @@ export default function QuickLedgerAssistant() {
           bookingId: msg.result.bookingId,
           advAmountAdded: msg.result.advAmountAdded
         };
+      } else if (msg.result.type === 'assign') {
+        undoPayload = {
+          type: 'assign',
+          ids: msg.result.paymentIds || [],
+          bookingId: msg.result.bookingId
+        };
       }
 
       if (undoPayload) {
@@ -218,6 +225,7 @@ export default function QuickLedgerAssistant() {
   };
 
   const suggestions = [
+    'assign ravi room 201 rent 8000 adv 2000',
     'sathish 101 5000 rom fee and 2000 adv paid',
     'expences 700 vegitbales 200 oil 800 varalakshmi traders',
     'revenue room 103 kiran 10000',
@@ -376,6 +384,58 @@ export default function QuickLedgerAssistant() {
                                     </span>
                                   </div>
 
+                                  <button
+                                    onClick={() => handleUndo(msg)}
+                                    disabled={msg.undoState === 'undoing' || msg.undoState === 'undone'}
+                                    className={`flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg transition-all ${
+                                      msg.undoState === 'undone'
+                                        ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                                        : 'bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white'
+                                    }`}
+                                  >
+                                    <RotateCcw size={12} className={msg.undoState === 'undoing' ? 'animate-spin' : ''} />
+                                    {msg.undoState === 'undone' ? 'Undone' : msg.undoState === 'undoing' ? 'Undoing...' : 'Undo'}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : msg.result.type === 'assign' ? (
+                              /* ASSIGN TENANT SUCCESS CARD */
+                              <div className="bg-indigo-950/30 border border-indigo-500/30 rounded-2xl p-4 shadow-lg space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-1.5 text-indigo-400 font-black text-[11px] uppercase tracking-wider">
+                                    <UserPlus size={15} />
+                                    <span>Tenant Assigned & Checked In</span>
+                                  </div>
+                                  <span className="text-[10px] text-zinc-500 font-mono">{msg.timestamp}</span>
+                                </div>
+
+                                <div className="bg-black/40 rounded-xl p-3 border border-white/5 space-y-1.5">
+                                  <div className="flex justify-between items-baseline">
+                                    <span className="text-[11px] text-zinc-400">Tenant</span>
+                                    <span className="text-xs font-bold text-white capitalize">{msg.result.tenantName}</span>
+                                  </div>
+                                  <div className="flex justify-between items-baseline">
+                                    <span className="text-[11px] text-zinc-400">Assigned Room</span>
+                                    <span className="text-xs font-bold text-indigo-300">Room {msg.result.roomNumber}</span>
+                                  </div>
+                                  <div className="flex justify-between items-baseline">
+                                    <span className="text-[11px] text-zinc-400">Monthly Rent</span>
+                                    <span className="text-xs font-bold text-emerald-400">₹{msg.result.monthlyRent?.toLocaleString('en-IN')}/mo</span>
+                                  </div>
+                                  {msg.result.advPaid ? (
+                                    <div className="flex justify-between items-baseline">
+                                      <span className="text-[11px] text-zinc-400">Security Deposit / Adv</span>
+                                      <span className="text-xs font-bold text-cyan-400">₹{msg.result.advPaid.toLocaleString('en-IN')}</span>
+                                    </div>
+                                  ) : null}
+                                  <div className="flex justify-between items-baseline pt-1 border-t border-white/10">
+                                    <span className="text-[11px] text-zinc-400">Rent Due Day</span>
+                                    <span className="text-xs font-semibold text-zinc-200">{msg.result.dueDay}th of every month</span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center justify-between pt-1">
+                                  <span className="text-[10px] text-emerald-400 font-semibold">Live in Front Office</span>
                                   <button
                                     onClick={() => handleUndo(msg)}
                                     disabled={msg.undoState === 'undoing' || msg.undoState === 'undone'}

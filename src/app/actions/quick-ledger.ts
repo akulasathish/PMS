@@ -5,7 +5,7 @@ import { parseQuickLedgerText, QuickLedgerItem } from '@/lib/quick-ledger-parser
 
 export interface QuickLedgerResult {
   success: boolean;
-  type?: 'revenue' | 'expense';
+  type?: 'revenue' | 'expense' | 'assign';
   message: string;
   error?: string;
   
@@ -24,6 +24,10 @@ export interface QuickLedgerResult {
   items?: QuickLedgerItem[];
   totalExpense?: number;
   expenseIds?: string[];
+
+  // Assign specific
+  monthlyRent?: number;
+  dueDay?: number;
 }
 
 export async function processQuickLedger(input: string, propertyId?: string): Promise<QuickLedgerResult> {
@@ -101,6 +105,136 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
     }
 
     // ==========================================
+    // EXECUTE ASSIGN (NEW TENANT ADMISSION)
+    // ==========================================
+    if (parsed.type === 'assign') {
+      const { tenantName, roomNumber, monthlyRent, advAmount, dueDay } = parsed;
+
+      if (!tenantName) {
+        return {
+          success: false,
+          message: 'Please specify tenant name. Example: "assign ravi room 201 rent 8000 adv 2000"'
+        };
+      }
+
+      if (!roomNumber) {
+        return {
+          success: false,
+          message: 'Please specify room number. Example: "assign ravi room 201 rent 8000 adv 2000"'
+        };
+      }
+
+      if (!monthlyRent || monthlyRent <= 0) {
+        return {
+          success: false,
+          message: 'Please specify monthly rent. Example: "assign ravi room 201 rent 8000 adv 2000"'
+        };
+      }
+
+      // 1. Fetch room from inventory
+      const { data: targetRoom, error: roomErr } = await admin
+        .from('rooms')
+        .select('id, room_number, sharing_capacity')
+        .eq('property_id', activePropertyId)
+        .ilike('room_number', roomNumber)
+        .maybeSingle();
+
+      if (roomErr || !targetRoom) {
+        return {
+          success: false,
+          message: `Could not find Room "${roomNumber}" in this property inventory.`
+        };
+      }
+
+      // 2. Check room capacity
+      const { data: activeInRoom } = await admin
+        .from('bookings')
+        .select('id, guest_name')
+        .eq('room_id', targetRoom.id)
+        .in('status', ['Checked In', 'Confirmed', 'in_house']);
+
+      const cap = Number(targetRoom.sharing_capacity || 4);
+      if (activeInRoom && activeInRoom.length >= cap) {
+        return {
+          success: false,
+          message: `Room ${roomNumber} is at maximum capacity (${activeInRoom.length}/${cap} beds occupied: ${activeInRoom.map(b => b.guest_name).join(', ')}).`
+        };
+      }
+
+      // 3. Calculate dates
+      const [inYear, inMonth, inDay] = businessDate.split('-').map(Number);
+      const checkOut = `${inYear + 1}-${String(inMonth).padStart(2, '0')}-${String(inDay).padStart(2, '0')}`;
+      const finalDueDay = dueDay || inDay;
+      const deposit = advAmount || 0;
+      const formattedName = tenantName.charAt(0).toUpperCase() + tenantName.slice(1);
+
+      // 4. Create booking
+      const { data: newBooking, error: bookErr } = await admin
+        .from('bookings')
+        .insert([{
+          property_id: activePropertyId,
+          room_id: targetRoom.id,
+          guest_name: formattedName,
+          check_in: businessDate,
+          check_out: checkOut,
+          amount: deposit,
+          total_amount: deposit,
+          status: 'Checked In',
+          is_monthly: true,
+          rent_due_day: finalDueDay,
+          billing_cycle_date: finalDueDay,
+          monthly_rent: monthlyRent,
+          monthly_rate: monthlyRent,
+          security_deposit: deposit
+        }])
+        .select()
+        .single();
+
+      if (bookErr || !newBooking) {
+        return {
+          success: false,
+          message: `Failed to assign tenant: ${bookErr?.message || 'Database error'}`
+        };
+      }
+
+      // 5. If advance / deposit paid, record payment
+      const paymentIds: string[] = [];
+      if (deposit > 0) {
+        const { data: payData } = await admin
+          .from('payments')
+          .insert([{
+            booking_id: newBooking.id,
+            property_id: activePropertyId,
+            amount: deposit,
+            method: 'UPI',
+            payment_method: 'UPI',
+            allocation: 'Security Deposit',
+            transaction_id: 'PREPAID-DEPOSIT-AT-CREATION',
+            business_date: businessDate
+          }])
+          .select('id')
+          .single();
+
+        if (payData) {
+          paymentIds.push(payData.id);
+        }
+      }
+
+      return {
+        success: true,
+        type: 'assign',
+        tenantName: formattedName,
+        roomNumber: targetRoom.room_number,
+        monthlyRent: monthlyRent,
+        advPaid: deposit,
+        dueDay: finalDueDay,
+        bookingId: newBooking.id,
+        paymentIds,
+        message: `Assigned ${formattedName} to Room ${targetRoom.room_number}! Monthly Rent: ₹${monthlyRent.toLocaleString('en-IN')}, Deposit: ₹${deposit.toLocaleString('en-IN')}, Rent due: ${finalDueDay}th of every month.`
+      };
+    }
+
+    // ==========================================
     // EXECUTE REVENUE
     // ==========================================
     if (parsed.type === 'revenue') {
@@ -126,7 +260,9 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
             monthly_rent,
             monthly_rate,
             security_deposit,
-            total_amount
+            total_amount,
+            rent_due_day,
+            check_in
           `)
           .eq('property_id', activePropertyId)
           .in('status', ['Checked In', 'Confirmed', 'in_house']),
@@ -186,6 +322,44 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         };
       }
 
+      const roomDisp = matchedBooking.room_number || roomNumber || 'Unknown';
+
+      // ============================================================
+      // GUARDRAIL: Prevent false rent collections if cleared till date
+      // ============================================================
+      const [allPaymentsRes, allIncidentalsRes] = await Promise.all([
+        admin.from('payments').select('amount, allocation, is_void').eq('booking_id', matchedBooking.id),
+        admin.from('incidental_charges').select('amount, description').eq('booking_id', matchedBooking.id)
+      ]);
+
+      const validPayments = (allPaymentsRes.data || []).filter(p => !p.is_void);
+      const rentPaidBeforeThis = validPayments
+        .filter(p => p.allocation === 'Rent' || !p.allocation)
+        .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+      const incidentalsSum = (allIncidentalsRes.data || [])
+        .filter(inc => !inc.description?.startsWith('Security Deposit'))
+        .reduce((sum, inc) => sum + Number(inc.amount || 0), 0);
+
+      const baseRoomCharge = matchedBooking.is_monthly
+        ? Number(matchedBooking.monthly_rent || matchedBooking.monthly_rate || 0)
+        : Number(matchedBooking.total_amount || 0);
+
+      const currentBalanceDue = Math.max(0, (baseRoomCharge + incidentalsSum) - rentPaidBeforeThis);
+
+      // Extract day-of-month for due date check
+      const checkInDay = matchedBooking.check_in ? parseInt(matchedBooking.check_in.split('-')[2], 10) : 1;
+      const dueDay = (matchedBooking as any).rent_due_day || (matchedBooking as any).billing_cycle_date || checkInDay;
+      const todayDay = parseInt(businessDate.split('-')[2], 10);
+
+      // If tenant has ₹0 pending rent due, today is before their rent due day, and user entered room rent (feeAmount > 0)
+      if (feeAmount > 0 && currentBalanceDue <= 0.01 && todayDay < dueDay) {
+        return {
+          success: false,
+          message: `⚠️ ${matchedBooking.guest_name} (Room ${roomDisp}) has ₹0 pending rent due! Rent is already cleared till date (Next rent due date: ${dueDay}th). If this payment is for security deposit or advance, please specify 'adv' (e.g. "${matchedBooking.guest_name} ${roomDisp} ${feeAmount} adv").`
+        };
+      }
+
       const paymentRows: any[] = [];
       const paymentIds: string[] = [];
 
@@ -242,21 +416,8 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       }
 
       // Recalculate remaining due
-      const { data: allPayments } = await admin
-        .from('payments')
-        .select('amount, allocation')
-        .eq('booking_id', matchedBooking.id);
-
-      const rentPaid = (allPayments || [])
-        .filter(p => p.allocation !== 'Security Deposit')
-        .reduce((sum, p) => sum + Number(p.amount || 0), 0);
-
-      const roomCharge = matchedBooking.is_monthly
-        ? Number(matchedBooking.monthly_rent || matchedBooking.monthly_rate || 0)
-        : Number(matchedBooking.total_amount || 0);
-
-      const newBalanceDue = Math.max(0, roomCharge - rentPaid);
-      const roomDisp = matchedBooking.room_number || roomNumber || 'Unknown';
+      const newRentPaid = rentPaidBeforeThis + feeAmount;
+      const newBalanceDue = Math.max(0, (baseRoomCharge + incidentalsSum) - newRentPaid);
 
       return {
         success: true,
@@ -285,7 +446,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
 }
 
 export async function undoQuickLedgerAction(payload: {
-  type: 'revenue' | 'expense';
+  type: 'revenue' | 'expense' | 'assign';
   ids: string[];
   bookingId?: string;
   advAmountAdded?: number;
@@ -312,6 +473,17 @@ export async function undoQuickLedgerAction(payload: {
       }
 
       return { success: true, message: 'Payment entry undone successfully.' };
+    }
+
+    if (payload.type === 'assign') {
+      if (payload.ids && payload.ids.length > 0) {
+        await admin.from('payments').delete().in('id', payload.ids);
+      }
+      if (payload.bookingId) {
+        const { error: delErr } = await admin.from('bookings').delete().eq('id', payload.bookingId);
+        if (delErr) return { success: false, message: delErr.message };
+      }
+      return { success: true, message: 'Tenant assignment undone successfully.' };
     }
 
     return { success: false, message: 'Nothing to undo.' };
