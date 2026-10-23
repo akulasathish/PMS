@@ -38,7 +38,7 @@ export function parseQuickLedgerText(input: string) {
   const text = (input || '').trim();
   const lower = text.toLowerCase();
 
-  // Date extraction: 'on 1st', 'on 1st october', 'joined on 1st october', 'paid on 1st', 'on 5th', etc.
+  // Date extraction: 'on 1st', 'on 1st october', 'joined on 1st october', 'paid 1st october', 'date 1st', '1st october 2026'
   const months: Record<string, number> = {
     jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
     apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
@@ -50,14 +50,19 @@ export function parseQuickLedgerText(input: string) {
   let customDay: number | null = null;
   let dateRawStr = '';
 
-  const dateMatch = lower.match(/(?:(?:joined|paid)\s+)?on\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s+([a-z]+))?/i);
+  const dateMatch = lower.match(/\b(?:(?:joined|paid|date|join)\s+)?(?:on\s+)?(\d{1,2})(?:st|nd|rd|th)?\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember))(?:\s+(20\d{2}))?\b/i) ||
+                    lower.match(/(?:(?:joined|paid|date|join)\s+)?on\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s+([a-z]+))?/i) ||
+                    lower.match(/\bdate\s+(\d{1,2})(?:st|nd|rd|th)?\b/i);
   if (dateMatch) {
     const day = parseInt(dateMatch[1], 10);
     const now = new Date();
-    const year = now.getFullYear();
+    let year = now.getFullYear();
+    if (dateMatch[3] && dateMatch[3].length === 4) {
+      year = parseInt(dateMatch[3], 10);
+    }
     let month = now.getMonth() + 1;
-    if (dateMatch[2] && months[dateMatch[2]]) {
-      month = months[dateMatch[2]];
+    if (dateMatch[2] && months[dateMatch[2].toLowerCase()]) {
+      month = months[dateMatch[2].toLowerCase()];
     }
     customDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     customDay = day;
@@ -340,9 +345,14 @@ export function parseQuickLedgerText(input: string) {
     if (remNumbers) {
       for (const nStr of remNumbers) {
         const parsedNum = parseFloat(nStr) * (nStr.toLowerCase().includes('k') ? 1000 : 1);
-        if (monthlyRent === 0) {
+        // Exclude calendar years (2020-2035) so e.g. "2026" never becomes a deposit
+        if (parsedNum >= 2020 && parsedNum <= 2035 && !nStr.toLowerCase().includes('k')) {
+          continue;
+        }
+        // Fallback numbers for rent/deposit should be real amounts (> 100)
+        if (monthlyRent === 0 && parsedNum > 100) {
           monthlyRent = parsedNum;
-        } else if (refundableDeposit === 0) {
+        } else if (refundableDeposit === 0 && parsedNum > 100) {
           refundableDeposit = parsedNum;
         }
         cleaned = cleaned.replace(nStr, ' ');
@@ -351,8 +361,14 @@ export function parseQuickLedgerText(input: string) {
 
     // 9. Clean noise words for Tenant Name
     cleaned = cleaned.replace(/\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining|joined|add|to|in)\b/gi, ' ').trim();
-    const noiseWords = new Set(['room', 'rm', 'rent', 'monthly', 'adv', 'advance', 'advanve', 'deposit', 'due', 'day', 'in', 'at', 'fee', 'feee', 'for', 'to', 'and', '&', 'share', 'sharing', 'bed', 'joined', 'on', 'maintainance', 'maintenance', 'refundable', 'ammount', 'amount']);
-    const nameTokens = cleaned.split(/\s+/).filter(w => w && !noiseWords.has(w) && !/^\d+$/.test(w));
+    const noiseWords = new Set([
+      'room', 'rm', 'rent', 'monthly', 'adv', 'advance', 'advanve', 'deposit', 'due', 'day', 'in', 'at', 'fee',
+      'feee', 'for', 'to', 'and', '&', 'share', 'sharing', 'bed', 'joined', 'on', 'maintainance', 'maintenance',
+      'refundable', 'ammount', 'amount', 'date', 'paid', 'sent', 'joined', 'joining', 'join',
+      'january', 'jan', 'february', 'feb', 'march', 'mar', 'april', 'apr', 'may', 'june', 'jun',
+      'july', 'jul', 'august', 'aug', 'september', 'sep', 'october', 'oct', 'november', 'nov', 'december', 'dec'
+    ]);
+    const nameTokens = cleaned.split(/\s+/).filter(w => w && !noiseWords.has(w) && !/^\d+(?:st|nd|rd|th)?$/i.test(w));
     const tenantName = nameTokens.join(' ').trim();
 
     return {
@@ -482,6 +498,10 @@ export function parseQuickLedgerText(input: string) {
   if (remainingNumbers) {
     for (const nStr of remainingNumbers) {
       const parsed = parseFloat(nStr) * (nStr.includes('k') ? 1000 : 1);
+      // Exclude calendar years (2020-2035)
+      if (parsed >= 2020 && parsed <= 2035 && !nStr.toLowerCase().includes('k')) {
+        continue;
+      }
       if (feeAmount === 0) {
         feeAmount = parsed;
       } else if (advAmount === 0 && !lower.includes('due')) {
@@ -492,8 +512,13 @@ export function parseQuickLedgerText(input: string) {
   }
 
   // 6. Name
-  const noiseWords = ['rom', 'room', 'fee', 'rent', 'and', '&', 'paid', 'sent', 'adv', 'advance', 'due', 'for', 'of', 'pg', 'feee', 'revenue', 'on'];
-  const nameTokens = cleaned.split(/\s+/).filter(w => w && !noiseWords.includes(w) && !/^\d+$/.test(w));
+  const noiseWords = [
+    'rom', 'room', 'fee', 'rent', 'and', '&', 'paid', 'sent', 'adv', 'advance', 'due', 'for', 'of', 'pg', 'feee',
+    'revenue', 'on', 'date', 'joined', 'joining', 'join',
+    'jan', 'january', 'feb', 'february', 'mar', 'march', 'apr', 'april', 'may', 'jun', 'june',
+    'jul', 'july', 'aug', 'august', 'sep', 'september', 'oct', 'october', 'nov', 'november', 'dec', 'december'
+  ];
+  const nameTokens = cleaned.split(/\s+/).filter(w => w && !noiseWords.includes(w) && !/^\d+(?:st|nd|rd|th)?$/i.test(w));
   const tenantName = nameTokens.join(' ').trim();
 
   return {

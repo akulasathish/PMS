@@ -173,8 +173,19 @@ describe('Quick Ledger NLP Parser', () => {
         expect(result.monthlyRent).toBe(9000);
         expect(result.maintenanceFee).toBe(1000);
         expect(result.refundableDeposit).toBe(1500);
-        expect(result.checkInDate).toMatch(/\d{4}-10-01/);
+        expect(result.checkInDate).toBe('2026-10-01');
         expect(result.dueDay).toBe(1);
+      }
+    });
+
+    it('should not leak date words into tenantName or use year 2026 as deposit for "add srikanth room 201 date 1st paid 1st october 2026"', () => {
+      const result = parseQuickLedgerText('add srikanth room 201 date 1st paid 1st october 2026');
+      expect(result.type).toBe('assign');
+      if (result.type === 'assign') {
+        expect(result.tenantName.toLowerCase()).toBe('srikanth');
+        expect(result.roomNumber).toBe('201');
+        expect(result.checkInDate).toBe('2026-10-01');
+        expect(result.refundableDeposit).toBe(0); // 2026 should not be parsed as deposit
       }
     });
 
