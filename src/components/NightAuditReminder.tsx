@@ -58,24 +58,67 @@ export default function NightAuditReminder() {
         const localDateStr = `${localYear}-${localMonth}-${localDay}`;
 
         // Check property_category of the user's active property
+        // 1. First check localStorage for the active property selected in the dashboard
+        let activePropId = typeof window !== 'undefined' ? localStorage.getItem('pms_active_property') : null;
+        if (activePropId === 'undefined' || activePropId === 'null') {
+          activePropId = null;
+        }
+
         const { data: profile } = await supabase
           .from('profiles')
           .select('property_id')
           .eq('id', session.user.id)
           .single();
 
-        let isPGMode = false;
-        if (profile?.property_id) {
+        if (!activePropId) {
+          activePropId = profile?.property_id || null;
+        }
+
+        let propCategory: string | null = null;
+        if (activePropId) {
+          const { data: prop } = await supabase
+            .from('properties')
+            .select('property_category')
+            .eq('id', activePropId)
+            .maybeSingle();
+
+          if (prop?.property_category) {
+            propCategory = prop.property_category;
+          }
+        }
+
+        // Fallback: Check profile.property_id
+        if (!propCategory && profile?.property_id) {
           const { data: prop } = await supabase
             .from('properties')
             .select('property_category')
             .eq('id', profile.property_id)
-            .single();
+            .maybeSingle();
 
-          if (prop?.property_category === 'PG') {
-            isPGMode = true;
+          if (prop?.property_category) {
+            propCategory = prop.property_category;
           }
         }
+
+        // Fallback: Check user's accessible properties
+        if (!propCategory) {
+          const { data: userAccess } = await supabase
+            .from('property_access')
+            .select('property_id, properties(property_category)')
+            .eq('user_id', session.user.id)
+            .limit(1)
+            .maybeSingle();
+
+          if ((userAccess as any)?.properties?.property_category) {
+            propCategory = (userAccess as any).properties.property_category;
+          }
+        }
+
+        const normalizedCategory = (propCategory || '').trim().toUpperCase();
+        // Night Audit is STRICTLY for Hotel or Hotel/PG properties!
+        // Pure PG properties DO NOT require Night Audit date rollovers.
+        const isHotelOrHybrid = normalizedCategory.includes('HOTEL') || normalizedCategory === 'HYBRID';
+        const isPGMode = normalizedCategory === 'PG' || !isHotelOrHybrid;
 
         if (settings?.value) {
           setBusinessDate(settings.value);
@@ -129,7 +172,18 @@ export default function NightAuditReminder() {
 
     // Check periodically (every 2 minutes for faster updates)
     const interval = setInterval(checkNightAuditStatus, 2 * 60 * 1000);
-    return () => clearInterval(interval);
+
+    const handlePropertyChange = () => {
+      checkNightAuditStatus();
+    };
+    window.addEventListener('storage', handlePropertyChange);
+    window.addEventListener('pms_property_switched', handlePropertyChange);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', handlePropertyChange);
+      window.removeEventListener('pms_property_switched', handlePropertyChange);
+    };
   }, [isDashboard, isDismissed, shouldBlock]);
 
   // If dismissed, auto-reset dismissal after 30 minutes to remind again
