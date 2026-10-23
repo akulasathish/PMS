@@ -15,9 +15,14 @@ export interface QuickLedgerDueItem {
 
 export interface QuickLedgerResult {
   success: boolean;
-  type?: 'revenue' | 'expense' | 'assign' | 'dues_report' | 'today_summary' | 'update_tenant';
+  type?: 'revenue' | 'expense' | 'assign' | 'dues_report' | 'today_summary' | 'update_tenant' | 'checkout';
   message: string;
   error?: string;
+  
+  // Checkout specific
+  hasPendingDues?: boolean;
+  pendingDues?: number;
+  isForce?: boolean;
   
   // Revenue specific
   tenantName?: string;
@@ -1031,6 +1036,162 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
     }
 
     // ==========================================
+    // EXECUTE CHECKOUT / VACATE TENANT
+    // ==========================================
+    if (parsed.type === 'checkout') {
+      const { tenantName, roomNumber, isForce } = parsed as any;
+
+      if (!roomNumber && !tenantName) {
+        return {
+          success: false,
+          message: 'Please specify the room number or tenant to checkout. Example: "please checkout guest srikanth from room 201"'
+        };
+      }
+
+      // Query active bookings in active property
+      const [bookingsRes, roomsRes] = await Promise.all([
+        admin
+          .from('bookings')
+          .select('id, guest_name, room_id, status, is_monthly, monthly_rent, monthly_rate, total_amount, security_deposit, notes, check_in, rent_due_day')
+          .eq('property_id', activePropertyId)
+          .in('status', ['Checked In', 'Confirmed', 'in_house']),
+        admin
+          .from('rooms')
+          .select('id, room_number')
+          .eq('property_id', activePropertyId)
+      ]);
+
+      if (bookingsRes.error) {
+        return { success: false, message: `Database error querying bookings: ${bookingsRes.error.message}` };
+      }
+
+      const bookings = bookingsRes.data || [];
+      const rooms = roomsRes.data || [];
+
+      if (bookings.length === 0) {
+        return { success: false, message: 'No active residents found in this property.' };
+      }
+
+      const roomMap = new Map(rooms.map(r => [r.id, r.room_number?.toString() || '']));
+      const enrichedBookings = bookings.map(b => ({
+        ...b,
+        room_number: roomMap.get(b.room_id) || ''
+      }));
+
+      let matchedBooking = null;
+      if (roomNumber && tenantName) {
+        matchedBooking = enrichedBookings.find(b => {
+          const rNum = b.room_number.toLowerCase();
+          const gName = (b.guest_name || '').toLowerCase();
+          const tName = tenantName.toLowerCase();
+          return rNum === roomNumber.toLowerCase() && (gName.includes(tName) || tName.includes(gName));
+        });
+      }
+      if (!matchedBooking && tenantName) {
+        matchedBooking = enrichedBookings.find(b => {
+          const gName = (b.guest_name || '').toLowerCase();
+          const tName = tenantName.toLowerCase();
+          return gName.includes(tName) || tName.includes(gName);
+        });
+      }
+      if (!matchedBooking && roomNumber) {
+        const inRoom = enrichedBookings.filter(b => b.room_number.toLowerCase() === roomNumber.toLowerCase());
+        if (inRoom.length === 1) {
+          matchedBooking = inRoom[0];
+        } else if (inRoom.length > 1) {
+          return {
+            success: false,
+            message: `Room ${roomNumber} has ${inRoom.length} active residents (${inRoom.map(b => b.guest_name).join(', ')}). Please specify the tenant name, e.g.: "checkout ${inRoom[0].guest_name} from room ${roomNumber}"`
+          };
+        }
+      }
+
+      if (!matchedBooking) {
+        return {
+          success: false,
+          message: `Could not find active resident matching "${tenantName || ''}"${roomNumber ? ' in Room ' + roomNumber : ''}.`
+        };
+      }
+
+      const roomDisp = matchedBooking.room_number || roomNumber || 'Unknown';
+
+      // Calculate Folio balance due
+      const [incidentalsRes, paymentsRes] = await Promise.all([
+        admin.from('incidental_charges').select('amount, description').eq('booking_id', matchedBooking.id),
+        admin.from('payments').select('amount, allocation, is_void').eq('booking_id', matchedBooking.id)
+      ]);
+
+      const validPayments = (paymentsRes.data || []).filter(p => !p.is_void);
+      const totalPayments = validPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+      const totalIncidentals = (incidentalsRes.data || []).reduce((sum, item) => sum + Number(item.amount || 0), 0);
+      const isMonthly = matchedBooking.is_monthly;
+      const monthlyRate = Number(matchedBooking.monthly_rent || matchedBooking.monthly_rate || matchedBooking.total_amount || 0);
+      const roomAmount = isMonthly ? monthlyRate : Number(matchedBooking.total_amount || 0);
+
+      const totalCharges = roomAmount + totalIncidentals;
+      const balanceDue = Math.max(0, totalCharges - totalPayments);
+
+      // Check for pending dues
+      if (balanceDue > 0.01 && !isForce) {
+        return {
+          success: false,
+          type: 'checkout',
+          hasPendingDues: true,
+          pendingDues: balanceDue,
+          tenantName: matchedBooking.guest_name,
+          roomNumber: roomDisp,
+          bookingId: matchedBooking.id,
+          message: `⚠️ ${matchedBooking.guest_name} (Room ${roomDisp}) has pending dues of ₹${balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}! Choose an option below:`
+        };
+      }
+
+      // Execute checkout
+      const checkOutUpdates: any = {
+        status: 'Checked Out',
+        actual_check_out: new Date().toISOString()
+      };
+
+      if (isForce && balanceDue > 0.01) {
+        const existingNotes = matchedBooking.notes || '';
+        checkOutUpdates.notes = `${existingNotes} • [Force Checked Out with Pending Balance: ₹${balanceDue.toFixed(2)}]`.trim();
+      }
+
+      const { error: chkErr } = await admin
+        .from('bookings')
+        .update(checkOutUpdates)
+        .eq('id', matchedBooking.id);
+
+      if (chkErr) {
+        return { success: false, message: `Failed to checkout: ${chkErr.message}` };
+      }
+
+      // Check if any other active residents remain in this room
+      const { data: othersInRoom } = await admin
+        .from('bookings')
+        .select('id')
+        .eq('room_id', matchedBooking.room_id)
+        .in('status', ['Checked In', 'Confirmed', 'in_house']);
+
+      if (!othersInRoom || othersInRoom.length === 0) {
+        await admin.from('rooms').update({ status: 'Dirty' }).eq('id', matchedBooking.room_id);
+      }
+
+      return {
+        success: true,
+        type: 'checkout',
+        tenantName: matchedBooking.guest_name,
+        roomNumber: roomDisp,
+        bookingId: matchedBooking.id,
+        newBalanceDue: isForce ? balanceDue : 0,
+        isForce: Boolean(isForce),
+        message: isForce
+          ? `⚠️ Force checked out ${matchedBooking.guest_name} from Room ${roomDisp}! (Pending dues of ₹${balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2 })} recorded in notes).`
+          : `Checked out ${matchedBooking.guest_name} from Room ${roomDisp} successfully! Folio settled (₹0 balance).`
+      };
+    }
+
+    // ==========================================
     // EXECUTE REVENUE
     // ==========================================
     if (parsed.type === 'revenue') {
@@ -1245,7 +1406,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
 }
 
 export async function undoQuickLedgerAction(payload: {
-  type: 'revenue' | 'expense' | 'assign' | 'update_tenant';
+  type: 'revenue' | 'expense' | 'assign' | 'update_tenant' | 'checkout';
   ids?: string[];
   bookingId?: string;
   advAmountAdded?: number;
@@ -1305,6 +1466,15 @@ export async function undoQuickLedgerAction(payload: {
       const { error: undoErr } = await admin.from('bookings').update(updates).eq('id', payload.bookingId);
       if (undoErr) return { success: false, message: undoErr.message };
       return { success: true, message: 'Tenant changes reverted successfully.' };
+    }
+
+    if (payload.type === 'checkout' && payload.bookingId) {
+      const { error: undoErr } = await admin
+        .from('bookings')
+        .update({ status: 'Checked In', actual_check_out: null })
+        .eq('id', payload.bookingId);
+      if (undoErr) return { success: false, message: undoErr.message };
+      return { success: true, message: 'Checkout undone. Resident status restored to Checked In.' };
     }
 
     return { success: false, message: 'Nothing to undo.' };

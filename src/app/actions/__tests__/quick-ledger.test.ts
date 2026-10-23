@@ -352,4 +352,46 @@ describe('Quick Ledger NLP Parser', () => {
       }
     });
   });
+
+  describe('Checkout / Vacate Tenant Parsing', () => {
+    it('should parse user request "please checkout guest srikanth from room 201"', () => {
+      const result = parseQuickLedgerText('please checkout guest srikanth from room 201');
+      expect(result.type).toBe('checkout');
+      if (result.type === 'checkout') {
+        expect(result.roomNumber).toBe('201');
+        expect(result.tenantName?.toLowerCase()).toBe('srikanth');
+        expect(result.isForce).toBe(false);
+      }
+    });
+
+    it('should parse "force checkout srikanth room 201"', () => {
+      const result = parseQuickLedgerText('force checkout srikanth room 201');
+      expect(result.type).toBe('checkout');
+      if (result.type === 'checkout') {
+        expect(result.roomNumber).toBe('201');
+        expect(result.tenantName?.toLowerCase()).toBe('srikanth');
+        expect(result.isForce).toBe(true);
+      }
+    });
+
+    it('should parse "checkout room 201"', () => {
+      const result = parseQuickLedgerText('checkout room 201');
+      expect(result.type).toBe('checkout');
+      if (result.type === 'checkout') {
+        expect(result.roomNumber).toBe('201');
+        expect(result.tenantName).toBeUndefined();
+        expect(result.isForce).toBe(false);
+      }
+    });
+
+    it('should parse "vacate srikanth 201"', () => {
+      const result = parseQuickLedgerText('vacate srikanth 201');
+      expect(result.type).toBe('checkout');
+      if (result.type === 'checkout') {
+        expect(result.roomNumber).toBe('201');
+        expect(result.tenantName?.toLowerCase()).toBe('srikanth');
+        expect(result.isForce).toBe(false);
+      }
+    });
+  });
 });

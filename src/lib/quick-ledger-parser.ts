@@ -95,6 +95,41 @@ export function parseQuickLedgerText(input: string) {
     };
   }
 
+  // 0c-1. CHECKOUT / VACATE TENANT CHECK
+  const isCheckout = /\b(?:checkout|check\s*out|vacate)\b/i.test(lower);
+  if (isCheckout) {
+    const isForce = /\b(?:force|forced)\b/i.test(lower);
+    let cleaned = lower;
+
+    // Room number
+    let roomNumber: string | null = null;
+    const explicitRoom = cleaned.match(/\b(?:room|rm|r)\s*#?\s*(\d{1,4})\b/i);
+    if (explicitRoom) {
+      roomNumber = explicitRoom[1];
+      cleaned = cleaned.replace(explicitRoom[0], ' ');
+    } else {
+      const standaloneRoom = cleaned.match(/\b([1-9]\d{2})\b/);
+      if (standaloneRoom) {
+        roomNumber = standaloneRoom[1];
+        cleaned = cleaned.replace(standaloneRoom[0], ' ');
+      }
+    }
+
+    const noiseWords = new Set([
+      'please', 'checkout', 'check', 'out', 'guest', 'tenant', 'resident',
+      'from', 'in', 'room', 'rm', 'force', 'forced', 'vacate', 'now', 'to', 'bed'
+    ]);
+    const nameTokens = cleaned.split(/\s+/).filter(w => w && !noiseWords.has(w) && !/^\d+$/.test(w));
+    const tenantName = nameTokens.join(' ').trim() || undefined;
+
+    return {
+      type: 'checkout' as const,
+      roomNumber: roomNumber || undefined,
+      tenantName,
+      isForce
+    };
+  }
+
   // 0c. UPDATE TENANT / CHANGE DATES OR RENT CHECK
   const isUpdateTenant = /\b(?:change|update|set|modify|edit|correct)\b/i.test(lower) &&
                          /\b(?:joining|joined|join|due|cycle|rent|fee|date|day|tenant|resident|maintainance|maintenance|maintance|refundable|deposit|adv)\b/i.test(lower);

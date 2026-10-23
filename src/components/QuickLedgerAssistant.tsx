@@ -19,7 +19,10 @@ import {
   UserPlus,
   FileText,
   Trash2,
-  BookOpen
+  BookOpen,
+  LogOut,
+  AlertTriangle,
+  CreditCard
 } from 'lucide-react';
 import { processQuickLedger, undoQuickLedgerAction, QuickLedgerResult } from '@/app/actions/quick-ledger';
 import { useRouter, usePathname } from 'next/navigation';
@@ -244,6 +247,11 @@ export default function QuickLedgerAssistant() {
           bookingId: msg.result.bookingId,
           prevValues: msg.result.prevValues
         };
+      } else if (msg.result.type === 'checkout') {
+        undoPayload = {
+          type: 'checkout',
+          bookingId: msg.result.bookingId
+        };
       }
 
       if (undoPayload) {
@@ -304,6 +312,14 @@ export default function QuickLedgerAssistant() {
         { label: 'Change Rent Due Date', prompt: 'change due date of room 201 to 10th' },
         { label: 'Change Both Dates', prompt: 'change joining date to 1st and due date to 10th for room 201 srikanth' },
         { label: 'Change Monthly Rent', prompt: 'change rent of room 201 to 8500' }
+      ]
+    },
+    {
+      category: '🚪 Resident Checkout & Vacate',
+      items: [
+        { label: 'Checkout Resident', prompt: 'please checkout guest srikanth from room 201' },
+        { label: 'Force Checkout', prompt: 'force checkout srikanth room 201' },
+        { label: 'Vacate Room', prompt: 'checkout room 201' }
       ]
     },
     {
@@ -528,7 +544,52 @@ export default function QuickLedgerAssistant() {
                         </div>
                       ) : (
                         <div className="max-w-[92%] w-full">
-                          {msg.result?.success ? (
+                          {msg.result?.hasPendingDues ? (
+                            /* PENDING DUES DECISION CARD (2 OPTIONS) */
+                            <div className="bg-rose-950/40 border border-rose-500/30 rounded-2xl p-4 shadow-lg space-y-3">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5 text-rose-400 font-black text-[11px] uppercase tracking-wider">
+                                  <AlertTriangle size={15} />
+                                  <span>Pending Dues Detected</span>
+                                </div>
+                                <span className="text-[10px] text-zinc-500 font-mono">{msg.timestamp}</span>
+                              </div>
+
+                              <div className="bg-black/40 rounded-xl p-3 border border-white/5 space-y-1.5">
+                                <div className="flex justify-between items-baseline">
+                                  <span className="text-[11px] text-zinc-400">Resident</span>
+                                  <span className="text-xs font-bold text-white capitalize">{msg.result.tenantName} (Room {msg.result.roomNumber})</span>
+                                </div>
+                                <div className="flex justify-between items-baseline pt-1 border-t border-white/10">
+                                  <span className="text-[11px] text-rose-300 font-bold">Outstanding Balance Due</span>
+                                  <span className="text-sm font-black text-rose-400 font-mono">₹{msg.result.pendingDues?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                </div>
+                              </div>
+
+                              <p className="text-[11px] text-zinc-300 leading-relaxed font-medium">
+                                Folio is not settled. Choose how you want to proceed:
+                              </p>
+
+                              <div className="grid grid-cols-2 gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleSend(`${msg.result?.tenantName} room ${msg.result?.roomNumber} paid ${msg.result?.pendingDues} room fee`)}
+                                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-white font-bold text-[11px] border border-emerald-500/30 transition-all text-center shadow"
+                                >
+                                  <CreditCard size={13} />
+                                  <span>Settle & Checkout</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSend(`force checkout ${msg.result?.tenantName} room ${msg.result?.roomNumber}`)}
+                                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white font-bold text-[11px] border border-rose-500/30 transition-all text-center shadow"
+                                >
+                                  <LogOut size={13} />
+                                  <span>Force Checkout</span>
+                                </button>
+                              </div>
+                            </div>
+                          ) : msg.result?.success ? (
                             msg.result.type === 'revenue' ? (
                               /* REVENUE SUCCESS CARD */
                               <div className="bg-emerald-950/30 border border-emerald-500/30 rounded-2xl p-4 shadow-lg space-y-2.5">
@@ -738,6 +799,50 @@ export default function QuickLedgerAssistant() {
 
                                 <div className="flex items-center justify-between pt-1">
                                   <span className="text-[10px] text-emerald-400 font-semibold">Live in Front Office</span>
+                                  <button
+                                    onClick={() => handleUndo(msg)}
+                                    disabled={msg.undoState === 'undoing' || msg.undoState === 'undone'}
+                                    className={`flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg transition-all ${
+                                      msg.undoState === 'undone'
+                                        ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                                        : 'bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white'
+                                    }`}
+                                  >
+                                    <RotateCcw size={12} className={msg.undoState === 'undoing' ? 'animate-spin' : ''} />
+                                    {msg.undoState === 'undone' ? 'Undone' : msg.undoState === 'undoing' ? 'Undoing...' : 'Undo'}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : msg.result.type === 'checkout' ? (
+                              /* CHECKOUT SUCCESS CARD */
+                              <div className={`border rounded-2xl p-4 shadow-lg space-y-2.5 ${msg.result.isForce ? 'bg-amber-950/30 border-amber-500/30' : 'bg-emerald-950/30 border-emerald-500/30'}`}>
+                                <div className="flex items-center justify-between">
+                                  <div className={`flex items-center gap-1.5 font-black text-[11px] uppercase tracking-wider ${msg.result.isForce ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                    <LogOut size={15} />
+                                    <span>{msg.result.isForce ? 'Force Checked Out' : 'Resident Checked Out'}</span>
+                                  </div>
+                                  <span className="text-[10px] text-zinc-500 font-mono">{msg.timestamp}</span>
+                                </div>
+
+                                <div className="bg-black/40 rounded-xl p-3 border border-white/5 space-y-1.5">
+                                  <div className="flex justify-between items-baseline">
+                                    <span className="text-[11px] text-zinc-400">Resident</span>
+                                    <span className="text-xs font-bold text-white capitalize">{msg.result.tenantName}</span>
+                                  </div>
+                                  <div className="flex justify-between items-baseline">
+                                    <span className="text-[11px] text-zinc-400">Vacated Room</span>
+                                    <span className="text-xs font-bold text-indigo-300">Room {msg.result.roomNumber}</span>
+                                  </div>
+                                  <div className="flex justify-between items-baseline pt-1 border-t border-white/10">
+                                    <span className="text-[11px] text-zinc-400">Settlement Status</span>
+                                    <span className={`text-xs font-bold ${msg.result.isForce && msg.result.newBalanceDue ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                      {msg.result.isForce && msg.result.newBalanceDue ? `₹${msg.result.newBalanceDue.toLocaleString('en-IN')} Unsettled (In Notes)` : 'Folio Settled (₹0 Due)'}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center justify-between pt-1">
+                                  <span className="text-[10px] text-zinc-400">Room status updated</span>
                                   <button
                                     onClick={() => handleUndo(msg)}
                                     disabled={msg.undoState === 'undoing' || msg.undoState === 'undone'}
