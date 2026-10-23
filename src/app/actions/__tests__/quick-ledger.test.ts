@@ -189,6 +189,18 @@ describe('Quick Ledger NLP Parser', () => {
       }
     });
 
+    it('should parse user slash date example "srikanth room 201 joined 10/05/26 due dat is 1st paid 8500 room fee on 1st"', () => {
+      const result = parseQuickLedgerText('srikanth room 201 joined 10/05/26 due dat is 1st paid 8500 room fee on 1st');
+      expect(result.type).toBe('assign');
+      if (result.type === 'assign') {
+        expect(result.tenantName.toLowerCase()).toBe('srikanth');
+        expect(result.roomNumber).toBe('201');
+        expect(result.checkInDate).toBe('2026-05-10');
+        expect(result.dueDay).toBe(1);
+        expect(result.monthlyRent).toBe(8500);
+      }
+    });
+
     it('should parse user daily stay example "kiran joined/add to room 204 daily basis per day 600 total 2 days paid only for 1 day 600 pedning 600"', () => {
       const result = parseQuickLedgerText('kiran joined/add to room 204 daily basis per day 600 total 2 days paid only for 1 day 600 pedning 600');
       expect(result.type).toBe('assign');

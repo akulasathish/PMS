@@ -50,10 +50,20 @@ export function parseQuickLedgerText(input: string) {
   let customDay: number | null = null;
   let dateRawStr = '';
 
+  const slashDateMatch = lower.match(/\b(?:(?:joined|paid|date|join)\s+)?(?:on\s+)?(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/i);
   const dateMatch = lower.match(/\b(?:(?:joined|paid|date|join)\s+)?(?:on\s+)?(\d{1,2})(?:st|nd|rd|th)?\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember))(?:\s+(20\d{2}))?\b/i) ||
                     lower.match(/(?:(?:joined|paid|date|join)\s+)?on\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s+([a-z]+))?/i) ||
                     lower.match(/\bdate\s+(\d{1,2})(?:st|nd|rd|th)?\b/i);
-  if (dateMatch) {
+
+  if (slashDateMatch) {
+    const day = parseInt(slashDateMatch[1], 10);
+    const month = parseInt(slashDateMatch[2], 10);
+    let year = parseInt(slashDateMatch[3], 10);
+    if (year < 100) year += 2000;
+    customDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    customDay = day;
+    dateRawStr = slashDateMatch[0];
+  } else if (dateMatch) {
     const day = parseInt(dateMatch[1], 10);
     const now = new Date();
     let year = now.getFullYear();
@@ -273,61 +283,70 @@ export function parseQuickLedgerText(input: string) {
       cleaned = cleaned.replace(/\bsingle\s*(?:share|room|bed)?\b/gi, ' ');
     }
 
-    // 2. Explicit Room: 'room 201' or 'rm 201'
+    // 2. Room Number: explicit 'room 201' / 'rm 201' or standalone 3-digit
     let roomNumber: string | null = null;
     const explicitRoom = cleaned.match(/\b(?:room|rm|r)\s*#?\s*(\d{1,4})\b/i);
     if (explicitRoom) {
       roomNumber = explicitRoom[1];
       cleaned = cleaned.replace(explicitRoom[0], ' ');
+    } else {
+      const standaloneRoom = cleaned.match(/\b([1-9]\d{2})\b/);
+      if (standaloneRoom) {
+        roomNumber = standaloneRoom[1];
+        cleaned = cleaned.replace(standaloneRoom[0], ' ');
+      }
     }
 
-    // 3. Due Day: 'due 28' or 'due day 28' or from date
-    let dueDay: number | null = customDay;
-    const dueMatch = cleaned.match(/\b(?:due|cycle|due\s*day|day)\s*[:=]?\s*(\d{1,2})\b/i);
+    // 3. Due Day: 'due 28' or 'due day 28' or 'due date is 1st'
+    let dueDay: number | null = null;
+    const dueMatch = cleaned.match(/\b(?:due\s*(?:dat|date)?|cycle|due\s*day)\s*(?:is|to|on)?\s*[:=]?\s*(\d{1,2})(?:st|nd|rd|th)?\b/i) ||
+                     cleaned.match(/\b(?:due|cycle|due\s*day|day)\s*[:=]?\s*(\d{1,2})(?:st|nd|rd|th)?\b/i);
     if (dueMatch) {
       dueDay = parseInt(dueMatch[1], 10);
       cleaned = cleaned.replace(dueMatch[0], ' ');
+    } else if (customDay) {
+      dueDay = customDay;
     }
 
-    // 4. Monthly Rent / Room Fee (check prefix 'rent 8000' first, then suffix '8000 rent')
+    // 4. Monthly Rent / Room Fee (check suffix '8500 room fee' first, then prefix 'rent 8500')
     let monthlyRent = 0;
-    const rentAfter = cleaned.match(/\b(?:rent|monthly|rom\s*fee|room\s*fee|fee|feee)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
-    if (rentAfter) {
-      monthlyRent = parseFloat(rentAfter[1]) * (rentAfter[2] ? 1000 : 1);
-      cleaned = cleaned.replace(rentAfter[0], ' ');
+    const rentBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:rent|monthly|rom\s*fee|room\s*fee|fee|feee)\b/i);
+    if (rentBefore) {
+      monthlyRent = parseFloat(rentBefore[1]) * (rentBefore[2] ? 1000 : 1);
+      cleaned = cleaned.replace(rentBefore[0], ' ');
     } else {
-      const rentBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:rent|monthly|rom\s*fee|room\s*fee|fee|feee)\b/i);
-      if (rentBefore) {
-        monthlyRent = parseFloat(rentBefore[1]) * (rentBefore[2] ? 1000 : 1);
-        cleaned = cleaned.replace(rentBefore[0], ' ');
+      const rentAfter = cleaned.match(/\b(?:rent|monthly|rom\s*fee|room\s*fee|fee|feee)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+      if (rentAfter) {
+        monthlyRent = parseFloat(rentAfter[1]) * (rentAfter[2] ? 1000 : 1);
+        cleaned = cleaned.replace(rentAfter[0], ' ');
       }
     }
 
-    // 5. Maintenance Fee (Non-refundable) (check prefix 'maintainance 1000' first, then suffix '1000 maintainance')
+    // 5. Maintenance Fee (Non-refundable) (check suffix '1000 maintainance' first, then prefix 'maintainance 1000')
     let maintenanceFee = 0;
-    const maintAfter = cleaned.match(/\b(?:maintainance|maintenance|non\s*refundable)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
-    if (maintAfter) {
-      maintenanceFee = parseFloat(maintAfter[1]) * (maintAfter[2] ? 1000 : 1);
-      cleaned = cleaned.replace(maintAfter[0], ' ');
+    const maintBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:maintainance|maintenance|non\s*refundable)\b/i);
+    if (maintBefore) {
+      maintenanceFee = parseFloat(maintBefore[1]) * (maintBefore[2] ? 1000 : 1);
+      cleaned = cleaned.replace(maintBefore[0], ' ');
     } else {
-      const maintBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:maintainance|maintenance|non\s*refundable)\b/i);
-      if (maintBefore) {
-        maintenanceFee = parseFloat(maintBefore[1]) * (maintBefore[2] ? 1000 : 1);
-        cleaned = cleaned.replace(maintBefore[0], ' ');
+      const maintAfter = cleaned.match(/\b(?:maintainance|maintenance|non\s*refundable)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+      if (maintAfter) {
+        maintenanceFee = parseFloat(maintAfter[1]) * (maintAfter[2] ? 1000 : 1);
+        cleaned = cleaned.replace(maintAfter[0], ' ');
       }
     }
 
-    // 6. Refundable Security Deposit / Advance (check prefix 'adv 2000' first, then suffix '2000 adv')
+    // 6. Refundable Security Deposit / Advance (check suffix '2000 adv' first, then prefix 'adv 2000')
     let refundableDeposit = 0;
-    const refAfter = cleaned.match(/\b(?:refundable\s*(?:ammount|amount|deposit)?|security\s*deposit|sec\s*deposit|adv|advance|advan[cv]e)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
-    if (refAfter) {
-      refundableDeposit = parseFloat(refAfter[1]) * (refAfter[2] ? 1000 : 1);
-      cleaned = cleaned.replace(refAfter[0], ' ');
+    const refBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:refundable\s*(?:ammount|amount|deposit)?|security\s*deposit|sec\s*deposit|adv|advance|advan[cv]e)\b/i);
+    if (refBefore) {
+      refundableDeposit = parseFloat(refBefore[1]) * (refBefore[2] ? 1000 : 1);
+      cleaned = cleaned.replace(refBefore[0], ' ');
     } else {
-      const refBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:refundable\s*(?:ammount|amount|deposit)?|security\s*deposit|sec\s*deposit|adv|advance|advan[cv]e)\b/i);
-      if (refBefore) {
-        refundableDeposit = parseFloat(refBefore[1]) * (refBefore[2] ? 1000 : 1);
-        cleaned = cleaned.replace(refBefore[0], ' ');
+      const refAfter = cleaned.match(/\b(?:refundable\s*(?:ammount|amount|deposit)?|security\s*deposit|sec\s*deposit|adv|advance|advan[cv]e)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+      if (refAfter) {
+        refundableDeposit = parseFloat(refAfter[1]) * (refAfter[2] ? 1000 : 1);
+        cleaned = cleaned.replace(refAfter[0], ' ');
       }
     }
 
