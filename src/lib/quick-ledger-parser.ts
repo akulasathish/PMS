@@ -378,12 +378,38 @@ export function parseQuickLedgerText(input: string) {
       }
     }
 
+    // 8b. Detect if monthly rent was paid at admission or pending/due
+    let rentPaid = 0;
+    const paidOnlyMatch = lower.match(/\bpaid\s*only\s*(?:for\s*)?(\d+(?:\.\d+)?)(k)?\b/i);
+    if (paidOnlyMatch) {
+      const onlyAmt = parseFloat(paidOnlyMatch[1]) * (paidOnlyMatch[2] ? 1000 : 1);
+      if (onlyAmt > (maintenanceFee + refundableDeposit)) {
+        rentPaid = onlyAmt - (maintenanceFee + refundableDeposit);
+      } else {
+        rentPaid = 0;
+      }
+    } else {
+      const isRentDue = /\b(?:room\s*fee|rom\s*fee|rent|fee)\s*(?:is\s*)?(?:due|pending|pedning)\b/i.test(lower) ||
+                        /\b(?:due|pending|pedning)\s*(?:room\s*fee|rom\s*fee|rent|fee)\b/i.test(lower);
+      if (!isRentDue) {
+        const rentPaidExplicit = lower.match(/\b(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\s*(?:rent|room\s*fee|rom\s*fee|monthly|fee)\b/i) ||
+                                 lower.match(/(\d+(?:\.\d+)?)(k)?\s*(?:rent|room\s*fee|rom\s*fee|monthly|fee)\s*(?:is\s*)?(?:paid|sent)\b/i);
+        if (rentPaidExplicit) {
+          rentPaid = parseFloat(rentPaidExplicit[1]) * (rentPaidExplicit[2] ? 1000 : 1);
+        } else if (/\bpaid\s*(?:rent|room\s*fee|rom\s*fee|fee)\b/i.test(lower)) {
+          rentPaid = monthlyRent;
+        }
+      }
+    }
+
     // 9. Clean noise words for Tenant Name
     cleaned = cleaned.replace(/\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining|joined|add|to|in)\b/gi, ' ').trim();
     const noiseWords = new Set([
       'room', 'rm', 'rent', 'monthly', 'adv', 'advance', 'advanve', 'deposit', 'due', 'day', 'in', 'at', 'fee',
-      'feee', 'for', 'to', 'and', '&', 'share', 'sharing', 'bed', 'joined', 'on', 'maintainance', 'maintenance',
-      'refundable', 'ammount', 'amount', 'date', 'paid', 'sent', 'joined', 'joining', 'join',
+      'feee', 'for', 'to', 'and', '&', 'share', 'sharing', 'bed', 'joined', 'on', 'maintainance', 'maintenance', 'maintance', 'maint',
+      'refundable', 'refundabale', 'ammount', 'amount', 'date', 'paid', 'sent', 'joined', 'joining', 'join',
+      'non', 'today', 'total', 'but', 'only', 'is', 'guest', 'new', 'resident', 'person', 'staying', 'stay',
+      'charges', 'charge', 'pedning', 'pending',
       'january', 'jan', 'february', 'feb', 'march', 'mar', 'april', 'apr', 'may', 'june', 'jun',
       'july', 'jul', 'august', 'aug', 'september', 'sep', 'october', 'oct', 'november', 'nov', 'december', 'dec'
     ]);
@@ -395,6 +421,7 @@ export function parseQuickLedgerText(input: string) {
       tenantName,
       roomNumber,
       monthlyRent,
+      rentPaid,
       advAmount: refundableDeposit,
       refundableDeposit,
       maintenanceFee,

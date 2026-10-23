@@ -287,6 +287,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         tenantName,
         roomNumber,
         monthlyRent,
+        rentPaid: parsedRentPaid,
         advAmount,
         refundableDeposit: parsedRefundable,
         maintenanceFee: parsedMaintenance,
@@ -543,7 +544,34 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         }
       }
 
+      // 6c. If monthly rent was paid at admission, record rent payment
+      const rentPaid = Number(parsedRentPaid || 0);
+      if (rentPaid > 0) {
+        const { data: rentPay } = await admin
+          .from('payments')
+          .insert([{
+            booking_id: newBooking.id,
+            property_id: activePropertyId,
+            amount: rentPaid,
+            method: 'UPI',
+            payment_method: 'UPI',
+            allocation: 'Rent',
+            transaction_id: 'RENT-PAID-AT-ADMISSION',
+            business_date: effectiveCheckIn
+          }])
+          .select('id')
+          .single();
+
+        if (rentPay) {
+          paymentIds.push(rentPay.id);
+        }
+      }
+
       const totalAdvance = refundableDeposit + maintenanceFee;
+      const rentStatusText = rentPaid > 0 
+        ? `Rent: ₹${effectiveMonthlyRent.toLocaleString('en-IN')}/mo (Paid: ₹${rentPaid.toLocaleString('en-IN')})` 
+        : `Rent: ₹${effectiveMonthlyRent.toLocaleString('en-IN')}/mo (Due: ₹${effectiveMonthlyRent.toLocaleString('en-IN')})`;
+
       return {
         success: true,
         type: 'assign',
@@ -553,12 +581,13 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         advPaid: totalAdvance,
         refundableDeposit,
         maintenanceFee,
+        feePaid: rentPaid,
         dueDay: finalDueDay,
         sharing: sharing || undefined,
         checkInDate: effectiveCheckIn,
         bookingId: newBooking.id,
         paymentIds,
-        message: `Assigned ${formattedName} to Room ${targetRoom.room_number}! Joined: ${effectiveCheckIn} • Rent: ₹${effectiveMonthlyRent.toLocaleString('en-IN')}/mo • Refundable: ₹${refundableDeposit.toLocaleString('en-IN')} • Maintenance: ₹${maintenanceFee.toLocaleString('en-IN')}.`
+        message: `Assigned ${formattedName} to Room ${targetRoom.room_number}! Joined: ${effectiveCheckIn} • ${rentStatusText} • Maintenance: ₹${maintenanceFee.toLocaleString('en-IN')} (Paid) • Refundable: ₹${refundableDeposit.toLocaleString('en-IN')}.`
       };
     }
 

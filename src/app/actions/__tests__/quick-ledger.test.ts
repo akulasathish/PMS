@@ -198,6 +198,31 @@ describe('Quick Ledger NLP Parser', () => {
         expect(result.checkInDate).toBe('2026-05-10');
         expect(result.dueDay).toBe(1);
         expect(result.monthlyRent).toBe(8500);
+        expect((result as any).rentPaid).toBe(8500);
+      }
+    });
+
+    it('should parse rent paid upon admission "202 ponnam shanker paid 9000 room fee maintainance 1000"', () => {
+      const result = parseQuickLedgerText('202 ponnam shanker paid 9000 room fee maintainance 1000');
+      expect(result.type).toBe('assign');
+      if (result.type === 'assign') {
+        expect(result.tenantName.toLowerCase()).toBe('ponnam shanker');
+        expect(result.roomNumber).toBe('202');
+        expect(result.monthlyRent).toBe(9000);
+        expect((result as any).rentPaid).toBe(9000);
+        expect(result.maintenanceFee).toBe(1000);
+      }
+    });
+
+    it('should parse paid only 1000 with room fee due "202 ponnam shanker total fee 9000 maintainance 1000 paid but paid only 1000 non refundable room fee and 1000 maintance due"', () => {
+      const result = parseQuickLedgerText('202 ponnam shanker total fee 9000 maintainance 1000 paid but paid only 1000 non refundable room fee and 1000 maintance due');
+      expect(result.type).toBe('assign');
+      if (result.type === 'assign') {
+        expect(result.tenantName.toLowerCase()).toBe('ponnam shanker');
+        expect(result.roomNumber).toBe('202');
+        expect(result.monthlyRent).toBe(9000);
+        expect((result as any).rentPaid).toBe(0); // Rent is due
+        expect(result.maintenanceFee).toBe(1000); // Maintenance paid
       }
     });
 
