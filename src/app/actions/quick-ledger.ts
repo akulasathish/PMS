@@ -1,7 +1,7 @@
 "use server";
 
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { parseQuickLedgerText, QuickLedgerItem } from '@/lib/quick-ledger-parser';
+import { parseQuickLedgerText, QuickLedgerItem, isResidentNameMatch } from '@/lib/quick-ledger-parser';
 
 export interface QuickLedgerDueItem {
   bookingId: string;
@@ -313,18 +313,31 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       let existingBooking: any = null;
 
       if (tenantName) {
-        let query = admin
-          .from('bookings')
-          .select('id, guest_name, room_id, security_deposit, rooms!inner(room_number)')
-          .eq('property_id', activePropertyId)
-          .in('status', ['Checked In', 'Confirmed', 'in_house']);
-        
-        if (roomNumber) {
-          query = query.ilike('rooms.room_number', roomNumber);
-        }
-        query = query.ilike('guest_name', `%${tenantName}%`);
-        const { data: matched } = await query.maybeSingle();
-        existingBooking = matched;
+        const [bookingsRes, roomsRes] = await Promise.all([
+          admin
+            .from('bookings')
+            .select('id, guest_name, room_id, security_deposit, notes, check_in, rent_due_day, monthly_rent, monthly_rate')
+            .eq('property_id', activePropertyId)
+            .in('status', ['Checked In', 'Confirmed', 'in_house']),
+          admin
+            .from('rooms')
+            .select('id, room_number')
+            .eq('property_id', activePropertyId)
+        ]);
+
+        const rooms = roomsRes.data || [];
+        const roomMap = new Map(rooms.map(r => [r.id, r.room_number?.toString() || '']));
+        const enriched = (bookingsRes.data || []).map(b => ({
+          ...b,
+          room_number: roomMap.get(b.room_id) || ''
+        }));
+
+        existingBooking = enriched.find(b => {
+          const roomMatch = !roomNumber ||
+            b.room_number.toLowerCase() === roomNumber.toLowerCase() ||
+            b.room_number.toLowerCase().includes(roomNumber.toLowerCase());
+          return roomMatch && isResidentNameMatch(b.guest_name, tenantName);
+        });
       }
 
       if (existingBooking && isPaymentIntent) {
@@ -427,14 +440,20 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       }
 
       // 1. Fetch room from inventory
-      const { data: targetRoom, error: roomErr } = await admin
+      const { data: allRooms } = await admin
         .from('rooms')
         .select('id, room_number, sharing_capacity')
-        .eq('property_id', activePropertyId)
-        .ilike('room_number', roomNumber)
-        .maybeSingle();
+        .eq('property_id', activePropertyId);
 
-      if (roomErr || !targetRoom) {
+      const targetRoom = (allRooms || []).find(r => {
+        const rNum = (r.room_number || '').toString().toLowerCase().trim();
+        const searchNum = roomNumber.toLowerCase().trim();
+        return rNum === searchNum ||
+               rNum.includes(searchNum) ||
+               rNum.replace(/[^a-z0-9]/g, '') === searchNum.replace(/[^a-z0-9]/g, '');
+      });
+
+      if (!targetRoom) {
         return {
           success: false,
           message: `Could not find Room "${roomNumber}" in this property inventory.`
@@ -448,11 +467,8 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         .eq('room_id', targetRoom.id)
         .in('status', ['Checked In', 'Confirmed', 'in_house']);
 
-      const existingResident = (activeInRoom || []).find(b => {
-        const bName = (b.guest_name || '').toLowerCase();
-        const tName = (tenantName || '').toLowerCase();
-        return bName.includes(tName) || tName.includes(bName);
-      });
+      const matchingResidents = (activeInRoom || []).filter(b => isResidentNameMatch(b.guest_name, tenantName));
+      const existingResident = matchingResidents[0];
 
       if (existingResident) {
         // Resident already exists in this room! Update their profile instead of creating a duplicate booking!
@@ -463,6 +479,15 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         const effectiveMonthlyRent = monthlyRent || Number(existingResident.monthly_rent || existingResident.monthly_rate || 8000);
         const maintenanceFee = parsedMaintenance || 0;
         const refundableDeposit = parsedRefundable || advAmount || Number(existingResident.security_deposit || 0);
+
+        // If older duplicate bookings exist for this same person in this room, cancel the extra duplicates
+        if (matchingResidents.length > 1) {
+          const duplicateIds = matchingResidents.slice(1).map(b => b.id);
+          await admin
+            .from('bookings')
+            .update({ status: 'Cancelled', notes: 'Auto-merged duplicate resident record' })
+            .in('id', duplicateIds);
+        }
 
         const noteParts: string[] = [];
         if (sharing) noteParts.push(`${sharing}-Share Bed`);
@@ -686,6 +711,21 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       if (refundableDeposit > 0) noteParts.push(`Refundable: ₹${refundableDeposit.toLocaleString('en-IN')}`);
       const bookingNotes = noteParts.join(' • ') || undefined;
 
+      // 4b. Guardrail: Verify no active booking in targetRoom already matches tenantName
+      const { data: finalDuplicateCheck } = await admin
+        .from('bookings')
+        .select('id, guest_name')
+        .eq('room_id', targetRoom.id)
+        .in('status', ['Checked In', 'Confirmed', 'in_house']);
+
+      const existingInRoom = (finalDuplicateCheck || []).find(b => isResidentNameMatch(b.guest_name, tenantName));
+      if (existingInRoom) {
+        return {
+          success: false,
+          message: `Resident "${existingInRoom.guest_name}" is already active in Room ${targetRoom.room_number}. Duplicate tenant creation prevented! Use "modify existing tenant room ${targetRoom.room_number} ${tenantName}" to adjust details.`
+        };
+      }
+
       // 5. Create booking with custom rent, refundable deposit and notes
       const { data: newBooking, error: bookErr } = await admin
         .from('bookings')
@@ -874,23 +914,42 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       if (roomNumber && tenantName) {
         matchedBooking = enrichedBookings.find(b => {
           const rNum = b.room_number.toLowerCase();
-          const gName = (b.guest_name || '').toLowerCase();
-          const tName = tenantName.toLowerCase();
-          return rNum === roomNumber.toLowerCase() && (gName.includes(tName) || tName.includes(gName));
+          return (rNum === roomNumber.toLowerCase() || rNum.includes(roomNumber.toLowerCase())) &&
+                 isResidentNameMatch(b.guest_name, tenantName);
         });
       }
       if (!matchedBooking && tenantName) {
-        matchedBooking = enrichedBookings.find(b => {
-          const gName = (b.guest_name || '').toLowerCase();
-          const tName = tenantName.toLowerCase();
-          return gName.includes(tName) || tName.includes(gName);
-        });
+        matchedBooking = enrichedBookings.find(b => isResidentNameMatch(b.guest_name, tenantName));
       }
-      if (!matchedBooking && roomNumber) {
-        matchedBooking = enrichedBookings.find(b => b.room_number.toLowerCase() === roomNumber.toLowerCase());
+      // Only fall back to room occupant if NO tenantName was specified
+      if (!matchedBooking && roomNumber && !tenantName) {
+        const inRoom = enrichedBookings.filter(b => {
+          const rNum = b.room_number.toLowerCase();
+          return rNum === roomNumber.toLowerCase() || rNum.includes(roomNumber.toLowerCase());
+        });
+        if (inRoom.length === 1) {
+          matchedBooking = inRoom[0];
+        } else if (inRoom.length > 1) {
+          return {
+            success: false,
+            message: `Room ${roomNumber} has ${inRoom.length} active residents (${inRoom.map(b => b.guest_name).join(', ')}). Please specify the tenant name.`
+          };
+        }
       }
 
       if (!matchedBooking) {
+        if (roomNumber && tenantName) {
+          const inRoom = enrichedBookings.filter(b => {
+            const rNum = b.room_number.toLowerCase();
+            return rNum === roomNumber.toLowerCase() || rNum.includes(roomNumber.toLowerCase());
+          });
+          if (inRoom.length > 0) {
+            return {
+              success: false,
+              message: `Could not find resident matching "${tenantName}" in Room ${roomNumber}. Active resident(s) in Room ${roomNumber}: ${inRoom.map(b => b.guest_name).join(', ')}.`
+            };
+          }
+        }
         return {
           success: false,
           message: `Could not find active tenant matching "${tenantName || ''}"${roomNumber ? ' in Room ' + roomNumber : ''}.`
@@ -1078,35 +1137,55 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         room_number: roomMap.get(b.room_id) || ''
       }));
 
-      let matchedBooking = null;
+      let matchedBooking: any = null;
+      let matchingBookings: any[] = [];
+
       if (roomNumber && tenantName) {
-        matchedBooking = enrichedBookings.find(b => {
+        matchingBookings = enrichedBookings.filter(b => {
           const rNum = b.room_number.toLowerCase();
-          const gName = (b.guest_name || '').toLowerCase();
-          const tName = tenantName.toLowerCase();
-          return rNum === roomNumber.toLowerCase() && (gName.includes(tName) || tName.includes(gName));
+          return (rNum === roomNumber.toLowerCase() || rNum.includes(roomNumber.toLowerCase())) &&
+                 isResidentNameMatch(b.guest_name, tenantName);
         });
       }
-      if (!matchedBooking && tenantName) {
-        matchedBooking = enrichedBookings.find(b => {
-          const gName = (b.guest_name || '').toLowerCase();
-          const tName = tenantName.toLowerCase();
-          return gName.includes(tName) || tName.includes(gName);
-        });
+
+      if (matchingBookings.length === 0 && tenantName) {
+        matchingBookings = enrichedBookings.filter(b => isResidentNameMatch(b.guest_name, tenantName));
       }
-      if (!matchedBooking && roomNumber) {
-        const inRoom = enrichedBookings.filter(b => b.room_number.toLowerCase() === roomNumber.toLowerCase());
+
+      if (matchingBookings.length > 0) {
+        matchedBooking = matchingBookings[0];
+      }
+
+      // CRITICAL: Room fallback ONLY when NO tenantName was specified by user (e.g. "checkout room 201" or "vacate room 201")
+      if (!matchedBooking && roomNumber && !tenantName) {
+        const inRoom = enrichedBookings.filter(b => {
+          const rNum = b.room_number.toLowerCase();
+          return rNum === roomNumber.toLowerCase() || rNum.includes(roomNumber.toLowerCase());
+        });
         if (inRoom.length === 1) {
           matchedBooking = inRoom[0];
+          matchingBookings = [matchedBooking];
         } else if (inRoom.length > 1) {
           return {
             success: false,
-            message: `Room ${roomNumber} has ${inRoom.length} active residents (${inRoom.map(b => b.guest_name).join(', ')}). Please specify the tenant name, e.g.: "checkout ${inRoom[0].guest_name} from room ${roomNumber}"`
+            message: `Room ${roomNumber} has ${inRoom.length} active residents (${inRoom.map(b => b.guest_name).join(', ')}). Please specify the resident name, e.g.: "checkout ${inRoom[0].guest_name} from room ${roomNumber}"`
           };
         }
       }
 
       if (!matchedBooking) {
+        if (roomNumber && tenantName) {
+          const inRoom = enrichedBookings.filter(b => {
+            const rNum = b.room_number.toLowerCase();
+            return rNum === roomNumber.toLowerCase() || rNum.includes(roomNumber.toLowerCase());
+          });
+          if (inRoom.length > 0) {
+            return {
+              success: false,
+              message: `Could not find resident matching "${tenantName}" in Room ${roomNumber}. Active resident(s) in Room ${roomNumber}: ${inRoom.map(b => b.guest_name).join(', ')}.`
+            };
+          }
+        }
         return {
           success: false,
           message: `Could not find active resident matching "${tenantName || ''}"${roomNumber ? ' in Room ' + roomNumber : ''}.`
@@ -1156,10 +1235,11 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         checkOutUpdates.notes = `${existingNotes} • [Force Checked Out with Pending Balance: ₹${balanceDue.toFixed(2)}]`.trim();
       }
 
+      const idsToCheckout = matchingBookings.length > 0 ? matchingBookings.map(b => b.id) : [matchedBooking.id];
       const { error: chkErr } = await admin
         .from('bookings')
         .update(checkOutUpdates)
-        .eq('id', matchedBooking.id);
+        .in('id', idsToCheckout);
 
       if (chkErr) {
         return { success: false, message: `Failed to checkout: ${chkErr.message}` };
@@ -1172,7 +1252,9 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         .eq('room_id', matchedBooking.room_id)
         .in('status', ['Checked In', 'Confirmed', 'in_house']);
 
-      if (!othersInRoom || othersInRoom.length === 0) {
+      const remainingOthers = (othersInRoom || []).filter(b => !idsToCheckout.includes(b.id));
+
+      if (remainingOthers.length === 0) {
         await admin.from('rooms').update({ status: 'Dirty' }).eq('id', matchedBooking.room_id);
       }
 
@@ -1254,26 +1336,44 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       if (roomNumber && tenantName) {
         matchedBooking = enrichedBookings.find(b => {
           const rNum = b.room_number.toLowerCase();
-          const gName = (b.guest_name || '').toLowerCase();
-          return rNum === roomNumber.toLowerCase() && gName.includes(tenantName.toLowerCase());
-        });
-      }
-
-      if (!matchedBooking && roomNumber) {
-        matchedBooking = enrichedBookings.find(b => {
-          const rNum = b.room_number.toLowerCase();
-          return rNum === roomNumber.toLowerCase();
+          return (rNum === roomNumber.toLowerCase() || rNum.includes(roomNumber.toLowerCase())) &&
+                 isResidentNameMatch(b.guest_name, tenantName);
         });
       }
 
       if (!matchedBooking && tenantName) {
-        matchedBooking = enrichedBookings.find(b => {
-          const gName = (b.guest_name || '').toLowerCase();
-          return gName.includes(tenantName.toLowerCase());
+        matchedBooking = enrichedBookings.find(b => isResidentNameMatch(b.guest_name, tenantName));
+      }
+
+      // Only fall back to room occupant if NO tenantName was specified
+      if (!matchedBooking && roomNumber && !tenantName) {
+        const inRoom = enrichedBookings.filter(b => {
+          const rNum = b.room_number.toLowerCase();
+          return rNum === roomNumber.toLowerCase() || rNum.includes(roomNumber.toLowerCase());
         });
+        if (inRoom.length === 1) {
+          matchedBooking = inRoom[0];
+        } else if (inRoom.length > 1) {
+          return {
+            success: false,
+            message: `Room ${roomNumber} has ${inRoom.length} active residents (${inRoom.map(b => b.guest_name).join(', ')}). Please specify the tenant name, e.g.: "${inRoom[0].guest_name} room ${roomNumber} paid ${feeAmount}"`
+          };
+        }
       }
 
       if (!matchedBooking) {
+        if (roomNumber && tenantName) {
+          const inRoom = enrichedBookings.filter(b => {
+            const rNum = b.room_number.toLowerCase();
+            return rNum === roomNumber.toLowerCase() || rNum.includes(roomNumber.toLowerCase());
+          });
+          if (inRoom.length > 0) {
+            return {
+              success: false,
+              message: `Could not find active tenant matching "${tenantName}" in Room ${roomNumber}. Active resident(s) in Room ${roomNumber}: ${inRoom.map(b => b.guest_name).join(', ')}.`
+            };
+          }
+        }
         return {
           success: false,
           message: `Could not find active tenant matching "${tenantName || ''}"${roomNumber ? ' in Room ' + roomNumber : ''}. Please check the room number or name.`

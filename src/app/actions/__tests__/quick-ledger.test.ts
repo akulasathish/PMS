@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { parseQuickLedgerText } from '@/lib/quick-ledger-parser';
+import { parseQuickLedgerText, isResidentNameMatch } from '@/lib/quick-ledger-parser';
 
 describe('Quick Ledger NLP Parser', () => {
   describe('Expense Parsing', () => {
@@ -392,6 +392,50 @@ describe('Quick Ledger NLP Parser', () => {
         expect(result.tenantName?.toLowerCase()).toBe('srikanth');
         expect(result.isForce).toBe(false);
       }
+    });
+
+    it('should parse "checkout tenant name called srikanth from room 201"', () => {
+      const result = parseQuickLedgerText('checkout tenant name called srikanth from room 201');
+      expect(result.type).toBe('checkout');
+      if (result.type === 'checkout') {
+        expect(result.roomNumber).toBe('201');
+        expect(result.tenantName?.toLowerCase()).toBe('srikanth');
+        expect(result.isForce).toBe(false);
+      }
+    });
+
+    it('should parse "force checkout srikant room 201"', () => {
+      const result = parseQuickLedgerText('force checkout srikant room 201');
+      expect(result.type).toBe('checkout');
+      if (result.type === 'checkout') {
+        expect(result.roomNumber).toBe('201');
+        expect(result.tenantName?.toLowerCase()).toBe('srikant');
+        expect(result.isForce).toBe(true);
+      }
+    });
+  });
+
+  describe('Resident Name Matching & Isolation', () => {
+    it('should match Srikanth with srikanth and typo srikant', () => {
+      expect(isResidentNameMatch('Srikanth', 'srikanth')).toBe(true);
+      expect(isResidentNameMatch('Srikanth', 'srikant')).toBe(true);
+      expect(isResidentNameMatch('Srikanth', 'shrikanth')).toBe(true);
+      expect(isResidentNameMatch('Srikanth Reddy', 'srikanth')).toBe(true);
+      expect(isResidentNameMatch('Srikanth', 'tenant name called srikanth')).toBe(true);
+    });
+
+    it('should NEVER match Narayana when searching for Srikanth or srikant', () => {
+      expect(isResidentNameMatch('Narayana', 'srikanth')).toBe(false);
+      expect(isResidentNameMatch('Narayana', 'srikant')).toBe(false);
+      expect(isResidentNameMatch('Narayana', 'shrikanth')).toBe(false);
+      expect(isResidentNameMatch('Narayana', 'tenant name called srikanth')).toBe(false);
+    });
+
+    it('should match other residents accurately', () => {
+      expect(isResidentNameMatch('Ponnam Shanker', 'shanker')).toBe(true);
+      expect(isResidentNameMatch('Ponnam Shanker', 'shankar')).toBe(true);
+      expect(isResidentNameMatch('Ponnam Shanker', 'ponnam')).toBe(true);
+      expect(isResidentNameMatch('Narayana', 'narayana')).toBe(true);
     });
   });
 });

@@ -34,6 +34,67 @@ export function categorizeExpense(description: string): string {
   return 'Others';
 }
 
+export function levenshteinDistance(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const d = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) d[i][0] = i;
+  for (let j = 0; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+    }
+  }
+  return d[m][n];
+}
+
+const NAME_MATCH_NOISE = new Set([
+  'please', 'tenant', 'resident', 'guest', 'called', 'named', 'name',
+  'mr', 'mrs', 'ms', 'shri', 'from', 'in', 'room', 'rm', 'to', 'bed',
+  'the', 'of', 'for', 'is', 'a', 'an', 'and', '&'
+]);
+
+export function isResidentNameMatch(guestName?: string | null, queryName?: string | null): boolean {
+  if (!guestName || !queryName) return false;
+
+  const cleanTokens = (str: string) =>
+    str
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w && !NAME_MATCH_NOISE.has(w) && !/^\d+$/.test(w));
+
+  const gTokens = cleanTokens(guestName);
+  const qTokens = cleanTokens(queryName);
+
+  if (gTokens.length === 0 || qTokens.length === 0) return false;
+
+  const gClean = gTokens.join(' ');
+  const qClean = qTokens.join(' ');
+
+  // 1. Exact or substring match on cleaned string
+  if (gClean === qClean || gClean.includes(qClean) || qClean.includes(gClean)) {
+    return true;
+  }
+
+  // 2. Token-level matching (prefix and typo tolerance)
+  for (const q of qTokens) {
+    for (const g of gTokens) {
+      if (q === g) return true;
+      if (q.length >= 4 && g.length >= 4) {
+        // e.g. "srikant" vs "srikanth"
+        if (q.startsWith(g) || g.startsWith(q)) return true;
+        // Levenshtein distance <= 1 for 5+ char tokens (e.g. srikant / srikanth / shrikanth)
+        if (levenshteinDistance(q, g) <= 1) return true;
+        // Levenshtein distance <= 2 for 8+ char tokens
+        if (Math.min(q.length, g.length) >= 8 && levenshteinDistance(q, g) <= 2) return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 export function parseQuickLedgerText(input: string) {
   const text = (input || '').trim();
   const lower = text.toLowerCase();
@@ -117,7 +178,8 @@ export function parseQuickLedgerText(input: string) {
 
     const noiseWords = new Set([
       'please', 'checkout', 'check', 'out', 'guest', 'tenant', 'resident',
-      'from', 'in', 'room', 'rm', 'force', 'forced', 'vacate', 'now', 'to', 'bed'
+      'from', 'in', 'room', 'rm', 'force', 'forced', 'vacate', 'now', 'to', 'bed',
+      'name', 'called', 'named', 'the', 'a', 'an', 'for', 'of', 'person', 'guy', 'tenant'
     ]);
     const nameTokens = cleaned.split(/\s+/).filter(w => w && !noiseWords.has(w) && !/^\d+$/.test(w));
     const tenantName = nameTokens.join(' ').trim() || undefined;
@@ -241,6 +303,7 @@ export function parseQuickLedgerText(input: string) {
       'please', 'existing', 'modify', 'change', 'update', 'set', 'edit', 'correct',
       'tenant', 'resident', 'guest', 'room', 'rm', 'rent', 'fee', 'to', 'for', 'of',
       'and', '&', 'is', 'as', 'the', 'in', 'on', 'bed', 'paid', 'sent',
+      'name', 'called', 'named', 'person',
       'maintainance', 'maintenance', 'maintance', 'refundable', 'refundabale', 'deposit',
       'adv', 'advance', 'due', 'date', 'day', 'joining', 'joined', 'join', 'non',
       'january', 'jan', 'february', 'feb', 'march', 'mar', 'april', 'apr', 'may', 'june', 'jun',
@@ -494,13 +557,14 @@ export function parseQuickLedgerText(input: string) {
     }
 
     // 9. Clean noise words for Tenant Name
-    cleaned = cleaned.replace(/\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining|joined|add|to|in)\b/gi, ' ').trim();
+    cleaned = cleaned.replace(/\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining|joined|add|to|in|tenant\s+name\s+called|tenant\s+called|name\s+called)\b/gi, ' ').trim();
     const noiseWords = new Set([
       'room', 'rm', 'rent', 'monthly', 'adv', 'advance', 'advanve', 'deposit', 'due', 'day', 'in', 'at', 'fee',
       'feee', 'for', 'to', 'and', '&', 'share', 'sharing', 'bed', 'joined', 'on', 'maintainance', 'maintenance', 'maintance', 'maint',
       'refundable', 'refundabale', 'ammount', 'amount', 'date', 'paid', 'sent', 'joined', 'joining', 'join',
       'non', 'today', 'total', 'but', 'only', 'is', 'guest', 'new', 'resident', 'person', 'staying', 'stay',
-      'charges', 'charge', 'pedning', 'pending', 'see', 'look',
+      'charges', 'charge', 'pedning', 'pending', 'see', 'look', 'name', 'called', 'named', 'please', 'tenant',
+      'the', 'a', 'an',
       'january', 'jan', 'february', 'feb', 'march', 'mar', 'april', 'apr', 'may', 'june', 'jun',
       'july', 'jul', 'august', 'aug', 'september', 'sep', 'october', 'oct', 'november', 'nov', 'december', 'dec'
     ]);
@@ -651,7 +715,7 @@ export function parseQuickLedgerText(input: string) {
   // 6. Name
   const noiseWords = [
     'rom', 'room', 'fee', 'rent', 'and', '&', 'paid', 'sent', 'adv', 'advance', 'due', 'for', 'of', 'pg', 'feee',
-    'revenue', 'on', 'date', 'joined', 'joining', 'join',
+    'revenue', 'on', 'date', 'joined', 'joining', 'join', 'guest', 'tenant', 'resident', 'name', 'called', 'named', 'please', 'the', 'a', 'an',
     'jan', 'january', 'feb', 'february', 'mar', 'march', 'apr', 'april', 'may', 'jun', 'june',
     'jul', 'july', 'aug', 'august', 'sep', 'september', 'oct', 'october', 'nov', 'november', 'dec', 'december'
   ];
