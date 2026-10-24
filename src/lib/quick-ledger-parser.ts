@@ -196,8 +196,50 @@ export function parseQuickLedgerText(input: string) {
     };
   }
 
-  // 0c-1. CHECKOUT / VACATE TENANT CHECK
+  // 0c-0. INDIVIDUAL TENANT REPORT / STATEMENT CHECK
+  // e.g. "report of srikanth 201", "srikanth 201 report", "dues of srikanth 201", "how much did srikanth pay", "statement of srikanth"
+  const hasPaymentAmount = /\b(?:paid|sent)\s*[:=]?\s*\d+/i.test(lower) || /\b\d+\s*(?:paid|sent)\b/i.test(lower);
   const isCheckout = /\b(?:checkout|check\s*out|vacate)\b/i.test(lower);
+  const isIndividualReport = /(?:report|statement|ledger|history|status|dues|balance|details|summary|how\s+much)/i.test(lower) &&
+                             !isCheckout &&
+                             !hasPaymentAmount;
+
+  if (isIndividualReport) {
+    let cleaned = lower;
+    let roomNumber: string | null = null;
+    const explicitRoom = cleaned.match(/\b(?:room|rom|romm|rm)\s*#?\s*([a-z]?\d{1,4}[a-z]?)\b/i) ||
+                         cleaned.match(/\br#\s*([a-z]?\d{1,4}[a-z]?)\b/i);
+    if (explicitRoom) {
+      roomNumber = explicitRoom[1];
+      cleaned = cleaned.replace(explicitRoom[0], ' ');
+    } else {
+      const standaloneRoom = cleaned.match(/\b([1-9]\d{2})\b/);
+      if (standaloneRoom) {
+        roomNumber = standaloneRoom[1];
+        cleaned = cleaned.replace(standaloneRoom[0], ' ');
+      }
+    }
+
+    const reportNoise = new Set([
+      'report', 'of', 'for', 'statement', 'ledger', 'history', 'status', 'dues', 'due', 'balance',
+      'details', 'summary', 'how', 'much', 'did', 'pay', 'paid', 'pending', 'owe', 'tenant', 'guest',
+      'resident', 'person', 'guy', 'room', 'rm', 'rom', 'romm', 'the', 'a', 'an', 'show', 'check',
+      'give', 'me', 'i', 'want', 'to', 'see', 'please', 'tell', 'about', 'is', 'in'
+    ]);
+
+    const nameTokens = cleaned.split(/[\s,]+/).filter(w => w && !reportNoise.has(w) && !/^\d+$/.test(w));
+    const tenantName = nameTokens.join(' ').replace(/[^\w\s]/g, '').trim();
+
+    if (tenantName || roomNumber) {
+      return {
+        type: 'tenant_report' as const,
+        tenantName: tenantName || undefined,
+        roomNumber: roomNumber || undefined
+      };
+    }
+  }
+
+  // 0c-1. CHECKOUT / VACATE TENANT CHECK
   if (isCheckout) {
     const isForce = /\b(?:force|forced)\b/i.test(lower);
     let cleaned = lower;

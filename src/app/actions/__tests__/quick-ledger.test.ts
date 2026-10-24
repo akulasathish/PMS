@@ -478,6 +478,41 @@ describe('Quick Ledger NLP Parser', () => {
     });
   });
 
+  describe('Individual Tenant Report / Statement Parsing', () => {
+    it('should parse "report of srikanth 201"', () => {
+      const result = parseQuickLedgerText('report of srikanth 201');
+      expect(result.type).toBe('tenant_report');
+      expect((result as any).tenantName.toLowerCase()).toBe('srikanth');
+      expect((result as any).roomNumber).toBe('201');
+    });
+
+    it('should parse "srikanth 201 report"', () => {
+      const result = parseQuickLedgerText('srikanth 201 report');
+      expect(result.type).toBe('tenant_report');
+      expect((result as any).tenantName.toLowerCase()).toBe('srikanth');
+      expect((result as any).roomNumber).toBe('201');
+    });
+
+    it('should parse "how much did srikanth pay"', () => {
+      const result = parseQuickLedgerText('how much did srikanth pay');
+      expect(result.type).toBe('tenant_report');
+      expect((result as any).tenantName.toLowerCase()).toBe('srikanth');
+    });
+
+    it('should parse "dues of srikanth 201"', () => {
+      const result = parseQuickLedgerText('dues of srikanth 201');
+      expect(result.type).toBe('tenant_report');
+      expect((result as any).tenantName.toLowerCase()).toBe('srikanth');
+      expect((result as any).roomNumber).toBe('201');
+    });
+
+    it('should parse "statement of room 201"', () => {
+      const result = parseQuickLedgerText('statement of room 201');
+      expect(result.type).toBe('tenant_report');
+      expect((result as any).roomNumber).toBe('201');
+    });
+  });
+
   describe('Today Summary / History Parsing', () => {
     it('should parse "today history"', () => {
       const result = parseQuickLedgerText('today history');

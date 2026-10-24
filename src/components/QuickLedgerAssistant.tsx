@@ -22,7 +22,8 @@ import {
   BookOpen,
   LogOut,
   AlertTriangle,
-  CreditCard
+  CreditCard,
+  UserCheck
 } from 'lucide-react';
 import { processQuickLedger, undoQuickLedgerAction, QuickLedgerResult } from '@/app/actions/quick-ledger';
 import { useRouter, usePathname } from 'next/navigation';
@@ -882,6 +883,104 @@ export default function QuickLedgerAssistant() {
                                     {msg.undoState === 'undone' ? 'Undone' : msg.undoState === 'undoing' ? 'Undoing...' : 'Undo'}
                                   </button>
                                 </div>
+                              </div>
+                            ) : msg.result.type === 'tenant_report' && msg.result.tenantReport ? (
+                              /* INDIVIDUAL TENANT LEDGER / STATEMENT CARD */
+                              <div className="bg-gradient-to-br from-indigo-950/40 via-zinc-950/60 to-purple-950/40 border border-indigo-500/40 rounded-2xl p-4 shadow-xl space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-1.5 text-indigo-300 font-black text-[11px] uppercase tracking-wider">
+                                    <UserCheck size={16} className="text-indigo-400" />
+                                    <span>Resident Ledger Statement</span>
+                                  </div>
+                                  <span className="text-[10px] text-zinc-500 font-mono">{msg.timestamp}</span>
+                                </div>
+
+                                {/* Tenant Header Banner */}
+                                <div className="bg-black/50 rounded-xl p-3 border border-white/10 flex items-center justify-between">
+                                  <div>
+                                    <div className="text-sm font-black text-white capitalize flex items-center gap-2">
+                                      {msg.result.tenantReport.guestName}
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                                        Room {msg.result.tenantReport.roomNumber}
+                                      </span>
+                                    </div>
+                                    <div className="text-[10px] text-zinc-400 mt-0.5">
+                                      Joined: <span className="text-amber-300 font-medium">{msg.result.tenantReport.checkInDate || 'N/A'}</span> • Due Day: <span className="text-zinc-200 font-medium">{msg.result.tenantReport.dueDay}th of month</span>
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="text-[10px] text-zinc-400 uppercase">Monthly Rent</div>
+                                    <div className="text-xs font-bold text-emerald-400 font-mono">
+                                      ₹{msg.result.tenantReport.monthlyRent.toLocaleString('en-IN')}/mo
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Financial Summary Breakdown */}
+                                <div className="bg-black/40 rounded-xl p-3 border border-white/5 space-y-2">
+                                  <div className="flex justify-between items-baseline">
+                                    <span className="text-[11px] text-zinc-400">Total Rent Paid</span>
+                                    <span className="text-xs font-bold text-emerald-400 font-mono">₹{msg.result.tenantReport.totalRentPaid.toLocaleString('en-IN')}</span>
+                                  </div>
+
+                                  <div className="flex justify-between items-baseline pt-1 border-t border-white/5">
+                                    <span className="text-[11px] font-semibold text-rose-300">Pending Rent Due</span>
+                                    <span className={`text-xs font-mono ${msg.result.tenantReport.pendingRentDue > 0 ? 'text-rose-400 font-black text-sm' : 'text-emerald-400 font-bold'}`}>
+                                      {msg.result.tenantReport.pendingRentDue > 0 ? `₹${msg.result.tenantReport.pendingRentDue.toLocaleString('en-IN')}` : '₹0 (Cleared)'}
+                                    </span>
+                                  </div>
+
+                                  {msg.result.tenantReport.refundableDeposit ? (
+                                    <div className="flex justify-between items-baseline pt-1 border-t border-white/5">
+                                      <span className="text-[11px] text-zinc-400">Refundable Deposit</span>
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-xs font-bold text-emerald-400 font-mono">₹{msg.result.tenantReport.refundableDeposit.toLocaleString('en-IN')}</span>
+                                        {msg.result.tenantReport.depositPaid >= msg.result.tenantReport.refundableDeposit ? (
+                                          <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-1 rounded">Paid</span>
+                                        ) : (
+                                          <span className="text-[10px] font-semibold text-rose-400 bg-rose-500/10 px-1 rounded">Due</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ) : null}
+
+                                  {msg.result.tenantReport.maintenanceFee ? (
+                                    <div className="flex justify-between items-baseline pt-1 border-t border-white/5">
+                                      <span className="text-[11px] text-zinc-400">Maintenance Fee</span>
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-xs font-bold text-amber-400 font-mono">₹{msg.result.tenantReport.maintenanceFee.toLocaleString('en-IN')}</span>
+                                        {msg.result.tenantReport.maintenancePaid >= msg.result.tenantReport.maintenanceFee ? (
+                                          <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-1 rounded">Paid</span>
+                                        ) : (
+                                          <span className="text-[10px] font-semibold text-rose-400 bg-rose-500/10 px-1 rounded">Due</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ) : null}
+
+                                  <div className="flex justify-between items-baseline pt-1.5 border-t border-white/10">
+                                    <span className="text-[11px] font-bold text-zinc-200">Total Collected Till Date</span>
+                                    <span className="text-sm font-black text-white font-mono">₹{msg.result.tenantReport.totalPaidOverall.toLocaleString('en-IN')}</span>
+                                  </div>
+                                </div>
+
+                                {/* Recent Payments History */}
+                                {msg.result.tenantReport.payments && msg.result.tenantReport.payments.length > 0 ? (
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider px-1">Payment History ({msg.result.tenantReport.payments.length})</div>
+                                    <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
+                                      {msg.result.tenantReport.payments.map((p, idx) => (
+                                        <div key={p.id || idx} className="bg-black/30 rounded-lg p-2 border border-white/5 flex items-center justify-between text-[11px]">
+                                          <div>
+                                            <span className="font-semibold text-zinc-200">{p.allocation}</span>
+                                            <span className="text-[10px] text-zinc-500 ml-2 font-mono">{p.date} • {p.method}</span>
+                                          </div>
+                                          <span className="font-bold text-emerald-400 font-mono">₹{p.amount.toLocaleString('en-IN')}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ) : null}
                               </div>
                             ) : msg.result.type === 'dues_report' ? (
                               /* PENDING DUES REPORT CARD */

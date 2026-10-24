@@ -13,9 +13,34 @@ export interface QuickLedgerDueItem {
   dueDay: number;
 }
 
+export interface QuickLedgerPaymentRecord {
+  id: string;
+  amount: number;
+  allocation: string;
+  method: string;
+  date: string;
+}
+
+export interface QuickLedgerTenantReport {
+  bookingId: string;
+  guestName: string;
+  roomNumber: string;
+  checkInDate: string;
+  dueDay: number;
+  monthlyRent: number;
+  totalRentPaid: number;
+  pendingRentDue: number;
+  refundableDeposit: number;
+  depositPaid: number;
+  maintenanceFee: number;
+  maintenancePaid: number;
+  totalPaidOverall: number;
+  payments: QuickLedgerPaymentRecord[];
+}
+
 export interface QuickLedgerResult {
   success: boolean;
-  type?: 'revenue' | 'expense' | 'assign' | 'dues_report' | 'today_summary' | 'update_tenant' | 'checkout';
+  type?: 'revenue' | 'expense' | 'assign' | 'dues_report' | 'today_summary' | 'update_tenant' | 'checkout' | 'tenant_report';
   message: string;
   error?: string;
   
@@ -75,6 +100,9 @@ export interface QuickLedgerResult {
   todayRevenueCount?: number;
   todayExpenseCount?: number;
   todayDateStr?: string;
+
+  // Individual tenant report specific
+  tenantReport?: QuickLedgerTenantReport;
 }
 
 export async function processQuickLedger(input: string, propertyId?: string): Promise<QuickLedgerResult> {
@@ -203,6 +231,139 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         message: duesList.length === 0
           ? '🎉 All active tenants are cleared till date! No pending dues.'
           : `Found ${duesList.length} tenant(s) with pending dues totaling ₹${totalDues.toLocaleString('en-IN')}.`
+      };
+    }
+
+    // ==========================================
+    // EXECUTE INDIVIDUAL TENANT REPORT / STATEMENT
+    // ==========================================
+    if (parsed.type === 'tenant_report') {
+      const { tenantName, roomNumber } = parsed as any;
+
+      const [bookingsRes, roomsRes] = await Promise.all([
+        admin
+          .from('bookings')
+          .select('id, guest_name, room_id, status, is_monthly, monthly_rent, monthly_rate, security_deposit, notes, check_in, rent_due_day')
+          .eq('property_id', activePropertyId)
+          .in('status', ['Checked In', 'Confirmed', 'in_house']),
+        admin
+          .from('rooms')
+          .select('id, room_number')
+          .eq('property_id', activePropertyId)
+      ]);
+
+      if (bookingsRes.error) {
+        return { success: false, message: `Database error querying bookings: ${bookingsRes.error.message}` };
+      }
+
+      const bookings = bookingsRes.data || [];
+      const rooms = roomsRes.data || [];
+      const roomMap = new Map(rooms.map(r => [r.id, r.room_number?.toString() || '']));
+      const enrichedBookings = bookings.map(b => ({
+        ...b,
+        room_number: roomMap.get(b.room_id) || ''
+      }));
+
+      let matchedBooking = null;
+      if (roomNumber && tenantName) {
+        matchedBooking = enrichedBookings.find(b => {
+          const rNum = b.room_number.toLowerCase();
+          return (rNum === roomNumber.toLowerCase() || rNum.includes(roomNumber.toLowerCase())) &&
+                 isResidentNameMatch(b.guest_name, tenantName);
+        });
+      }
+      if (!matchedBooking && tenantName) {
+        matchedBooking = enrichedBookings.find(b => isResidentNameMatch(b.guest_name, tenantName));
+      }
+      if (!matchedBooking && roomNumber && !tenantName) {
+        const inRoom = enrichedBookings.filter(b => {
+          const rNum = b.room_number.toLowerCase();
+          return rNum === roomNumber.toLowerCase() || rNum.includes(roomNumber.toLowerCase());
+        });
+        if (inRoom.length === 1) {
+          matchedBooking = inRoom[0];
+        } else if (inRoom.length > 1) {
+          return {
+            success: false,
+            message: `Room ${roomNumber} has ${inRoom.length} active residents (${inRoom.map(b => b.guest_name).join(', ')}). Please specify the tenant name.`
+          };
+        }
+      }
+
+      if (!matchedBooking) {
+        return {
+          success: false,
+          message: `No active resident found matching "${tenantName || ''}"${roomNumber ? ' in Room ' + roomNumber : ''}.`
+        };
+      }
+
+      const [paymentsRes, incidentalsRes] = await Promise.all([
+        admin
+          .from('payments')
+          .select('id, amount, allocation, payment_method, method, business_date, created_at, is_void')
+          .eq('booking_id', matchedBooking.id)
+          .order('created_at', { ascending: false }),
+        admin
+          .from('incidental_charges')
+          .select('id, amount, description, category, business_date')
+          .eq('booking_id', matchedBooking.id)
+      ]);
+
+      const validPayments = (paymentsRes.data || []).filter(p => !p.is_void);
+      const incidentals = incidentalsRes.data || [];
+
+      const monthlyRent = Number(matchedBooking.monthly_rent || matchedBooking.monthly_rate || 8000);
+      const rentPayments = validPayments.filter(p => p.allocation === 'Rent' || !p.allocation);
+      const totalRentPaid = rentPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
+      const pendingRentDue = Math.max(0, monthlyRent - totalRentPaid);
+
+      const refundableDeposit = Number(matchedBooking.security_deposit || 0);
+      const depositPayments = validPayments.filter(p => p.allocation === 'Security Deposit');
+      const depositPaid = depositPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
+
+      const maintPayments = validPayments.filter(p => p.allocation === 'Maintenance Fee (Revenue)');
+      const maintenancePaid = maintPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
+
+      const maintCharges = incidentals.filter(inc => inc.category === 'Maintenance' || inc.description?.toLowerCase().includes('maintenance'));
+      const maintenanceFee = maintCharges.reduce((s, inc) => s + Number(inc.amount || 0), 0) || maintenancePaid;
+
+      const totalPaidOverall = validPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
+      const roomDisp = matchedBooking.room_number || roomNumber || 'Unknown';
+      const checkInDay = matchedBooking.check_in ? parseInt(matchedBooking.check_in.split('-')[2], 10) : 1;
+      const dueDay = (matchedBooking as any).rent_due_day || checkInDay;
+
+      const paymentsList = validPayments.map(p => ({
+        id: p.id,
+        amount: Number(p.amount || 0),
+        allocation: p.allocation || 'Rent',
+        method: p.payment_method || p.method || 'UPI',
+        date: p.business_date || p.created_at?.slice(0, 10) || ''
+      }));
+
+      const report: QuickLedgerTenantReport = {
+        bookingId: matchedBooking.id,
+        guestName: matchedBooking.guest_name,
+        roomNumber: roomDisp,
+        checkInDate: matchedBooking.check_in || '',
+        dueDay,
+        monthlyRent,
+        totalRentPaid,
+        pendingRentDue,
+        refundableDeposit,
+        depositPaid,
+        maintenanceFee,
+        maintenancePaid,
+        totalPaidOverall,
+        payments: paymentsList
+      };
+
+      const rentStatusStr = pendingRentDue > 0 ? `₹${pendingRentDue.toLocaleString('en-IN')} Due` : 'Fully Cleared';
+
+      return {
+        success: true,
+        type: 'tenant_report',
+        tenantReport: report,
+        message: `Statement for ${matchedBooking.guest_name} (Room ${roomDisp}): Monthly Rent: ₹${monthlyRent.toLocaleString('en-IN')}/mo • Rent Paid: ₹${totalRentPaid.toLocaleString('en-IN')} (${rentStatusStr}) • Deposit Paid: ₹${depositPaid.toLocaleString('en-IN')} • Total Paid Till Date: ₹${totalPaidOverall.toLocaleString('en-IN')}.`
       };
     }
 
