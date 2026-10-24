@@ -555,7 +555,7 @@ export function parseQuickLedgerText(input: string) {
       maintenanceFee = parseFloat(maintBefore[1]) * (maintBefore[2] ? 1000 : 1);
       cleaned = cleaned.replace(maintBefore[0], ' ');
     } else {
-      const maintAfter = cleaned.match(/\b(?:maint[a-z]*|ment[a-z]*|non\s*refundable)\s*(?:fee|ammount|amount|charges|charge)?\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+      const maintAfter = cleaned.match(/\b(?:maint[a-z]*|ment[a-z]*|non\s*refundable)\s*(?:fee|ammount|amount|charges|charge)?\s*(?:is\s*)?(?:paid|sent)?\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
       if (maintAfter) {
         maintenanceFee = parseFloat(maintAfter[1]) * (maintAfter[2] ? 1000 : 1);
         cleaned = cleaned.replace(maintAfter[0], ' ');
@@ -569,7 +569,7 @@ export function parseQuickLedgerText(input: string) {
       refundableDeposit = parseFloat(refBefore[1]) * (refBefore[2] ? 1000 : 1);
       cleaned = cleaned.replace(refBefore[0], ' ');
     } else {
-      const refAfter = cleaned.match(/\b(?:refun[a-z]*\s*(?:ammount|amount|deposit|fee)?|security\s*deposit|sec\s*deposit|deposit|adv|advance|advan[cv]e)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+      const refAfter = cleaned.match(/\b(?:refun[a-z]*\s*(?:ammount|amount|deposit|fee)?|security\s*deposit|sec\s*deposit|deposit|adv|advance|advan[cv]e)\s*(?:is\s*)?(?:paid|sent)?\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
       if (refAfter) {
         refundableDeposit = parseFloat(refAfter[1]) * (refAfter[2] ? 1000 : 1);
         cleaned = cleaned.replace(refAfter[0], ' ');
@@ -606,25 +606,33 @@ export function parseQuickLedgerText(input: string) {
 
     // 8b. Detect if monthly rent was paid at admission or pending/due
     if (rentPaid === 0) {
-      const paidOnlyMatch = lower.match(/\bpaid\s*only\s*(?:for\s*)?(\d+(?:\.\d+)?)(k)?\b/i);
-      if (paidOnlyMatch) {
-        const onlyAmt = parseFloat(paidOnlyMatch[1]) * (paidOnlyMatch[2] ? 1000 : 1);
-        if (onlyAmt > (maintenanceFee + refundableDeposit)) {
-          rentPaid = onlyAmt - (maintenanceFee + refundableDeposit);
-        } else {
-          rentPaid = 0;
-        }
+      // Check explicit rent-specific partial payment: e.g. "room fee 8000 paid only 5000", "fee 8000 paid 5000"
+      const rentExplicitPartial = lower.match(/\b(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\s*[:=]?\s*\d+(?:\.\d+)?(?:k)?\s*(?:but\s*)?(?:paid|sent)\s*(?:only\s*)?[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+      if (rentExplicitPartial) {
+        rentPaid = parseFloat(rentExplicitPartial[1]) * (rentExplicitPartial[2] ? 1000 : 1);
       } else {
-        const isRentDue = /\b(?:room\s*fee|rom\s*fee|romm\s*fee|rent|fee)\s*(?:is\s*)?(?:due|pending|pedning)\b/i.test(lower) ||
-                          /\b(?:due|pending|pedning)\s*(?:room\s*fee|rom\s*fee|romm\s*fee|rent|fee)\b/i.test(lower);
-        if (!isRentDue) {
-          const rentPaidExplicit = lower.match(/\b(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\s*(?:rent|room\s*fee|rom\s*fee|romm\s*fee|monthly|fee)\b/i) ||
-                                   lower.match(/(\d+(?:\.\d+)?)(k)?\s*(?:rent|room\s*fee|rom\s*fee|romm\s*fee|monthly|fee)\s*(?:is\s*)?(?:paid|sent)\b/i) ||
-                                   lower.match(/\b(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\s*(?:is\s*)?(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
-          if (rentPaidExplicit) {
-            rentPaid = parseFloat(rentPaidExplicit[1]) * (rentPaidExplicit[2] ? 1000 : 1);
-          } else if (/\bpaid\s*(?:rent|room\s*fee|rom\s*fee|romm\s*fee|fee)\b/i.test(lower)) {
-            rentPaid = monthlyRent;
+        const paidOnlyMatch = lower.match(/\bpaid\s*only\s*(?:for\s*)?(\d+(?:\.\d+)?)(k)?\b/i);
+        if (paidOnlyMatch) {
+          const onlyAmt = parseFloat(paidOnlyMatch[1]) * (paidOnlyMatch[2] ? 1000 : 1);
+          if (/non\s*refundable/i.test(lower)) {
+            rentPaid = 0;
+          } else if (onlyAmt > (maintenanceFee + refundableDeposit)) {
+            rentPaid = onlyAmt - (maintenanceFee + refundableDeposit);
+          } else {
+            rentPaid = onlyAmt;
+          }
+        } else {
+          const isRentDue = /\b(?:room\s*fee|rom\s*fee|romm\s*fee|rent|fee)\s*(?:is\s*)?(?:due|pending|pedning)\b/i.test(lower) ||
+                            /\b(?:due|pending|pedning)\s*(?:room\s*fee|rom\s*fee|romm\s*fee|rent|fee)\b/i.test(lower);
+          if (!isRentDue) {
+            const rentPaidExplicit = lower.match(/\b(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\s*(?:rent|room\s*fee|rom\s*fee|romm\s*fee|monthly|fee)\b/i) ||
+                                     lower.match(/(\d+(?:\.\d+)?)(k)?\s*(?:rent|room\s*fee|rom\s*fee|romm\s*fee|monthly|fee)\s*(?:is\s*)?(?:paid|sent)\b/i) ||
+                                     lower.match(/\b(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\s*(?:is\s*)?(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+            if (rentPaidExplicit) {
+              rentPaid = parseFloat(rentPaidExplicit[1]) * (rentPaidExplicit[2] ? 1000 : 1);
+            } else if (/\bpaid\s*(?:rent|room\s*fee|rom\s*fee|romm\s*fee|fee)\b/i.test(lower)) {
+              rentPaid = monthlyRent;
+            }
           }
         }
       }

@@ -291,6 +291,20 @@ describe('Quick Ledger NLP Parser', () => {
       }
     });
 
+    it('should parse "add sai ganesh to room 205 joining date 1st september refundable ammount paid 1000 and maintainance ammount paid 1000 on september room fee 8000 paid only 5000"', () => {
+      const result = parseQuickLedgerText('add sai ganesh to room 205 joining date 1st september refundable ammount paid 1000 and maintainance ammount paid 1000 on september room fee 8000 paid only 5000');
+      expect(result.type).toBe('assign');
+      if (result.type === 'assign') {
+        expect(result.tenantName.toLowerCase()).toBe('sai ganesh');
+        expect(result.roomNumber).toBe('205');
+        expect(result.checkInDate).toBe('2026-09-01');
+        expect(result.monthlyRent).toBe(8000);
+        expect((result as any).rentPaid).toBe(5000);
+        expect(result.maintenanceFee).toBe(1000);
+        expect(result.refundableDeposit).toBe(1000);
+      }
+    });
+
     it('should parse paid only 1000 with room fee due "202 ponnam shanker total fee 9000 maintainance 1000 paid but paid only 1000 non refundable room fee and 1000 maintance due"', () => {
       const result = parseQuickLedgerText('202 ponnam shanker total fee 9000 maintainance 1000 paid but paid only 1000 non refundable room fee and 1000 maintance due');
       expect(result.type).toBe('assign');
