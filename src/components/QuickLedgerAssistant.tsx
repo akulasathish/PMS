@@ -282,26 +282,48 @@ export default function QuickLedgerAssistant() {
 
   const BOT_COMMAND_CATEGORIES = [
     {
-      category: '💰 Rent & Backdated Payments',
+      category: '📊 Resident Statements & Dues Reports',
       items: [
-        { label: 'Backdated Rent', prompt: 'srikanth rom 201 paid 9000 on 1st' },
-        { label: 'Rent + Advance', prompt: 'sathish 101 5000 rom fee and 2000 adv paid' },
-        { label: 'Quick Rent', prompt: 'karunkar 204 paid 500' },
-        { label: 'Fee with due day', prompt: 'sathish 7000 Pg feee' }
+        { label: 'Resident Ledger Statement', prompt: 'report of srikanth 201' },
+        { label: 'Statement by Room', prompt: 'report of room 201' },
+        { label: 'All Pending Dues', prompt: 'report of pending dues' },
+        { label: 'Who Has Pending Dues?', prompt: 'who has pending dues' },
+        { label: "Today's Summary (Rev vs Exp)", prompt: 'today summary' },
+        { label: "Today's Ledger History", prompt: 'today history' }
       ]
     },
     {
       category: '👤 New Tenant Admission',
       items: [
-        { label: 'With Maintenance & Deposit', prompt: '201 srikanth 9000 joined on 1st october 1000 maintainance and 1500 refundable ammount' },
-        { label: 'With Bed Sharing & Adv', prompt: 'add srikanth to room 201 3 share 9000 room fee and 2k advanve' },
-        { label: 'Simple Check-in', prompt: 'add akshith to room 204' }
+        { label: 'Clean Admission (All Details)', prompt: 'join sathish to room 201, joined on 1st october 2026, due date 5th, refundable 1000 paid, maintenance 1000 paid, room fee paid 8000' },
+        { label: 'Admission with Due Balances', prompt: 'join sathish to room 201, joined on 1st october 2026, due date 5th, refundable due 1000, maintenance due 1000, room fee due 8000' },
+        { label: 'With Bed Sharing & Deposit', prompt: 'add sathish to room 201 3 share 8500 room fee and 1000 refundable' },
+        { label: 'Quick Admission', prompt: 'join sathish to room 201' }
+      ]
+    },
+    {
+      category: '💰 Rent & Fee Payments',
+      items: [
+        { label: 'Rent Paid on Date', prompt: 'srikanth room 201 paid 8500 on 1st' },
+        { label: 'Rent + Security Deposit', prompt: 'sathish 101 5000 room fee and 1000 deposit paid' },
+        { label: 'Full Month Rent', prompt: 'srikanth 201 paid full rent for october' },
+        { label: 'Rent + Maintenance Fee', prompt: 'srikanth 201 paid 8500 room fee and 1000 maintenance' }
+      ]
+    },
+    {
+      category: '🛒 Daily Property Expenses',
+      items: [
+        { label: 'Groceries & Vegetables', prompt: 'paid 1200 groceries and 350 vegetables' },
+        { label: 'Water Tanker Utility', prompt: 'water tanker expences 2500' },
+        { label: 'Electrician / Plumber Repairs', prompt: 'electrician repair 850 expences' },
+        { label: 'Staff Salary', prompt: 'cleaner ramesh salary 8000 expences' },
+        { label: 'Multi-Item Grocery Bill', prompt: 'expences 700 vegetables 200 oil 800 rice' }
       ]
     },
     {
       category: '📅 Daily Basis Guests (Short Stay)',
       items: [
-        { label: 'Daily with Partial Pay', prompt: 'kiran joined room 204 daily basis per day 600 total 2 days paid only for 1 day 600 pedning 600' },
+        { label: 'Daily with Partial Pay', prompt: 'kiran joined room 204 daily basis per day 600 total 2 days paid 600 pending 600' },
         { label: 'Daily with Full Pay', prompt: 'guest rajesh room 201 3 days 1500 paid' },
         { label: 'Daily 2 Days @ 500', prompt: 'add guest suresh room 301 2 days 500 per day paid 500' }
       ]
@@ -318,38 +340,23 @@ export default function QuickLedgerAssistant() {
     {
       category: '🚪 Resident Checkout & Vacate',
       items: [
-        { label: 'Checkout Resident', prompt: 'please checkout guest srikanth from room 201' },
-        { label: 'Force Checkout', prompt: 'force checkout srikanth room 201' },
+        { label: 'Checkout Resident', prompt: 'checkout srikanth from room 201' },
+        { label: 'Force Checkout with Dues', prompt: 'force checkout srikanth room 201' },
         { label: 'Vacate Room', prompt: 'checkout room 201' }
-      ]
-    },
-    {
-      category: '🛒 Daily Property Expenses',
-      items: [
-        { label: 'Multi-Item Grocery', prompt: 'expences 700 vegitbales 200 oil 800 varalakshmi traders' },
-        { label: 'Water Tanker Utility', prompt: 'water tanker expences 22000' },
-        { label: 'Staff Salary', prompt: 'cleaner ramesh salary 8000 expences' },
-        { label: 'Single Item', prompt: 'curd 165' }
-      ]
-    },
-    {
-      category: '📊 Reports & Daily History',
-      items: [
-        { label: 'Pending Dues Report', prompt: 'report of pending dues' },
-        { label: 'Who Has Dues?', prompt: 'who has pending dues' },
-        { label: 'Today Ledger Log', prompt: 'today history' },
-        { label: 'Today Summary', prompt: 'today summary' }
       ]
     }
   ];
 
   const suggestions = [
-    'today history',
+    'report of srikanth 201',
     'report of pending dues',
-    'srikanth rom 201 paid 9000 on 1st',
+    'today summary',
+    'srikanth room 201 paid 8500',
+    'join sathish to room 201, joined on 1st october 2026, due date 5th, refundable 1000 paid, maintenance 1000 paid, room fee paid 8000',
+    'paid 1200 groceries and 350 vegetables',
+    'water tanker expences 2500',
     'change due date of room 201 to 10th',
-    '201 srikanth 9000 joined on 1st october 1000 maintainance and 1500 refundable ammount',
-    'expences 700 vegitbales 200 oil 800 varalakshmi traders'
+    'checkout srikanth from room 201'
   ];
 
   if (!pathname?.startsWith('/dashboard')) {
@@ -1167,12 +1174,13 @@ export default function QuickLedgerAssistant() {
                     <BookOpen size={10} className="text-yellow-400" />
                     <span>All Commands</span>
                   </button>
-                  {suggestions.slice(0, 4).map((sug, sIdx) => (
+                  {suggestions.map((sug, sIdx) => (
                     <button
                       key={sIdx}
                       type="button"
                       onClick={() => setInput(sug)}
-                      className="flex-shrink-0 px-2.5 py-1 rounded-full bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white border border-white/5 transition-all truncate max-w-[160px]"
+                      className="flex-shrink-0 px-2.5 py-1 rounded-full bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white border border-white/5 transition-all truncate max-w-[200px]"
+                      title={sug}
                     >
                       {sug}
                     </button>
@@ -1204,7 +1212,7 @@ export default function QuickLedgerAssistant() {
                     type="text"
                     value={input}
                     onChange={e => setInput(e.target.value)}
-                    placeholder={isListening ? 'Listening...' : 'e.g. "sathish 101 5000 rom fee and 2000 adv paid"'}
+                    placeholder={isListening ? 'Listening...' : 'e.g. "report of srikanth 201", "paid 1200 groceries", "join sathish to 201..."'}
                     disabled={isLoading}
                     className="flex-1 bg-black/50 border border-white/10 rounded-2xl px-4 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500/50 transition-all"
                   />
