@@ -1,3 +1,10 @@
+export interface MonthPaymentBreakdown {
+  month: string;
+  amount: number;
+  isOverdue?: boolean;
+  isFullPayment?: boolean;
+}
+
 export interface QuickLedgerItem {
   id?: string;
   amount: number;
@@ -346,7 +353,9 @@ export function parseQuickLedgerText(input: string) {
   // 0d. ASSIGN / NEW TENANT CHECK
   const isAssign = /\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining|joined|guest|daily|daily\s*basis)\b/i.test(lower) ||
                    (/\b(?:add|guest)\b/i.test(lower) && (/\b(?:room|rom|romm|rm|r)\b/i.test(lower) || /\bto\b/i.test(lower) || /\b\d{3}\b/.test(lower) || /\bshare\b/i.test(lower) || /\bdays?\b/i.test(lower))) ||
-                   /\b(?:maintainance|maintenance|maintance|maintence|maintanace|maintanance|maintanence|refundable)\b/i.test(lower);
+                   (/\b(?:maintainance|maintenance|maintance|maintence|maintanace|maintanance|maintanence|refundable)\b/i.test(lower) &&
+                    /\b(?:rent|monthly|room\s*fee|rom\s*fee|romm\s*fee|fee|feee|total\s*fee|joined|joining|adv\b|advance)\b/i.test(lower) &&
+                    !/\bpaid\s*(?:only\s*)?(?:maintainance|maintenance|maintance|maintence|refundable)\b/i.test(lower));
   if (isAssign) {
     let cleaned = lower;
     if (dateRawStr) {
@@ -714,12 +723,73 @@ export function parseQuickLedgerText(input: string) {
   }
 
   // 2. REVENUE CHECK
-  let cleaned = lower.replace(/\b(?:revenue)\b/g, ' ').trim();
+  let cleaned = lower.replace(/\b(?:revenue|record\s+a\s+payment\s+of|record\s+payment\s+of|record\s+payment|record)\b/g, ' ').trim();
   if (dateRawStr) {
     cleaned = cleaned.replace(dateRawStr, ' ');
   }
 
-  // 1. Advance: 'adv 2000' or '2000 adv'
+  // 1. Explicit or standalone room number first
+  let roomNumber: string | null = null;
+  const explicitRoom = cleaned.match(/\b(?:room|rom|romm|rm|r)\s*#?\s*(\d{1,4})\b/i);
+  if (explicitRoom) {
+    roomNumber = explicitRoom[1];
+    cleaned = cleaned.replace(explicitRoom[0], ' ');
+  } else {
+    const standaloneRoom = cleaned.match(/\b([1-9]\d{2})\b/);
+    if (standaloneRoom) {
+      roomNumber = standaloneRoom[1];
+      cleaned = cleaned.replace(standaloneRoom[0], ' ');
+    }
+  }
+
+  // 2. Multi-Month / Month-Specific Payment Breakdown:
+  // e.g. "record payment of danush overdue amount of 2000 of september month and full payment for october"
+  const monthNames = 'january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec';
+  const monthPayments: MonthPaymentBreakdown[] = [];
+
+  // Pattern A: "overdue amount of 2000 of september month" / "2000 of september" / "2000 september due"
+  const patternA = new RegExp(`(?:over\\s*due|due|pending)?\\s*(?:ammount|amount|rent|fee)?\\s*(?:of|is)?\\s*(\\d+(?:\\.\\d+)?)(k)?\\s*(?:of|for|in)?\\s*(${monthNames})(?:\\s+month)?`, 'gi');
+  let matchA;
+  while ((matchA = patternA.exec(cleaned)) !== null) {
+    const amt = parseFloat(matchA[1]) * (matchA[2] ? 1000 : 1);
+    const mName = matchA[3];
+    const isOverdue = /over\s*due|due|pending/i.test(matchA[0]);
+    monthPayments.push({
+      month: mName.charAt(0).toUpperCase() + mName.slice(1).toLowerCase(),
+      amount: amt,
+      isOverdue
+    });
+    cleaned = cleaned.replace(matchA[0], ' ');
+  }
+
+  // Pattern B: "full payment for october" / "full rent for october"
+  const patternB = new RegExp(`(?:full|total)?\\s*(?:paym[a-z]*|rent|fee)\\s+(?:for|of|in)\\s*(${monthNames})(?:\\s+month)?`, 'gi');
+  let matchB;
+  while ((matchB = patternB.exec(cleaned)) !== null) {
+    const mName = matchB[1];
+    monthPayments.push({
+      month: mName.charAt(0).toUpperCase() + mName.slice(1).toLowerCase(),
+      amount: 0,
+      isFullPayment: true
+    });
+    cleaned = cleaned.replace(matchB[0], ' ');
+  }
+
+  // 3. Maintenance Fee: 'maintainance 1000', '1000 maintence'
+  let maintenanceFee = 0;
+  const maintBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:maint[a-z]*|ment[a-z]*|non\s*refundable)\b/i);
+  if (maintBefore) {
+    maintenanceFee = parseFloat(maintBefore[1]) * (maintBefore[2] ? 1000 : 1);
+    cleaned = cleaned.replace(maintBefore[0], ' ');
+  } else {
+    const maintAfter = cleaned.match(/\b(?:maint[a-z]*|ment[a-z]*|non\s*refundable)\s*(?:fee|ammount|amount|charges|charge)?\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+    if (maintAfter) {
+      maintenanceFee = parseFloat(maintAfter[1]) * (maintAfter[2] ? 1000 : 1);
+      cleaned = cleaned.replace(maintAfter[0], ' ');
+    }
+  }
+
+  // 4. Advance / Deposit: 'adv 2000' or '2000 adv'
   let advAmount = 0;
   const advAfter = cleaned.match(/\b(?:adv|advance|deposit)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/);
   if (advAfter) {
@@ -733,7 +803,7 @@ export function parseQuickLedgerText(input: string) {
     }
   }
 
-  // 2. Room Fee / Rent / Paid: 'paid 500' or '500 paid' or 'rent 5000'
+  // 5. Room Fee / Rent / Paid: 'paid 500' or '500 paid' or 'rent 5000'
   let feeAmount = 0;
   const feeAfter = cleaned.match(/\b(?:paid|sent|fee|feee|rent|rom\s*fee|room\s*fee|romm\s*fee)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/);
   if (feeAfter) {
@@ -747,15 +817,7 @@ export function parseQuickLedgerText(input: string) {
     }
   }
 
-  // 3. Explicit room match: 'room 204' or 'rm 204' or 'r 204'
-  let roomNumber: string | null = null;
-  const explicitRoom = cleaned.match(/\b(?:room|rom|romm|rm|r)\s*#?\s*(\d{1,4})\b/i);
-  if (explicitRoom) {
-    roomNumber = explicitRoom[1];
-    cleaned = cleaned.replace(explicitRoom[0], ' ');
-  }
-
-  // 4. Standalone 2-3 digit number (standard room numbers e.g. 101, 204)
+  // 6. Standalone 2-3 digit number (if room wasn't caught earlier)
   if (!roomNumber) {
     const standaloneRoom = cleaned.match(/\b([1-9]\d{1,2})\b/);
     if (standaloneRoom) {
@@ -764,7 +826,7 @@ export function parseQuickLedgerText(input: string) {
     }
   }
 
-  // 5. Any remaining number
+  // 7. Any remaining number
   const remainingNumbers = cleaned.match(/\b\d+(?:\.\d+)?(?:k)?\b/g);
   if (remainingNumbers) {
     for (const nStr of remainingNumbers) {
@@ -773,7 +835,7 @@ export function parseQuickLedgerText(input: string) {
       if (parsed >= 2020 && parsed <= 2035 && !nStr.toLowerCase().includes('k')) {
         continue;
       }
-      if (feeAmount === 0) {
+      if (feeAmount === 0 && (!monthPayments || monthPayments.length === 0)) {
         feeAmount = parsed;
       } else if (advAmount === 0 && !lower.includes('due')) {
         advAmount = parsed;
@@ -785,6 +847,7 @@ export function parseQuickLedgerText(input: string) {
   // 6. Name
   const noiseWords = [
     'rom', 'romm', 'room', 'fee', 'rent', 'and', '&', 'paid', 'sent', 'adv', 'advance', 'due', 'for', 'of', 'pg', 'feee',
+    'record', 'payment', 'payments', 'paymnet', 'paymnets', 'full', 'overdue', 'month', 'months', 'every',
     'maintainance', 'maintenance', 'maintance', 'maintence', 'maintanace', 'maintanance', 'maintanence', 'maint',
     'refundable', 'refundabale', 'refundble', 'ammount', 'amount',
     'revenue', 'on', 'date', 'joined', 'joining', 'join', 'guest', 'tenant', 'resident', 'name', 'called', 'named', 'please', 'the', 'a', 'an',
@@ -797,9 +860,13 @@ export function parseQuickLedgerText(input: string) {
     !w.startsWith('maint') &&
     !w.startsWith('ment') &&
     !w.startsWith('refun') &&
+    !w.startsWith('paym') &&
+    !w.startsWith('payn') &&
     !/^\d+(?:st|nd|rd|th)?$/i.test(w)
   );
   const tenantName = nameTokens.join(' ').trim();
+
+  const totalCalculated = feeAmount + advAmount + maintenanceFee + monthPayments.reduce((s, m) => s + m.amount, 0);
 
   return {
     type: 'revenue' as const,
@@ -807,7 +874,9 @@ export function parseQuickLedgerText(input: string) {
     tenantName,
     feeAmount,
     advAmount,
-    totalAmount: feeAmount + advAmount,
+    maintenanceFee,
+    monthPayments: monthPayments.length > 0 ? monthPayments : undefined,
+    totalAmount: totalCalculated,
     paymentDate: customDate
   };
 }

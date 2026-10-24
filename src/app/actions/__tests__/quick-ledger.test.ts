@@ -93,6 +93,28 @@ describe('Quick Ledger NLP Parser', () => {
       expect(result.feeAmount).toBe(9000);
       expect(result.paymentDate).toMatch(/\d{4}-\d{2}-01/);
     });
+
+    it('should parse backdated maintenance fee "danush room 202 paid maintainance 1000 on 1st june"', () => {
+      const result = parseQuickLedgerText('danush room 202 paid maintainance 1000 on 1st june');
+      expect(result.type).toBe('revenue');
+      expect(result.roomNumber).toBe('202');
+      expect(result.tenantName?.toLowerCase()).toContain('danush');
+      expect((result as any).maintenanceFee).toBe(1000);
+      expect(result.paymentDate).toMatch(/\d{4}-06-01/);
+    });
+
+    it('should parse multi-month and overdue payment "record a payment of danush over due ammount of 2000 of september month and full paymnet for october"', () => {
+      const result = parseQuickLedgerText('record a payment of danush over due ammount of 2000 of september month and full paymnet for october');
+      expect(result.type).toBe('revenue');
+      expect(result.tenantName?.toLowerCase()).toBe('danush');
+      expect((result as any).monthPayments).toBeDefined();
+      expect((result as any).monthPayments.length).toBe(2);
+      expect((result as any).monthPayments[0].month).toBe('September');
+      expect((result as any).monthPayments[0].amount).toBe(2000);
+      expect((result as any).monthPayments[0].isOverdue).toBe(true);
+      expect((result as any).monthPayments[1].month).toBe('October');
+      expect((result as any).monthPayments[1].isFullPayment).toBe(true);
+    });
   });
 
   describe('Tenant Admission / Assign Parsing', () => {

@@ -29,6 +29,7 @@ export interface QuickLedgerResult {
   roomNumber?: string;
   feePaid?: number;
   advPaid?: number;
+  maintenancePaid?: number;
   totalPaid?: number;
   newBalanceDue?: number;
   paymentIds?: string[];
@@ -1431,9 +1432,36 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
 
       const paymentRows: any[] = [];
       const paymentIds: string[] = [];
+      const paymentBreakdownDesc: string[] = [];
+      const parsedMaintenance = Number((parsed as any).maintenanceFee || 0);
+      const parsedMonthPayments = (parsed as any).monthPayments as Array<{ month: string; amount: number; isOverdue?: boolean; isFullPayment?: boolean }> | undefined;
 
-      // 1. Room Fee payment
-      if (feeAmount > 0) {
+      // 0. Month-Specific & Multi-Month Overdue Payments (e.g. September overdue 2000, October full rent 9000)
+      if (parsedMonthPayments && parsedMonthPayments.length > 0) {
+        const yearStr = (effectivePaymentDate || businessDate).split('-')[0];
+        for (const item of parsedMonthPayments) {
+          const amt = item.isFullPayment && item.amount === 0
+            ? Number(matchedBooking.monthly_rent || matchedBooking.monthly_rate || 8000)
+            : item.amount;
+          if (amt > 0) {
+            paymentRows.push({
+              booking_id: matchedBooking.id,
+              property_id: activePropertyId,
+              amount: amt,
+              method: 'UPI',
+              payment_method: 'UPI',
+              allocation: 'Rent',
+              billing_period: `${item.month} ${yearStr}`,
+              business_date: effectivePaymentDate,
+              transaction_id: item.isOverdue ? `OVERDUE-${item.month.toUpperCase()}-RENT` : `${item.month.toUpperCase()}-RENT`
+            });
+            paymentBreakdownDesc.push(`₹${amt.toLocaleString('en-IN')} for ${item.month}${item.isOverdue ? ' (Overdue Cleared)' : ' (Rent)'}`);
+          }
+        }
+      }
+
+      // 1. Standard Room Fee payment (if no multi-month breakdown)
+      if (feeAmount > 0 && (!parsedMonthPayments || parsedMonthPayments.length === 0)) {
         paymentRows.push({
           booking_id: matchedBooking.id,
           property_id: activePropertyId,
@@ -1444,9 +1472,10 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
           business_date: effectivePaymentDate,
           transaction_id: 'QUICK-LEDGER-FEE'
         });
+        paymentBreakdownDesc.push(`₹${feeAmount.toLocaleString('en-IN')} Room Fee`);
       }
 
-      // 2. Advance / Deposit payment
+      // 2. Advance / Refundable Deposit payment
       if (advAmount > 0) {
         paymentRows.push({
           booking_id: matchedBooking.id,
@@ -1458,6 +1487,31 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
           business_date: effectivePaymentDate,
           transaction_id: 'QUICK-LEDGER-ADV'
         });
+        paymentBreakdownDesc.push(`₹${advAmount.toLocaleString('en-IN')} Refundable Deposit`);
+      }
+
+      // 3. Maintenance Fee payment (Backdated or regular)
+      if (parsedMaintenance > 0) {
+        await admin.from('incidental_charges').insert([{
+          booking_id: matchedBooking.id,
+          property_id: activePropertyId,
+          description: 'Non-Refundable Maintenance Fee',
+          amount: parsedMaintenance,
+          category: 'Maintenance',
+          business_date: effectivePaymentDate
+        }]);
+
+        paymentRows.push({
+          booking_id: matchedBooking.id,
+          property_id: activePropertyId,
+          amount: parsedMaintenance,
+          method: 'UPI',
+          payment_method: 'UPI',
+          allocation: 'Maintenance Fee (Revenue)',
+          business_date: effectivePaymentDate,
+          transaction_id: 'QUICK-LEDGER-MAINTENANCE'
+        });
+        paymentBreakdownDesc.push(`₹${parsedMaintenance.toLocaleString('en-IN')} Maintenance Fee`);
       }
 
       if (paymentRows.length > 0) {
@@ -1484,8 +1538,13 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
           .eq('id', matchedBooking.id);
       }
 
+      const totalRecordedPaid = paymentRows.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+      const totalRentRecorded = paymentRows
+        .filter(p => p.allocation === 'Rent')
+        .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
       // Recalculate remaining due
-      const newRentPaid = rentPaidBeforeThis + feeAmount;
+      const newRentPaid = rentPaidBeforeThis + totalRentRecorded;
       const newBalanceDue = Math.max(0, (baseRoomCharge + incidentalsSum) - newRentPaid);
 
       return {
@@ -1493,15 +1552,16 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         type: 'revenue',
         tenantName: matchedBooking.guest_name,
         roomNumber: roomDisp,
-        feePaid: feeAmount,
+        feePaid: totalRentRecorded,
         advPaid: advAmount,
-        totalPaid: totalAmount,
+        maintenancePaid: parsedMaintenance,
+        totalPaid: totalRecordedPaid,
         paymentDate: effectivePaymentDate,
         newBalanceDue,
         paymentIds,
         bookingId: matchedBooking.id,
         advAmountAdded: advAmount,
-        message: `Recorded payment for ${matchedBooking.guest_name} (Room ${roomDisp}) on ${effectivePaymentDate}: ₹${feeAmount.toLocaleString('en-IN')} Room Fee${advAmount > 0 ? ' + ₹' + advAmount.toLocaleString('en-IN') + ' Advance' : ''}. Updated Pending Due: ₹${newBalanceDue.toLocaleString('en-IN')}`
+        message: `Recorded payment for ${matchedBooking.guest_name} (Room ${roomDisp}) on ${effectivePaymentDate}: ${paymentBreakdownDesc.join(' • ')}. Updated Pending Due: ₹${newBalanceDue.toLocaleString('en-IN')}`
       };
     }
 
