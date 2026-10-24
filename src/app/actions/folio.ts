@@ -129,6 +129,8 @@ export async function postPayment(formData: FormData) {
       amount: posAmount,
       method: method,
       payment_method: method,
+      allocation: allocation,
+      billing_period: billingPeriod || null,
       transaction_id: finalTxnId,
       business_date: businessDate
     }])
@@ -179,7 +181,7 @@ export async function getFolioSummary(bookingId: string) {
   // 1. Fetch base booking details
   const { data: booking, error: bookingErr } = await supabaseAdmin
     .from('bookings')
-    .select('id, total_amount, status, property_id, check_in, check_out, guest_name, guest_email, guest_phone, room_id, is_monthly, monthly_rent, security_deposit, rent_due_day, created_at')
+    .select('id, total_amount, status, property_id, check_in, check_out, guest_name, guest_email, guest_phone, room_id, is_monthly, monthly_rent, security_deposit, rent_due_day, created_at, notes')
     .eq('id', bookingId)
     .single();
 
@@ -231,15 +233,25 @@ export async function getFolioSummary(bookingId: string) {
   // 4. Fetch payments
   const { data: rawPayments, error: payErr } = await supabaseAdmin
     .from('payments')
-    .select('id, amount, payment_method, created_at, business_date, transaction_id')
+    .select('id, amount, payment_method, method, created_at, business_date, transaction_id, allocation, billing_period, is_void, void_reason')
     .eq('booking_id', bookingId)
     .order('created_at', { ascending: true });
 
-  const payments = (rawPayments || []).map(p => ({
-    ...p,
-    method: p.payment_method || 'Cash',
-    allocation: p.transaction_id?.toUpperCase().includes('DEPOSIT') ? 'Security Deposit' : 'Rent'
-  }));
+  const payments = (rawPayments || []).map(p => {
+    const rawAlloc = (p.allocation || '').toLowerCase();
+    const txn = (p.transaction_id || '').toLowerCase();
+    let allocation: 'Rent' | 'Maintenance' | 'Security Deposit' = 'Rent';
+    if (rawAlloc.includes('deposit') || rawAlloc.includes('refundable') || txn.includes('deposit')) {
+      allocation = 'Security Deposit';
+    } else if (rawAlloc.includes('maint') || txn.includes('maint')) {
+      allocation = 'Maintenance';
+    }
+    return {
+      ...p,
+      method: p.payment_method || p.method || 'Cash',
+      allocation
+    };
+  });
 
   // Sum of any daily room charges posted by the night audit
   const dailyRoomChargesSum = incidentals
@@ -260,29 +272,82 @@ export async function getFolioSummary(bookingId: string) {
     : payments?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
   const balanceDue = totalCharges - totalPayments;
 
-  // Compute separate ledgers for monthly/co-living bookings
+  // Compute separate ledgers for monthly/co-living bookings (3 distinct ledgers: Room Rent, Maintenance Fee, Refundable Fee)
   let securityDepositRequired = 0;
   let securityDepositPaid = 0;
+  let securityDepositDue = 0;
   let rentChargesSum = 0;
   let rentPaid = 0;
+  let roomRentRate = roomAmount;
+  let roomRentPaid = 0;
+  let roomRentDue = 0;
+  let expectedMaintenance = 0;
+  let maintenancePaid = 0;
+  let maintenanceDue = 0;
+  let totalOutstanding = balanceDue;
 
   if (booking.is_monthly) {
+    // 1. Room Rent Ledger
+    roomRentRate = Number((booking as any).monthly_rent || (booking as any).monthly_rate || roomAmount);
+    roomRentPaid = payments
+      .filter(item => !item.is_void && item.allocation === 'Rent')
+      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+    // 2. Maintenance Fee Ledger
+    const maintChargesList = incidentals.filter(
+      item => item.description?.toLowerCase().includes('maint') || (item as any).category?.toLowerCase().includes('maint')
+    );
+    const maintChargesSum = maintChargesList.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const notesMaintMatch = ((booking as any)?.notes || '').match(/Maintenance:\s*₹?([\d,]+(?:\.\d+)?)/i);
+    const notesMaintAmt = notesMaintMatch ? parseFloat(notesMaintMatch[1].replace(/,/g, '')) : 0;
+    expectedMaintenance = Math.max(maintChargesSum, notesMaintAmt);
+    maintenancePaid = payments
+      .filter(item => !item.is_void && item.allocation === 'Maintenance')
+      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+    // 3. Refundable Fee Ledger
+    const notesRefMatch = ((booking as any)?.notes || '').match(/Refundable:\s*₹?([\d,]+(?:\.\d+)?)/i);
+    const notesRefAmt = notesRefMatch ? parseFloat(notesRefMatch[1].replace(/,/g, '')) : 0;
     const baseDepositRequired = Number((booking as any).security_deposit || (booking as any).amount || 0);
     const postedDepositCharges = securityDepositCharges
       ?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
-
-    securityDepositRequired = baseDepositRequired + postedDepositCharges;
+    securityDepositRequired = Math.max(baseDepositRequired + postedDepositCharges, notesRefAmt);
     securityDepositPaid = payments
-      ?.filter(item => item.allocation === 'Security Deposit')
-      ?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
+      .filter(item => !item.is_void && item.allocation === 'Security Deposit')
+      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
 
-    // Rent & Incidentals = Total charges
-    rentChargesSum = totalCharges;
-    rentPaid = totalPayments;
+    // Smart Ledger Rebalancing for lump payments:
+    // (e.g. When Srikanth paid ₹10,500 total, but ₹2,000 was saved with Rent allocation instead of Maintenance/Deposit)
+    let surplusRent = Math.max(0, roomRentPaid - roomRentRate);
+    if (surplusRent > 0) {
+      const neededMaint = Math.max(0, expectedMaintenance - maintenancePaid);
+      if (neededMaint > 0) {
+        const coverMaint = Math.min(surplusRent, neededMaint);
+        maintenancePaid += coverMaint;
+        surplusRent -= coverMaint;
+      }
+      const neededDeposit = Math.max(0, securityDepositRequired - securityDepositPaid);
+      if (neededDeposit > 0) {
+        const coverDep = Math.min(surplusRent, neededDeposit);
+        securityDepositPaid += coverDep;
+        surplusRent -= coverDep;
+      }
+      roomRentPaid = roomRentRate + surplusRent;
+    }
+
+    roomRentDue = Math.max(0, roomRentRate - roomRentPaid);
+    maintenanceDue = Math.max(0, expectedMaintenance - maintenancePaid);
+    securityDepositDue = Math.max(0, securityDepositRequired - securityDepositPaid);
+    totalOutstanding = roomRentDue + maintenanceDue + securityDepositDue;
+
+    rentChargesSum = roomRentRate;
+    rentPaid = roomRentPaid;
   } else {
-    // For standard daily bookings, security deposit is not applicable
+    // For standard daily bookings
     rentChargesSum = totalCharges;
     rentPaid = totalPayments;
+    roomRentDue = Math.max(0, totalCharges - totalPayments);
+    totalOutstanding = roomRentDue;
   }
 
 
@@ -386,9 +451,17 @@ export async function getFolioSummary(bookingId: string) {
       discountReason,
       securityDepositRequired,
       securityDepositPaid,
+      securityDepositDue,
       securityDepositCharges: securityDepositCharges || [],
       rentChargesSum,
       rentPaid,
+      roomRentRate,
+      roomRentPaid,
+      roomRentDue,
+      expectedMaintenance,
+      maintenancePaid,
+      maintenanceDue,
+      totalOutstanding,
       standardHours: property ? {
         checkIn: property.standard_checkin_time,
         checkOut: property.standard_checkout_time
@@ -728,7 +801,11 @@ export async function updateMonthlyRate(bookingId: string, propertyId: string, n
   // Update the monthly rate in the bookings table
   const { error } = await supabaseAdmin
     .from('bookings')
-    .update({ monthly_rate: newRate })
+    .update({ 
+      monthly_rate: newRate,
+      monthly_rent: newRate,
+      total_amount: newRate
+    })
     .eq('id', bookingId);
 
   if (error) {

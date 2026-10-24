@@ -708,7 +708,7 @@ export async function checkOutGuest(bookingId: string, roomId: string) {
 
   const roomAmount = isMonthly
     ? Math.max(0, monthlyRate - discountAmount)
-    : Math.max(0, Number(booking.total_amount || 0) - discountAmount - dailyRoomChargesSum);
+    : Math.max(0, Number(booking.total_amount || (booking as any).amount || 0) - discountAmount - dailyRoomChargesSum);
 
   let totalIncidentals = incidentals?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
 

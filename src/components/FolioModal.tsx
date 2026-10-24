@@ -449,16 +449,20 @@ export function FolioModal({ bookingId, propertyId, propertyCategory, guestName,
                 </div>
                 <div className="text-2xl font-bold text-white">
                   ₹{(() => {
-                    const depositDue = folio?.isMonthly ? Math.max(0, (folio.securityDepositRequired || 0) - (folio.securityDepositPaid || 0)) : 0;
-                    return ((folio?.balanceDue || 0) + depositDue).toFixed(2);
+                    if (folio?.isMonthly) {
+                      return Number(folio?.totalOutstanding ?? 0).toFixed(2);
+                    }
+                    return Number(folio?.balanceDue ?? 0).toFixed(2);
                   })()}
                 </div>
                 <div className="text-[10px] text-zinc-500 mt-1 leading-relaxed">
                   {folio?.isMonthly ? (
                     <>
-                      Rent Due: <span className="font-bold text-zinc-300">₹{folio.balanceDue.toFixed(2)}</span>
+                      Rent Due: <span className="font-bold text-zinc-300">₹{Number(folio?.roomRentDue ?? 0).toFixed(2)}</span>
                       <br />
-                      Deposit Due: <span className="font-bold text-zinc-300">₹{Math.max(0, (folio.securityDepositRequired || 0) - (folio.securityDepositPaid || 0)).toFixed(2)}</span>
+                      Maint Due: <span className="font-bold text-zinc-300">₹{Number(folio?.maintenanceDue ?? 0).toFixed(2)}</span>
+                      <br />
+                      Deposit Due: <span className="font-bold text-zinc-300">₹{Number(folio?.securityDepositDue ?? 0).toFixed(2)}</span>
                     </>
                   ) : (
                     "Balance Due"
@@ -683,55 +687,77 @@ export function FolioModal({ bookingId, propertyId, propertyCategory, guestName,
                     )}
 
                     {folio?.isMonthly && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Security Deposit Ledger Card */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {/* 1. Room Rent Ledger Card */}
+                        <div className="p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl relative overflow-hidden">
+                          <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full blur-xl pointer-events-none" />
+                          <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
+                            Room Rent
+                          </span>
+                          <div className="mt-4 space-y-2">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-zinc-500">Rate / Charged:</span>
+                              <span className="font-mono text-zinc-300">₹{Number(folio.roomRentRate || folio.rentChargesSum || 0).toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-xs">
+                              <span className="text-zinc-500">Rent Paid:</span>
+                              <span className="font-mono text-emerald-400">₹{Number(folio.roomRentPaid || folio.rentPaid || 0).toFixed(2)}</span>
+                            </div>
+                            <div className="h-px bg-white/5 my-1" />
+                            <div className="flex justify-between text-sm font-bold">
+                              <span className="text-white">Rent Due:</span>
+                              <span className="font-mono text-emerald-400">
+                                ₹{Number(folio.roomRentDue ?? Math.max(0, (folio.roomRentRate || 0) - (folio.roomRentPaid || 0))).toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 2. Maintenance Fee Ledger Card */}
+                        <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-2xl relative overflow-hidden">
+                          <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-xl pointer-events-none" />
+                          <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest px-2.5 py-1 bg-amber-500/10 border border-amber-500/20 rounded-full">
+                            Maintenance Fee
+                          </span>
+                          <div className="mt-4 space-y-2">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-zinc-500">Fee Required:</span>
+                              <span className="font-mono text-zinc-300">₹{Number(folio.expectedMaintenance || 0).toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-xs">
+                              <span className="text-zinc-500">Fee Paid:</span>
+                              <span className="font-mono text-amber-400">₹{Number(folio.maintenancePaid || 0).toFixed(2)}</span>
+                            </div>
+                            <div className="h-px bg-white/5 my-1" />
+                            <div className="flex justify-between text-sm font-bold">
+                              <span className="text-white">Maintenance Due:</span>
+                              <span className="font-mono text-amber-400">
+                                ₹{Number(folio.maintenanceDue ?? Math.max(0, (folio.expectedMaintenance || 0) - (folio.maintenancePaid || 0))).toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 3. Refundable Fee (Security Deposit) Card */}
                         <div className="p-4 bg-indigo-500/5 border border-indigo-500/20 rounded-2xl relative overflow-hidden">
                           <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-full blur-xl pointer-events-none" />
                           <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest px-2.5 py-1 bg-indigo-500/10 border border-indigo-500/20 rounded-full">
-                            Security Deposit Ledger
+                            Refundable Fee
                           </span>
                           <div className="mt-4 space-y-2">
                             <div className="flex justify-between text-xs">
                               <span className="text-zinc-500">Deposit Required:</span>
-                              <span className="font-mono text-zinc-300">₹{(folio.securityDepositRequired || 0).toFixed(2)}</span>
+                              <span className="font-mono text-zinc-300">₹{Number(folio.securityDepositRequired || 0).toFixed(2)}</span>
                             </div>
-
-                            {/* Manual Deposit Charges list */}
-                            {(() => {
-                              const depCharges = folio.securityDepositCharges || [];
-                              if (depCharges.length > 0) {
-                                return (
-                                  <div className="pl-3 space-y-1 my-1">
-                                    {depCharges.map((item: any) => (
-                                      <div key={item.id} className="flex justify-between items-center text-[10px] text-zinc-500 font-mono">
-                                        <span>Manual Charge:</span>
-                                        <div className="flex items-center gap-1.5">
-                                          <span>₹{Number(item.amount).toFixed(2)}</span>
-                                          <button 
-                                            onClick={() => handleDeleteIncidental(item.id)}
-                                            className="p-0.5 rounded text-red-400/50 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                                            title="Delete Deposit Charge"
-                                            disabled={actionLoading}
-                                          >
-                                            <Trash2 size={10} />
-                                          </button>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                );
-                              }
-                              return null;
-                            })()}
                             <div className="flex justify-between text-xs">
                               <span className="text-zinc-500">Deposit Paid:</span>
-                              <span className="font-mono text-emerald-400">₹{(folio.securityDepositPaid || 0).toFixed(2)}</span>
+                              <span className="font-mono text-indigo-400">₹{Number(folio.securityDepositPaid || 0).toFixed(2)}</span>
                             </div>
                             <div className="h-px bg-white/5 my-1" />
                             <div className="flex justify-between text-sm font-bold">
-                              <span className="text-white">Deposit Balance Due:</span>
+                              <span className="text-white">Deposit Due:</span>
                               <span className="font-mono text-indigo-400">
-                                ₹{Math.max(0, (folio.securityDepositRequired || 0) - (folio.securityDepositPaid || 0)).toFixed(2)}
+                                ₹{Number(folio.securityDepositDue ?? Math.max(0, (folio.securityDepositRequired || 0) - (folio.securityDepositPaid || 0))).toFixed(2)}
                               </span>
                             </div>
 
@@ -765,9 +791,9 @@ export function FolioModal({ bookingId, propertyId, propertyCategory, guestName,
                                   setActionLoading(false);
                                 }}
                                 disabled={actionLoading}
-                                className="w-full mt-2 py-2 px-3 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5"
+                                className="w-full mt-2 py-2 px-3 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 text-[10px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5"
                               >
-                                <Banknote size={12} /> Refund Deposit (₹{folio.securityDepositPaid.toFixed(2)})
+                                <Banknote size={12} /> Refund Deposit (₹{Number(folio.securityDepositPaid).toFixed(2)})
                               </button>
                             )}
 
@@ -801,31 +827,6 @@ export function FolioModal({ bookingId, propertyId, propertyCategory, guestName,
                               }
                               return null;
                             })()}
-                          </div>
-                        </div>
-
-                        {/* Room Rent & Incidentals Ledger Card */}
-                        <div className="p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl relative overflow-hidden">
-                          <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full blur-xl pointer-events-none" />
-                          <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
-                            Rent & Incidentals Ledger
-                          </span>
-                          <div className="mt-4 space-y-2">
-                            <div className="flex justify-between text-xs">
-                              <span className="text-zinc-500">Rent + Incidentals Charges:</span>
-                              <span className="font-mono text-zinc-300">₹{(folio.rentChargesSum || 0).toFixed(2)}</span>
-                            </div>
-                            <div className="flex justify-between text-xs">
-                              <span className="text-zinc-500">Rent + Incidentals Paid:</span>
-                              <span className="font-mono text-emerald-400">₹{(folio.rentPaid || 0).toFixed(2)}</span>
-                            </div>
-                            <div className="h-px bg-white/5 my-1" />
-                            <div className="flex justify-between text-sm font-bold">
-                              <span className="text-white">Rent Balance Due:</span>
-                              <span className="font-mono text-emerald-400">
-                                ₹{Math.max(0, (folio.rentChargesSum || 0) - (folio.rentPaid || 0)).toFixed(2)}
-                              </span>
-                            </div>
                           </div>
                         </div>
                       </div>
@@ -965,7 +966,7 @@ export function FolioModal({ bookingId, propertyId, propertyCategory, guestName,
                                   <div className="text-[10px] text-zinc-500">
                                     {item.business_date ? new Date(item.business_date).toLocaleDateString() : new Date(item.created_at).toLocaleDateString()}
                                     {item.billing_period && ` • Cycle: ${item.billing_period}`}
-                                    {folio?.isMonthly && ` • Allocated to: ${item.allocation || 'Rent'}`}
+                                    {folio?.isMonthly && ` • Allocated to: ${item.allocation === 'Security Deposit' ? 'Refundable Fee' : item.allocation === 'Maintenance' ? 'Maintenance Fee' : 'Room Rent'}`}
                                     {item.is_void && ` • Reason: ${item.void_reason}`}
                                   </div>
                                 </div>
@@ -1119,13 +1120,9 @@ export function FolioModal({ bookingId, propertyId, propertyCategory, guestName,
                           >
                             {isPG ? (
                               <>
-                                <option value="Electricity Bill" className="bg-zinc-900 text-white">Electricity Bill</option>
-                                <option value="Mess / Food Charge" className="bg-zinc-900 text-white">Mess / Food Charge</option>
+                                <option value="Room Rent" className="bg-zinc-900 text-white">Room Rent</option>
                                 <option value="Maintenance Fee" className="bg-zinc-900 text-white">Maintenance Fee</option>
-                                <option value="Security Deposit" className="bg-zinc-900 text-white">Security Deposit</option>
-                                <option value="Late Fee / Fine" className="bg-zinc-900 text-white">Late Fee / Fine</option>
-                                <option value="Damage Charge" className="bg-zinc-900 text-white">Damage Charge</option>
-                                <option value="Others" className="bg-zinc-900 text-white">Others</option>
+                                <option value="Refundable Fee" className="bg-zinc-900 text-white">Refundable Fee</option>
                               </>
                             ) : (
                               <>
@@ -1222,10 +1219,15 @@ export function FolioModal({ bookingId, propertyId, propertyCategory, guestName,
                               name="amount" type="number" step="0.01" required min="1" 
                               defaultValue={(() => {
                                 if (paymentAllocation === 'Security Deposit') {
-                                  const depDue = Math.max(0, (folio.securityDepositRequired || 0) - (folio.securityDepositPaid || 0));
+                                  const depDue = folio?.securityDepositDue ?? Math.max(0, (folio.securityDepositRequired || 0) - (folio.securityDepositPaid || 0));
                                   return depDue > 0 ? depDue.toFixed(2) : '';
                                 }
-                                return folio?.balanceDue > 0 ? folio.balanceDue.toFixed(2) : '';
+                                if (paymentAllocation === 'Maintenance') {
+                                  const maintDue = folio?.maintenanceDue ?? Math.max(0, (folio.expectedMaintenance || 0) - (folio.maintenancePaid || 0));
+                                  return maintDue > 0 ? maintDue.toFixed(2) : '';
+                                }
+                                const rentDue = folio?.roomRentDue ?? folio?.balanceDue ?? 0;
+                                return rentDue > 0 ? rentDue.toFixed(2) : '';
                               })()}
                               className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm font-mono focus:outline-none focus:border-indigo-500 transition-all"
                             />
@@ -1259,8 +1261,9 @@ export function FolioModal({ bookingId, propertyId, propertyCategory, guestName,
                                 onChange={(e) => setPaymentAllocation(e.target.value)}
                                 className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all appearance-none cursor-pointer"
                               >
-                                <option value="Rent">Room Rent & Incidentals</option>
-                                <option value="Security Deposit">Security Deposit</option>
+                                <option value="Rent">Room Rent</option>
+                                <option value="Maintenance">Maintenance Fee</option>
+                                <option value="Security Deposit">Refundable Fee</option>
                               </select>
                             </div>
 
