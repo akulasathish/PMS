@@ -734,13 +734,27 @@ export default function QuickLedgerAssistant() {
                                       {msg.result.refundableDeposit ? (
                                         <div className="flex justify-between items-baseline">
                                           <span className="text-[11px] text-zinc-400">Refundable Amount</span>
-                                          <span className="text-xs font-bold text-emerald-400">₹{msg.result.refundableDeposit.toLocaleString('en-IN')}</span>
+                                          <div className="flex items-center gap-1.5">
+                                            <span className="text-xs font-bold text-emerald-400 font-mono">₹{msg.result.refundableDeposit.toLocaleString('en-IN')}</span>
+                                            {msg.result.depositPaid !== undefined && msg.result.depositPaid === 0 ? (
+                                              <span className="text-[10px] font-semibold text-rose-400 bg-rose-500/10 px-1 rounded">Due</span>
+                                            ) : (
+                                              <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-1 rounded">Paid</span>
+                                            )}
+                                          </div>
                                         </div>
                                       ) : null}
                                       {msg.result.maintenanceFee ? (
                                         <div className="flex justify-between items-baseline">
                                           <span className="text-[11px] text-zinc-400">Maintenance (Non-Ref)</span>
-                                          <span className="text-xs font-bold text-amber-400">₹{msg.result.maintenanceFee.toLocaleString('en-IN')}</span>
+                                          <div className="flex items-center gap-1.5">
+                                            <span className="text-xs font-bold text-amber-400 font-mono">₹{msg.result.maintenanceFee.toLocaleString('en-IN')}</span>
+                                            {msg.result.maintPaid !== undefined && msg.result.maintPaid === 0 ? (
+                                              <span className="text-[10px] font-semibold text-rose-400 bg-rose-500/10 px-1 rounded">Due</span>
+                                            ) : (
+                                              <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-1 rounded">Paid</span>
+                                            )}
+                                          </div>
                                         </div>
                                       ) : null}
                                       {!msg.result.refundableDeposit && !msg.result.maintenanceFee && msg.result.advPaid ? (

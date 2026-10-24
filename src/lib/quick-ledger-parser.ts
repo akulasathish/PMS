@@ -366,7 +366,7 @@ export function parseQuickLedgerText(input: string) {
 
   // 0d. ASSIGN / NEW TENANT CHECK
   const isAssign = /\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining|joined|guest|daily|daily\s*basis)\b/i.test(lower) ||
-                   (/\b(?:add|guest)\b/i.test(lower) && (/\b(?:room|rom|romm|rm|r)\b/i.test(lower) || /\bto\b/i.test(lower) || /\b\d{3}\b/.test(lower) || /\bshare\b/i.test(lower) || /\bdays?\b/i.test(lower))) ||
+                   (/\b(?:add|guest|join)\b/i.test(lower) && (/\b(?:room|rom|romm|rm|r)\b/i.test(lower) || /\bto\b/i.test(lower) || /\b\d{3}\b/.test(lower) || /\bshare\b/i.test(lower) || /\bdays?\b/i.test(lower))) ||
                    (/\b(?:maintainance|maintenance|maintance|maintence|maintanace|maintanance|maintanence|refundable)\b/i.test(lower) &&
                     /\b(?:rent|monthly|room\s*fee|rom\s*fee|romm\s*fee|fee|feee|total\s*fee|joined|joining|adv\b|advance)\b/i.test(lower) &&
                     !/\bpaid\s*(?:only\s*)?(?:maintainance|maintenance|maintance|maintence|refundable)\b/i.test(lower));
@@ -375,7 +375,7 @@ export function parseQuickLedgerText(input: string) {
     if (dateRawStr) {
       cleaned = cleaned.replace(dateRawStr, ' ');
     }
-    cleaned = cleaned.replace(/[\\/]/g, ' ');
+    cleaned = cleaned.replace(/[\\/,]/g, ' ');
 
     // 0. Daily Basis Stay Check (Short stays: e.g. "per day 600 total 2 days paid 600", "daily basis", "3 days")
     const isDaily = /\b(?:daily|daily\s*basis|per\s*day|\bdays\b)\b/i.test(cleaned);
@@ -505,74 +505,171 @@ export function parseQuickLedgerText(input: string) {
       dueDay = customDay;
     }
 
-    // 4. Monthly Rent / Room Fee (check paid variations first, then standard prefix/suffix)
+    // 4. Monthly Rent / Room Fee (check explicit due, then paid, then general amounts)
     let monthlyRent = 0;
     let rentPaid = 0;
 
-    const rentPaidPattern1 = cleaned.match(/\b(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\s*(?:is\s*)?(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
-    const rentPaidPattern2 = cleaned.match(/\b(?:paid|sent)\s*[:=]?\s*(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
-    const rentPaidPattern3 = cleaned.match(/\b(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\s*(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\b/i);
-    const rentPaidPattern4 = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\s*(?:is\s*)?(?:paid|sent)\b/i);
+    // 4a. Check Rent Due: e.g. "room fee due 8000", "room fee 8000 due", "due 8000 room fee", "8000 room fee due"
+    const rentDuePattern1 = cleaned.match(/\b(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\s*(?:is\s*)?(?:due|pending|pedning)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+    const rentDuePattern2 = cleaned.match(/\b(?:due|pending|pedning)\s*[:=]?\s*(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+    const rentDuePattern3 = cleaned.match(/\b(?:due|pending|pedning)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\s*(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\b/i);
+    const rentDuePattern4 = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\s*(?:is\s*)?(?:due|pending|pedning)\b/i);
+    const rentDuePattern5 = cleaned.match(/\b(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\s*(?:is\s*)?(?:due|pending|pedning)\b/i);
 
-    if (rentPaidPattern1) {
-      const amt = parseFloat(rentPaidPattern1[1]) * (rentPaidPattern1[2] ? 1000 : 1);
+    if (rentDuePattern1) {
+      const amt = parseFloat(rentDuePattern1[1]) * (rentDuePattern1[2] ? 1000 : 1);
       monthlyRent = amt;
-      rentPaid = amt;
-      cleaned = cleaned.replace(rentPaidPattern1[0], ' ');
-    } else if (rentPaidPattern2) {
-      const amt = parseFloat(rentPaidPattern2[1]) * (rentPaidPattern2[2] ? 1000 : 1);
+      rentPaid = 0;
+      cleaned = cleaned.replace(rentDuePattern1[0], ' ');
+    } else if (rentDuePattern2) {
+      const amt = parseFloat(rentDuePattern2[1]) * (rentDuePattern2[2] ? 1000 : 1);
       monthlyRent = amt;
-      rentPaid = amt;
-      cleaned = cleaned.replace(rentPaidPattern2[0], ' ');
-    } else if (rentPaidPattern3) {
-      const amt = parseFloat(rentPaidPattern3[1]) * (rentPaidPattern3[2] ? 1000 : 1);
+      rentPaid = 0;
+      cleaned = cleaned.replace(rentDuePattern2[0], ' ');
+    } else if (rentDuePattern3) {
+      const amt = parseFloat(rentDuePattern3[1]) * (rentDuePattern3[2] ? 1000 : 1);
       monthlyRent = amt;
-      rentPaid = amt;
-      cleaned = cleaned.replace(rentPaidPattern3[0], ' ');
-    } else if (rentPaidPattern4) {
-      const amt = parseFloat(rentPaidPattern4[1]) * (rentPaidPattern4[2] ? 1000 : 1);
+      rentPaid = 0;
+      cleaned = cleaned.replace(rentDuePattern3[0], ' ');
+    } else if (rentDuePattern4) {
+      const amt = parseFloat(rentDuePattern4[1]) * (rentDuePattern4[2] ? 1000 : 1);
       monthlyRent = amt;
-      rentPaid = amt;
-      cleaned = cleaned.replace(rentPaidPattern4[0], ' ');
+      rentPaid = 0;
+      cleaned = cleaned.replace(rentDuePattern4[0], ' ');
+    } else if (rentDuePattern5) {
+      const amt = parseFloat(rentDuePattern5[1]) * (rentDuePattern5[2] ? 1000 : 1);
+      monthlyRent = amt;
+      rentPaid = 0;
+      cleaned = cleaned.replace(rentDuePattern5[0], ' ');
     } else {
-      const rentBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:rent|monthly|rom\s*fee|room\s*fee|romm\s*fee|fee|feee)\b/i);
-      if (rentBefore) {
-        monthlyRent = parseFloat(rentBefore[1]) * (rentBefore[2] ? 1000 : 1);
-        cleaned = cleaned.replace(rentBefore[0], ' ');
+      // 4b. Check Rent Partial Payment: e.g. "room fee 8000 paid only 5000", "fee 8000 paid 5000"
+      const rentExplicitPartial = cleaned.match(/\b(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\s*(?:but\s*)?(?:paid|sent)\s*(?:only\s*)?[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+      if (rentExplicitPartial) {
+        monthlyRent = parseFloat(rentExplicitPartial[1]) * (rentExplicitPartial[2] ? 1000 : 1);
+        rentPaid = parseFloat(rentExplicitPartial[3]) * (rentExplicitPartial[4] ? 1000 : 1);
+        cleaned = cleaned.replace(rentExplicitPartial[0], ' ');
       } else {
-        const rentAfter = cleaned.match(/\b(?:rent|monthly|rom\s*fee|room\s*fee|romm\s*fee|room\s*rent|rom\s*rent|romm\s*rent|fee|feee)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
-        if (rentAfter) {
-          monthlyRent = parseFloat(rentAfter[1]) * (rentAfter[2] ? 1000 : 1);
-          cleaned = cleaned.replace(rentAfter[0], ' ');
+        // 4c. Check Rent Paid Full
+        const rentPaidPattern1 = cleaned.match(/\b(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\s*(?:is\s*)?(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+        const rentPaidPattern2 = cleaned.match(/\b(?:paid|sent)\s*[:=]?\s*(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+        const rentPaidPattern3 = cleaned.match(/\b(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\s*(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\b/i);
+        const rentPaidPattern4 = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\s*(?:is\s*)?(?:paid|sent)\b/i);
+        const rentPaidPattern5 = cleaned.match(/\b(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\s*(?:is\s*)?(?:paid|sent)\b/i);
+
+        if (rentPaidPattern1) {
+          const amt = parseFloat(rentPaidPattern1[1]) * (rentPaidPattern1[2] ? 1000 : 1);
+          monthlyRent = amt;
+          rentPaid = amt;
+          cleaned = cleaned.replace(rentPaidPattern1[0], ' ');
+        } else if (rentPaidPattern2) {
+          const amt = parseFloat(rentPaidPattern2[1]) * (rentPaidPattern2[2] ? 1000 : 1);
+          monthlyRent = amt;
+          rentPaid = amt;
+          cleaned = cleaned.replace(rentPaidPattern2[0], ' ');
+        } else if (rentPaidPattern3) {
+          const amt = parseFloat(rentPaidPattern3[1]) * (rentPaidPattern3[2] ? 1000 : 1);
+          monthlyRent = amt;
+          rentPaid = amt;
+          cleaned = cleaned.replace(rentPaidPattern3[0], ' ');
+        } else if (rentPaidPattern4) {
+          const amt = parseFloat(rentPaidPattern4[1]) * (rentPaidPattern4[2] ? 1000 : 1);
+          monthlyRent = amt;
+          rentPaid = amt;
+          cleaned = cleaned.replace(rentPaidPattern4[0], ' ');
+        } else if (rentPaidPattern5) {
+          const amt = parseFloat(rentPaidPattern5[1]) * (rentPaidPattern5[2] ? 1000 : 1);
+          monthlyRent = amt;
+          rentPaid = amt;
+          cleaned = cleaned.replace(rentPaidPattern5[0], ' ');
+        } else {
+          const rentBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:rent|monthly|rom\s*fee|room\s*fee|romm\s*fee|fee|feee)\b/i);
+          if (rentBefore) {
+            monthlyRent = parseFloat(rentBefore[1]) * (rentBefore[2] ? 1000 : 1);
+            cleaned = cleaned.replace(rentBefore[0], ' ');
+          } else {
+            const rentAfter = cleaned.match(/\b(?:rent|monthly|rom\s*fee|room\s*fee|romm\s*fee|room\s*rent|rom\s*rent|romm\s*rent|fee|feee)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+            if (rentAfter) {
+              monthlyRent = parseFloat(rentAfter[1]) * (rentAfter[2] ? 1000 : 1);
+              cleaned = cleaned.replace(rentAfter[0], ' ');
+            }
+          }
         }
       }
     }
 
-    // 5. Maintenance Fee (Non-refundable) (check suffix '1000 maintence' first, then prefix 'maintence 1000')
+    // 5. Maintenance Fee (Non-refundable) (Check due first, then paid, then fallback)
     let maintenanceFee = 0;
-    const maintBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:maint[a-z]*|ment[a-z]*|non\s*refundable)\b/i);
-    if (maintBefore) {
-      maintenanceFee = parseFloat(maintBefore[1]) * (maintBefore[2] ? 1000 : 1);
-      cleaned = cleaned.replace(maintBefore[0], ' ');
+    let maintenancePaid: number | undefined = undefined;
+
+    const maintDueMatch = cleaned.match(/\b(?:maint[a-z]*|ment[a-z]*|non\s*refundable)\s*(?:fee|ammount|amount|charges|charge)?\s*(?:is\s*)?(?:due|pending|pedning)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i) ||
+                          cleaned.match(/\b(?:maint[a-z]*|ment[a-z]*|non\s*refundable)\s*(?:fee|ammount|amount|charges|charge)?\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\s*(?:is\s*)?(?:due|pending|pedning)\b/i) ||
+                          cleaned.match(/\b(?:due|pending|pedning)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\s*(?:maint[a-z]*|ment[a-z]*|non\s*refundable)\b/i) ||
+                          cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:maint[a-z]*|ment[a-z]*|non\s*refundable)\s*(?:fee|ammount|amount|charges|charge)?\s*(?:is\s*)?(?:due|pending|pedning)\b/i);
+
+    if (maintDueMatch) {
+      maintenanceFee = parseFloat(maintDueMatch[1]) * (maintDueMatch[2] ? 1000 : 1);
+      maintenancePaid = 0;
+      cleaned = cleaned.replace(maintDueMatch[0], ' ');
     } else {
-      const maintAfter = cleaned.match(/\b(?:maint[a-z]*|ment[a-z]*|non\s*refundable)\s*(?:fee|ammount|amount|charges|charge)?\s*(?:is\s*)?(?:paid|sent)?\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
-      if (maintAfter) {
-        maintenanceFee = parseFloat(maintAfter[1]) * (maintAfter[2] ? 1000 : 1);
-        cleaned = cleaned.replace(maintAfter[0], ' ');
+      const maintPaidMatch = cleaned.match(/\b(?:maint[a-z]*|ment[a-z]*|non\s*refundable)\s*(?:fee|ammount|amount|charges|charge)?\s*(?:is\s*)?(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i) ||
+                             cleaned.match(/\b(?:maint[a-z]*|ment[a-z]*|non\s*refundable)\s*(?:fee|ammount|amount|charges|charge)?\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\s*(?:is\s*)?(?:paid|sent)\b/i) ||
+                             cleaned.match(/\b(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\s*(?:maint[a-z]*|ment[a-z]*|non\s*refundable)\b/i) ||
+                             cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:maint[a-z]*|ment[a-z]*|non\s*refundable)\s*(?:fee|ammount|amount|charges|charge)?\s*(?:is\s*)?(?:paid|sent)\b/i);
+
+      if (maintPaidMatch) {
+        maintenanceFee = parseFloat(maintPaidMatch[1]) * (maintPaidMatch[2] ? 1000 : 1);
+        maintenancePaid = maintenanceFee;
+        cleaned = cleaned.replace(maintPaidMatch[0], ' ');
+      } else {
+        const maintBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:maint[a-z]*|ment[a-z]*|non\s*refundable)\b/i);
+        if (maintBefore) {
+          maintenanceFee = parseFloat(maintBefore[1]) * (maintBefore[2] ? 1000 : 1);
+          cleaned = cleaned.replace(maintBefore[0], ' ');
+        } else {
+          const maintAfter = cleaned.match(/\b(?:maint[a-z]*|ment[a-z]*|non\s*refundable)\s*(?:fee|ammount|amount|charges|charge)?\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+          if (maintAfter) {
+            maintenanceFee = parseFloat(maintAfter[1]) * (maintAfter[2] ? 1000 : 1);
+            cleaned = cleaned.replace(maintAfter[0], ' ');
+          }
+        }
       }
     }
 
-    // 6. Refundable Security Deposit / Advance (check suffix '2000 adv' first, then prefix 'adv 2000')
+    // 6. Refundable Security Deposit / Advance (Check due first, then paid, then fallback)
     let refundableDeposit = 0;
-    const refBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:refun[a-z]*\s*(?:ammount|amount|deposit|fee)?|security\s*deposit|sec\s*deposit|deposit|adv|advance|advan[cv]e)\b/i);
-    if (refBefore) {
-      refundableDeposit = parseFloat(refBefore[1]) * (refBefore[2] ? 1000 : 1);
-      cleaned = cleaned.replace(refBefore[0], ' ');
+    let depositPaid: number | undefined = undefined;
+
+    const refDueMatch = cleaned.match(/\b(?:refun[a-z]*\s*(?:ammount|amount|deposit|fee)?|security\s*deposit|sec\s*deposit|deposit|adv|advance|advan[cv]e)\s*(?:is\s*)?(?:due|pending|pedning)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i) ||
+                        cleaned.match(/\b(?:refun[a-z]*\s*(?:ammount|amount|deposit|fee)?|security\s*deposit|sec\s*deposit|deposit|adv|advance|advan[cv]e)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\s*(?:is\s*)?(?:due|pending|pedning)\b/i) ||
+                        cleaned.match(/\b(?:due|pending|pedning)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\s*(?:refun[a-z]*\s*(?:ammount|amount|deposit|fee)?|security\s*deposit|sec\s*deposit|deposit|adv|advance|advan[cv]e)\b/i) ||
+                        cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:refun[a-z]*\s*(?:ammount|amount|deposit|fee)?|security\s*deposit|sec\s*deposit|deposit|adv|advance|advan[cv]e)\s*(?:is\s*)?(?:due|pending|pedning)\b/i);
+
+    if (refDueMatch) {
+      refundableDeposit = parseFloat(refDueMatch[1]) * (refDueMatch[2] ? 1000 : 1);
+      depositPaid = 0;
+      cleaned = cleaned.replace(refDueMatch[0], ' ');
     } else {
-      const refAfter = cleaned.match(/\b(?:refun[a-z]*\s*(?:ammount|amount|deposit|fee)?|security\s*deposit|sec\s*deposit|deposit|adv|advance|advan[cv]e)\s*(?:is\s*)?(?:paid|sent)?\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
-      if (refAfter) {
-        refundableDeposit = parseFloat(refAfter[1]) * (refAfter[2] ? 1000 : 1);
-        cleaned = cleaned.replace(refAfter[0], ' ');
+      const refPaidMatch = cleaned.match(/\b(?:refun[a-z]*\s*(?:ammount|amount|deposit|fee)?|security\s*deposit|sec\s*deposit|deposit|adv|advance|advan[cv]e)\s*(?:is\s*)?(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i) ||
+                           cleaned.match(/\b(?:refun[a-z]*\s*(?:ammount|amount|deposit|fee)?|security\s*deposit|sec\s*deposit|deposit|adv|advance|advan[cv]e)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\s*(?:is\s*)?(?:paid|sent)\b/i) ||
+                           cleaned.match(/\b(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\s*(?:refun[a-z]*\s*(?:ammount|amount|deposit|fee)?|security\s*deposit|sec\s*deposit|deposit|adv|advance|advan[cv]e)\b/i) ||
+                           cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:refun[a-z]*\s*(?:ammount|amount|deposit|fee)?|security\s*deposit|sec\s*deposit|deposit|adv|advance|advan[cv]e)\s*(?:is\s*)?(?:paid|sent)\b/i);
+
+      if (refPaidMatch) {
+        refundableDeposit = parseFloat(refPaidMatch[1]) * (refPaidMatch[2] ? 1000 : 1);
+        depositPaid = refundableDeposit;
+        cleaned = cleaned.replace(refPaidMatch[0], ' ');
+      } else {
+        const refBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:refun[a-z]*\s*(?:ammount|amount|deposit|fee)?|security\s*deposit|sec\s*deposit|deposit|adv|advance|advan[cv]e)\b/i);
+        if (refBefore) {
+          refundableDeposit = parseFloat(refBefore[1]) * (refBefore[2] ? 1000 : 1);
+          cleaned = cleaned.replace(refBefore[0], ' ');
+        } else {
+          const refAfter = cleaned.match(/\b(?:refun[a-z]*\s*(?:ammount|amount|deposit|fee)?|security\s*deposit|sec\s*deposit|deposit|adv|advance|advan[cv]e)\s*(?:is\s*)?(?:paid|sent)?\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+          if (refAfter) {
+            refundableDeposit = parseFloat(refAfter[1]) * (refAfter[2] ? 1000 : 1);
+            cleaned = cleaned.replace(refAfter[0], ' ');
+          }
+        }
       }
     }
 
@@ -661,9 +758,9 @@ export function parseQuickLedgerText(input: string) {
       !/^\d+(?:st|nd|rd|th)?$/i.test(w)
     );
 
-    // Direct positional extraction: e.g. "add danush to room 202" or "add danush in 202"
+    // Direct positional extraction: e.g. "add danush to room 202" or "add danush in 202" or "join sathish to room 201"
     let positionalName: string | null = null;
-    const posMatch = lower.match(/\b(?:add|assign|new\s+tenant|join\s+tenant)\s+([a-z\s]+?)\s+(?:to\s+(?:room|rm|rom|romm)|in\s+(?:room|rm|rom|romm)|to|in|room|rm|rom|romm)\s*#?\s*(\d{1,4})\b/i);
+    const posMatch = lower.match(/\b(?:add|assign|new\s+tenant|join\s+tenant|join)\s+([a-z\s]+?)\s+(?:to\s+(?:room|rm|rom|romm)|in\s+(?:room|rm|rom|romm)|to|in|room|rm|rom|romm)\s*#?\s*(\d{1,4})\b/i);
     if (posMatch) {
       const candidateTokens = posMatch[1].trim().split(/\s+/).filter(w => w && !noiseWords.has(w) && !/^\d+$/.test(w));
       if (candidateTokens.length > 0) {
@@ -671,7 +768,7 @@ export function parseQuickLedgerText(input: string) {
       }
     }
 
-    const tenantName = (positionalName || nameTokens.join(' ')).trim();
+    const tenantName = (positionalName || nameTokens.join(' ')).replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
 
     return {
       type: 'assign' as const,
@@ -681,7 +778,9 @@ export function parseQuickLedgerText(input: string) {
       rentPaid,
       advAmount: refundableDeposit,
       refundableDeposit,
+      depositPaid: depositPaid !== undefined ? depositPaid : refundableDeposit,
       maintenanceFee,
+      maintenancePaid: maintenancePaid !== undefined ? maintenancePaid : maintenanceFee,
       sharing,
       checkInDate: customDate,
       dueDay

@@ -305,6 +305,40 @@ describe('Quick Ledger NLP Parser', () => {
       }
     });
 
+    it('should parse comma-separated join with all paid: "join sathish to room 201, joined on 1st october 2026, due date 5th, refundable ammount paid 1000, maintainance paid 1000, room fee paid 8000"', () => {
+      const result = parseQuickLedgerText('join sathish to room 201, joined on 1st october 2026, due date 5th, refundable ammount paid 1000, maintainance paid 1000, room fee paid 8000');
+      expect(result.type).toBe('assign');
+      if (result.type === 'assign') {
+        expect(result.tenantName.toLowerCase()).toBe('sathish');
+        expect(result.roomNumber).toBe('201');
+        expect(result.checkInDate).toBe('2026-10-01');
+        expect(result.dueDay).toBe(5);
+        expect(result.monthlyRent).toBe(8000);
+        expect((result as any).rentPaid).toBe(8000);
+        expect(result.maintenanceFee).toBe(1000);
+        expect((result as any).maintenancePaid).toBe(1000);
+        expect(result.refundableDeposit).toBe(1000);
+        expect((result as any).depositPaid).toBe(1000);
+      }
+    });
+
+    it('should parse comma-separated join with all due: "join sathish to room 201, joined on 1st october 2026, due date 5th, refundable ammount due 1000, maintanance 1000 due, room fee due 8000"', () => {
+      const result = parseQuickLedgerText('join sathish to room 201, joined on 1st october 2026, due date 5th, refundable ammount due 1000, maintanance 1000 due, room fee due 8000');
+      expect(result.type).toBe('assign');
+      if (result.type === 'assign') {
+        expect(result.tenantName.toLowerCase()).toBe('sathish');
+        expect(result.roomNumber).toBe('201');
+        expect(result.checkInDate).toBe('2026-10-01');
+        expect(result.dueDay).toBe(5);
+        expect(result.monthlyRent).toBe(8000);
+        expect((result as any).rentPaid).toBe(0);
+        expect(result.maintenanceFee).toBe(1000);
+        expect((result as any).maintenancePaid).toBe(0);
+        expect(result.refundableDeposit).toBe(1000);
+        expect((result as any).depositPaid).toBe(0);
+      }
+    });
+
     it('should parse paid only 1000 with room fee due "202 ponnam shanker total fee 9000 maintainance 1000 paid but paid only 1000 non refundable room fee and 1000 maintance due"', () => {
       const result = parseQuickLedgerText('202 ponnam shanker total fee 9000 maintainance 1000 paid but paid only 1000 non refundable room fee and 1000 maintance due');
       expect(result.type).toBe('assign');

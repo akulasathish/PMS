@@ -50,6 +50,8 @@ export interface QuickLedgerResult {
   checkOutDate?: string;
   maintenanceFee?: number;
   refundableDeposit?: number;
+  maintPaid?: number;
+  depositPaid?: number;
   isDaily?: boolean;
   stayDays?: number;
   perDayRate?: number;
@@ -296,7 +298,9 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         rentPaid: parsedRentPaid,
         advAmount,
         refundableDeposit: parsedRefundable,
+        depositPaid: parsedDepositPaid,
         maintenanceFee: parsedMaintenance,
+        maintenancePaid: parsedMaintPaid,
         sharing,
         checkInDate: parsedCheckIn,
         dueDay
@@ -554,38 +558,47 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
             category: 'Maintenance',
             business_date: effectiveCheckIn
           }]);
-          const { data: maintPay } = await admin.from('payments').insert([{
-            booking_id: existingResident.id,
-            property_id: activePropertyId,
-            amount: maintenanceFee,
-            method: 'UPI',
-            payment_method: 'UPI',
-            allocation: 'Maintenance Fee (Revenue)',
-            transaction_id: 'MAINTENANCE-FEE-AT-UPDATE',
-            business_date: effectiveCheckIn
-          }]).select('id').single();
-          if (maintPay) paymentIds.push(maintPay.id);
+          if (parsedMaintPaid !== 0) {
+            const { data: maintPay } = await admin.from('payments').insert([{
+              booking_id: existingResident.id,
+              property_id: activePropertyId,
+              amount: parsedMaintPaid !== undefined ? parsedMaintPaid : maintenanceFee,
+              method: 'UPI',
+              payment_method: 'UPI',
+              allocation: 'Maintenance Fee (Revenue)',
+              transaction_id: 'MAINTENANCE-FEE-AT-UPDATE',
+              business_date: effectiveCheckIn
+            }]).select('id').single();
+            if (maintPay) paymentIds.push(maintPay.id);
+          }
         }
 
         if (refundableDeposit > 0 && (!hasDepPayment || refundableDeposit !== Number(existingResident.security_deposit || 0))) {
-          const { data: depPay } = await admin.from('payments').insert([{
-            booking_id: existingResident.id,
-            property_id: activePropertyId,
-            amount: refundableDeposit,
-            method: 'UPI',
-            payment_method: 'UPI',
-            allocation: 'Security Deposit',
-            transaction_id: 'REFUNDABLE-DEPOSIT-AT-UPDATE',
-            business_date: effectiveCheckIn
-          }]).select('id').single();
-          if (depPay) paymentIds.push(depPay.id);
+          if (parsedDepositPaid !== 0) {
+            const { data: depPay } = await admin.from('payments').insert([{
+              booking_id: existingResident.id,
+              property_id: activePropertyId,
+              amount: parsedDepositPaid !== undefined ? parsedDepositPaid : refundableDeposit,
+              method: 'UPI',
+              payment_method: 'UPI',
+              allocation: 'Security Deposit',
+              transaction_id: 'REFUNDABLE-DEPOSIT-AT-UPDATE',
+              business_date: effectiveCheckIn
+            }]).select('id').single();
+            if (depPay) paymentIds.push(depPay.id);
+          }
         }
 
         const totalRentPaid = Math.max(rentPaid, existingRentPaid);
-        const totalAdvance = refundableDeposit + maintenanceFee;
+        const effectiveMaintPaid = parsedMaintPaid !== undefined ? parsedMaintPaid : (hasMaintPayment ? maintenanceFee : 0);
+        const effectiveDepPaid = parsedDepositPaid !== undefined ? parsedDepositPaid : (hasDepPayment ? refundableDeposit : 0);
+        const totalAdvance = effectiveDepPaid + effectiveMaintPaid;
         const rentStatusText = totalRentPaid > 0 
           ? `Rent: ₹${effectiveMonthlyRent.toLocaleString('en-IN')}/mo (Paid: ₹${totalRentPaid.toLocaleString('en-IN')})` 
           : `Rent: ₹${effectiveMonthlyRent.toLocaleString('en-IN')}/mo (Due: ₹${effectiveMonthlyRent.toLocaleString('en-IN')})`;
+
+        const maintStatus = effectiveMaintPaid > 0 ? `₹${maintenanceFee.toLocaleString('en-IN')} (Paid)` : `₹${maintenanceFee.toLocaleString('en-IN')} (Due)`;
+        const refStatus = effectiveDepPaid > 0 ? `₹${refundableDeposit.toLocaleString('en-IN')} (Paid)` : `₹${refundableDeposit.toLocaleString('en-IN')} (Due)`;
 
         return {
           success: true,
@@ -595,14 +608,16 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
           monthlyRent: effectiveMonthlyRent,
           advPaid: totalAdvance,
           refundableDeposit,
+          depositPaid: effectiveDepPaid,
           maintenanceFee,
+          maintPaid: effectiveMaintPaid,
           feePaid: totalRentPaid,
           dueDay: finalDueDay,
           sharing: sharing || undefined,
           checkInDate: effectiveCheckIn,
           bookingId: existingResident.id,
           paymentIds,
-          message: `Updated existing resident ${formattedName} in Room ${targetRoom.room_number}! Joined: ${effectiveCheckIn} • ${rentStatusText} • Maintenance: ₹${maintenanceFee.toLocaleString('en-IN')} (Paid) • Refundable: ₹${refundableDeposit.toLocaleString('en-IN')}.`
+          message: `Updated existing resident ${formattedName} in Room ${targetRoom.room_number}! Joined: ${effectiveCheckIn} • ${rentStatusText} • Maintenance: ${maintStatus} • Refundable: ${refStatus}.`
         };
       }
 
@@ -791,34 +806,36 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
             business_date: effectiveCheckIn
           }]);
 
-        const { data: maintPay } = await admin
-          .from('payments')
-          .insert([{
-            booking_id: newBooking.id,
-            property_id: activePropertyId,
-            amount: maintenanceFee,
-            method: 'UPI',
-            payment_method: 'UPI',
-            allocation: 'Maintenance Fee (Revenue)',
-            transaction_id: 'MAINTENANCE-FEE-AT-CREATION',
-            business_date: effectiveCheckIn
-          }])
-          .select('id')
-          .single();
+        if (parsedMaintPaid !== 0) {
+          const { data: maintPay } = await admin
+            .from('payments')
+            .insert([{
+              booking_id: newBooking.id,
+              property_id: activePropertyId,
+              amount: parsedMaintPaid !== undefined ? parsedMaintPaid : maintenanceFee,
+              method: 'UPI',
+              payment_method: 'UPI',
+              allocation: 'Maintenance Fee (Revenue)',
+              transaction_id: 'MAINTENANCE-FEE-AT-CREATION',
+              business_date: effectiveCheckIn
+            }])
+            .select('id')
+            .single();
 
-        if (maintPay) {
-          paymentIds.push(maintPay.id);
+          if (maintPay) {
+            paymentIds.push(maintPay.id);
+          }
         }
       }
 
       // 6b. If refundable deposit paid, record payment
-      if (refundableDeposit > 0) {
+      if (refundableDeposit > 0 && parsedDepositPaid !== 0) {
         const { data: depPay } = await admin
           .from('payments')
           .insert([{
             booking_id: newBooking.id,
             property_id: activePropertyId,
-            amount: refundableDeposit,
+            amount: parsedDepositPaid !== undefined ? parsedDepositPaid : refundableDeposit,
             method: 'UPI',
             payment_method: 'UPI',
             allocation: 'Security Deposit',
@@ -856,10 +873,15 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         }
       }
 
-      const totalAdvance = refundableDeposit + maintenanceFee;
+      const effectiveMaintPaid = parsedMaintPaid !== 0 ? (parsedMaintPaid !== undefined ? parsedMaintPaid : maintenanceFee) : 0;
+      const effectiveDepPaid = parsedDepositPaid !== 0 ? (parsedDepositPaid !== undefined ? parsedDepositPaid : refundableDeposit) : 0;
+      const totalAdvance = effectiveDepPaid + effectiveMaintPaid;
       const rentStatusText = rentPaid > 0 
         ? `Rent: ₹${effectiveMonthlyRent.toLocaleString('en-IN')}/mo (Paid: ₹${rentPaid.toLocaleString('en-IN')})` 
         : `Rent: ₹${effectiveMonthlyRent.toLocaleString('en-IN')}/mo (Due: ₹${effectiveMonthlyRent.toLocaleString('en-IN')})`;
+
+      const maintStatus = effectiveMaintPaid > 0 ? `₹${maintenanceFee.toLocaleString('en-IN')} (Paid)` : `₹${maintenanceFee.toLocaleString('en-IN')} (Due)`;
+      const refStatus = effectiveDepPaid > 0 ? `₹${refundableDeposit.toLocaleString('en-IN')} (Paid)` : `₹${refundableDeposit.toLocaleString('en-IN')} (Due)`;
 
       return {
         success: true,
@@ -869,14 +891,16 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         monthlyRent: effectiveMonthlyRent,
         advPaid: totalAdvance,
         refundableDeposit,
+        depositPaid: effectiveDepPaid,
         maintenanceFee,
+        maintPaid: effectiveMaintPaid,
         feePaid: rentPaid,
         dueDay: finalDueDay,
         sharing: sharing || undefined,
         checkInDate: effectiveCheckIn,
         bookingId: newBooking.id,
         paymentIds,
-        message: `Assigned ${formattedName} to Room ${targetRoom.room_number}! Joined: ${effectiveCheckIn} • ${rentStatusText} • Maintenance: ₹${maintenanceFee.toLocaleString('en-IN')} (Paid) • Refundable: ₹${refundableDeposit.toLocaleString('en-IN')}.`
+        message: `Assigned ${formattedName} to Room ${targetRoom.room_number}! Joined: ${effectiveCheckIn} • ${rentStatusText} • Maintenance: ${maintStatus} • Refundable: ${refStatus}.`
       };
     }
 
