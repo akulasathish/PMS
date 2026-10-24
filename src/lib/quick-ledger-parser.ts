@@ -52,6 +52,7 @@ const NAME_MATCH_NOISE = new Set([
   'please', 'tenant', 'resident', 'guest', 'called', 'named', 'name',
   'mr', 'mrs', 'ms', 'shri', 'from', 'in', 'room', 'rm', 'rom', 'romm', 'to', 'bed',
   'the', 'of', 'for', 'is', 'a', 'an', 'and', '&',
+  'every', 'month', 'months', 'monthly', 'each', 'per', 'year',
   'maintainance', 'maintenance', 'maintance', 'maintence', 'maintanace', 'maintanance', 'maintanence', 'maint',
   'refundable', 'refundabale', 'refundble'
 ]);
@@ -257,9 +258,9 @@ export function parseQuickLedgerText(input: string) {
       }
     }
 
-    // 3. Due Day: 'due date to 10th', 'due to 10th', 'due 10', 'due date 1st'
+    // 3. Due Day: 'due date to 10th', 'due to 10th', 'due 10', 'due date 1st', 'due date is 1st of every month'
     let newDueDay: number | null = null;
-    const dueMatch = cleaned.match(/\b(?:due\s*(?:date|day|dat)?|cycle)\b[^\d]*?(\d{1,2})(?:st|nd|rd|th)?\b/i);
+    const dueMatch = cleaned.match(/\b(?:due\s*(?:date|day|dat)?|cycle)\b[^\d]*?(\d{1,2})(?:st|nd|rd|th)?(?:\s+(?:of\s+)?(?:every|each)\s+month|\s+(?:every|each)\s+month)?\b/i);
     if (dueMatch) {
       newDueDay = parseInt(dueMatch[1], 10);
       cleaned = cleaned.replace(dueMatch[0], ' ');
@@ -312,6 +313,7 @@ export function parseQuickLedgerText(input: string) {
       'tenant', 'resident', 'guest', 'room', 'rm', 'rom', 'romm', 'rent', 'fee', 'to', 'for', 'of',
       'and', '&', 'is', 'as', 'the', 'in', 'on', 'bed', 'paid', 'sent',
       'name', 'called', 'named', 'person',
+      'every', 'month', 'months', 'monthly', 'each', 'per', 'year', 'weekly', 'week',
       'maintainance', 'maintenance', 'maintance', 'maintence', 'maintanace', 'maintanance', 'maintanence', 'maint',
       'refundable', 'refundabale', 'refundble', 'deposit', 'ammount', 'amount',
       'adv', 'advance', 'due', 'date', 'day', 'joining', 'joined', 'join', 'non',
@@ -468,10 +470,10 @@ export function parseQuickLedgerText(input: string) {
       }
     }
 
-    // 3. Due Day: 'due 28' or 'due day 28' or 'due date is 1st'
+    // 3. Due Day: 'due 28' or 'due day 28' or 'due date is 1st' or 'due date is 1st of every month'
     let dueDay: number | null = null;
-    const dueMatch = cleaned.match(/\b(?:due\s*(?:dat|date)?|cycle|due\s*day)\s*(?:is|to|on)?\s*[:=]?\s*(\d{1,2})(?:st|nd|rd|th)?\b/i) ||
-                     cleaned.match(/\b(?:due|cycle|due\s*day|day)\s*[:=]?\s*(\d{1,2})(?:st|nd|rd|th)?\b/i);
+    const dueMatch = cleaned.match(/\b(?:due\s*(?:dat|date)?|cycle|due\s*day)\s*(?:is|to|on)?\s*[:=]?\s*(\d{1,2})(?:st|nd|rd|th)?(?:\s+(?:of\s+)?(?:every|each)\s+month|\s+(?:every|each)\s+month)?\b/i) ||
+                     cleaned.match(/\b(?:due|cycle|due\s*day|day)\s*[:=]?\s*(\d{1,2})(?:st|nd|rd|th)?(?:\s+(?:of\s+)?(?:every|each)\s+month|\s+(?:every|each)\s+month)?\b/i);
     if (dueMatch) {
       dueDay = parseInt(dueMatch[1], 10);
       cleaned = cleaned.replace(dueMatch[0], ' ');
@@ -608,7 +610,8 @@ export function parseQuickLedgerText(input: string) {
     cleaned = cleaned.replace(/\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining|joined|add|to|in|tenant\s+name\s+called|tenant\s+called|name\s+called)\b/gi, ' ').trim();
     const noiseWords = new Set([
       'room', 'rom', 'romm', 'rm', 'rent', 'monthly', 'adv', 'advance', 'advanve', 'deposit', 'due', 'day', 'in', 'at', 'fee',
-      'feee', 'for', 'to', 'and', '&', 'share', 'sharing', 'bed', 'joined', 'on',
+      'feee', 'for', 'to', 'and', '&', 'share', 'sharing', 'bed', 'joined', 'on', 'of',
+      'every', 'month', 'months', 'each', 'per', 'year', 'weekly', 'week', 'also', 'as', 'well', 'both', 'with', 'by', 'which', 'that', 'this', 'payment',
       'maintainance', 'maintenance', 'maintance', 'maintence', 'maintanace', 'maintanance', 'maintanence', 'maint',
       'refundable', 'refundabale', 'refundble', 'ammount', 'amount', 'date', 'paid', 'sent', 'joining', 'join',
       'non', 'today', 'total', 'but', 'only', 'is', 'guest', 'new', 'resident', 'person', 'staying', 'stay',
@@ -625,7 +628,18 @@ export function parseQuickLedgerText(input: string) {
       !w.startsWith('refun') &&
       !/^\d+(?:st|nd|rd|th)?$/i.test(w)
     );
-    const tenantName = nameTokens.join(' ').trim();
+
+    // Direct positional extraction: e.g. "add danush to room 202" or "add danush in 202"
+    let positionalName: string | null = null;
+    const posMatch = lower.match(/\b(?:add|assign|new\s+tenant|join\s+tenant)\s+([a-z\s]+?)\s+(?:to\s+(?:room|rm|rom|romm)|in\s+(?:room|rm|rom|romm)|to|in|room|rm|rom|romm)\s*#?\s*(\d{1,4})\b/i);
+    if (posMatch) {
+      const candidateTokens = posMatch[1].trim().split(/\s+/).filter(w => w && !noiseWords.has(w) && !/^\d+$/.test(w));
+      if (candidateTokens.length > 0) {
+        positionalName = candidateTokens.join(' ');
+      }
+    }
+
+    const tenantName = (positionalName || nameTokens.join(' ')).trim();
 
     return {
       type: 'assign' as const,

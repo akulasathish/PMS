@@ -229,6 +229,21 @@ describe('Quick Ledger NLP Parser', () => {
       }
     });
 
+    it('should parse "add danush to room 202 joined on 01/06/26 due date is 1st of every month october room fee paid 9000 maintence 1000 and refundable 1000 paid on june 1st 2026"', () => {
+      const result = parseQuickLedgerText('add danush to room 202 joined on 01/06/26 due date is 1st of every month october room fee paid 9000 maintence 1000 and refundable 1000 paid on june 1st 2026');
+      expect(result.type).toBe('assign');
+      if (result.type === 'assign') {
+        expect(result.tenantName.toLowerCase()).toBe('danush');
+        expect(result.roomNumber).toBe('202');
+        expect(result.checkInDate).toBe('2026-06-01');
+        expect(result.dueDay).toBe(1);
+        expect(result.monthlyRent).toBe(9000);
+        expect((result as any).rentPaid).toBe(9000);
+        expect(result.maintenanceFee).toBe(1000);
+        expect(result.refundableDeposit).toBe(1000);
+      }
+    });
+
     it('should parse paid only 1000 with room fee due "202 ponnam shanker total fee 9000 maintainance 1000 paid but paid only 1000 non refundable room fee and 1000 maintance due"', () => {
       const result = parseQuickLedgerText('202 ponnam shanker total fee 9000 maintainance 1000 paid but paid only 1000 non refundable room fee and 1000 maintance due');
       expect(result.type).toBe('assign');
@@ -452,6 +467,7 @@ describe('Quick Ledger NLP Parser', () => {
       expect(isResidentNameMatch('Ponnam Shanker', 'ponnam')).toBe(true);
       expect(isResidentNameMatch('Narayana', 'narayana')).toBe(true);
       expect(isResidentNameMatch('Danush Romm Maintence', 'danush')).toBe(true);
+      expect(isResidentNameMatch('Danush Of Every Month', 'danush')).toBe(true);
       expect(isResidentNameMatch('Danush', 'danush')).toBe(true);
     });
   });
