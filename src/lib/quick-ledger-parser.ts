@@ -13,17 +13,20 @@ export interface QuickLedgerItem {
 }
 
 const FOOD_AND_EXPENSE_WORDS = new Set([
-  'curd', 'milk', 'rice', 'oil', 'vegitbale', 'vegitbales', 'vegetable', 'vegetables',
+  'curd', 'milk', 'rice', 'oil', 'vegitbale', 'vegitbales', 'vegetable', 'vegetables', 'vegitables', 'veggies',
   'chicken', 'egg', 'eggs', 'tea', 'coffee', 'sugar', 'gas', 'cylinder', 'tanker', 'water',
   'diesel', 'petrol', 'salary', 'acid', 'broom', 'mop', 'soap', 'salt', 'chilli', 'masala',
   'paneer', 'dal', 'dall', 'atta', 'flour', 'wheat', 'onion', 'onions', 'potato', 'potatoes',
-  'tomato', 'tomatoes', 'trader', 'traders', 'rythu', 'bidda', 'kirana', 'grocer', 'groceries',
+  'tomato', 'tomatoes', 'trader', 'traders', 'rythu', 'bidda', 'kirana', 'grocer', 'groceries', 'grocery', 'grociers', 'grocier',
+  'provision', 'provisions', 'supermarket', 'dmart', 'ration', 'bread', 'butter', 'cheese', 'ghee',
+  'aloo', 'pyaz', 'mirchi', 'allam', 'vellulli', 'pappu', 'nune', 'ginger', 'garlic', 'fruits', 'fruit', 'banana', 'apple',
+  'biscuit', 'biscuits', 'snacks', 'namkeen', 'sweets', 'lemon', 'pudina', 'kothimeera',
   'mess', 'food', 'breakfast', 'lunch', 'dinner', 'plumber', 'repair', 'electrician', 'cleaning'
 ]);
 
 export function categorizeExpense(description: string): string {
   const lower = description.toLowerCase();
-  if (/(?:rice|oil|vegitbale|vegetable|chicken|grocer|kirana|trader|milk|gas|cylinder|mess|food|breakfast|lunch|dinner|egg|tea|coffee|curd|tomato|onion|dall|dal|paneer|atta|flour|wheat|potato|sugar|salt|chilli|masala)/i.test(lower)) {
+  if (/(?:rice|oil|vegitbale|vegetable|veggie|chicken|grocer|grocier|kirana|trader|milk|gas|cylinder|mess|food|breakfast|lunch|dinner|egg|tea|coffee|curd|tomato|onion|dall|dal|paneer|atta|flour|wheat|potato|sugar|salt|chilli|masala|bread|butter|cheese|ghee|aloo|pyaz|mirchi|allam|vellulli|pappu|nune|provision|dmart|ration|biscuit|fruit|snack|sweet|ginger|garlic|lemon)/i.test(lower)) {
     return 'Food';
   }
   if (/(?:water|tanker|electricity|current|power|bill|eb|wifi|internet|recharge|diesel|petrol)/i.test(lower)) {
@@ -790,13 +793,15 @@ export function parseQuickLedgerText(input: string) {
   // 1. EXPENSES CHECK (Explicit keywords or known expense item words)
   const isExplicitExpense = /(?:^|\b)(?:expences|expenses|expence|expense|exp)\b/.test(lower);
   const words = lower.split(/[\s,]+/);
-  const hasExpenseWord = words.some(w => FOOD_AND_EXPENSE_WORDS.has(w));
+  const hasExpenseWord = words.some(w => FOOD_AND_EXPENSE_WORDS.has(w) || /^groc/i.test(w) || /^veget/i.test(w) || /^vegit/i.test(w));
   const hasRevenueWord = /\b(?:revenue|rent|rom\s*fee|room\s*fee|romm\s*fee|fee|feee|paid|sent|adv|advance|deposit|due)\b/.test(lower);
 
   const isExpense = isExplicitExpense || (hasExpenseWord && !hasRevenueWord);
 
   if (isExpense) {
-    const cleaned = lower.replace(/\b(?:expences|expenses|expence|expense|exp)\b/g, ' ').trim();
+    const cleaned = lower.replace(/\b(?:expences|expenses|expence|expense|exp)\b/g, ' ')
+                         .replace(/,/g, ' ')
+                         .trim();
     const tokens = cleaned.split(/\s+/).filter(Boolean);
     const items: { amount: number; description: string; category: string }[] = [];
 

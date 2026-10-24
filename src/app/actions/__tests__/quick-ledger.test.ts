@@ -46,6 +46,30 @@ describe('Quick Ledger NLP Parser', () => {
       expect(result.items![0].description.toLowerCase()).toContain('curd');
       expect(result.items![0].category).toBe('Food');
     });
+
+    it('should parse "grociers 2500" and "grocery 1800" as Food expense', () => {
+      const r1 = parseQuickLedgerText('grociers 2500');
+      expect(r1.type).toBe('expense');
+      expect(r1.items![0].amount).toBe(2500);
+      expect(r1.items![0].category).toBe('Food');
+
+      const r2 = parseQuickLedgerText('grocery 1800');
+      expect(r2.type).toBe('expense');
+      expect(r2.items![0].amount).toBe(1800);
+      expect(r2.items![0].category).toBe('Food');
+    });
+
+    it('should parse comma-separated grocery items "vegetables 700, oil 200, rice 800"', () => {
+      const result = parseQuickLedgerText('vegetables 700, oil 200, rice 800');
+      expect(result.type).toBe('expense');
+      expect(result.items!.length).toBe(3);
+      expect(result.items![0].amount).toBe(700);
+      expect(result.items![0].category).toBe('Food');
+      expect(result.items![1].amount).toBe(200);
+      expect(result.items![1].category).toBe('Food');
+      expect(result.items![2].amount).toBe(800);
+      expect(result.items![2].category).toBe('Food');
+    });
   });
 
   describe('Revenue Parsing', () => {
