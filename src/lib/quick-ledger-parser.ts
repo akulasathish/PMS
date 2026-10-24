@@ -79,6 +79,7 @@ export const isNoiseToken = (w: string): boolean => {
   if (/^r+o+m+$/i.test(lw) || /^rm$/i.test(lw)) return true;
   if (/^(?:r+e+n+t+|ent|ren|rnt|reent|rrent|remt)$/i.test(lw)) return true;
   if (/^(?:f+e+|feee)$/i.test(lw)) return true;
+  if (/^(?:he|she|they|having|has|had|have|his|her|their|him|them|update|accordingly|accorgingly)$/i.test(lw)) return true;
   if (/^\d+(?:st|nd|rd|th)?$/i.test(lw)) return true;
   if (lw.startsWith('maint') || lw.startsWith('ment') || lw.startsWith('refun') || lw.startsWith('paym') || lw.startsWith('payn')) return true;
   return false;
@@ -311,7 +312,13 @@ export function parseQuickLedgerText(input: string) {
   }
 
   // 0c. UPDATE TENANT / CHANGE DATES OR RENT CHECK
-  const isUpdateTenant = /\b(?:change|update|set|modify|edit|correct)\b/i.test(lower) &&
+  const isConversationalUpdate = /\bupdate\s+(?:accordingly|accorgingly|it|this|details|please|in\s+database)\b/i.test(lower) ||
+                                 /\b(?:please\s+)?update\b\s*$/i.test(lower);
+  const isExplicitUpdate = /\b(?:change|modify|edit|correct)\b/i.test(lower) ||
+                           (/\bupdate\b/i.test(lower) && !isConversationalUpdate);
+
+  const isUpdateTenant = isExplicitUpdate &&
+                         !/\bjoined\s+on\b/i.test(lower) &&
                          /\b(?:joining|joined|join|due|cycle|rent|fee|date|day|tenant|resident|maintainance|maintenance|maintance|maintence|refundable|deposit|adv)\b/i.test(lower);
   if (isUpdateTenant) {
     let cleaned = lower;
@@ -801,6 +808,7 @@ export function parseQuickLedgerText(input: string) {
     }
 
     // 8b. Detect if monthly rent was paid at admission or pending/due
+    let rentPaymentDate: string | undefined = undefined;
     if (rentPaid === 0) {
       // Check explicit rent-specific partial payment: e.g. "room fee 8000 paid only 5000", "fee 8000 paid 5000"
       const rentExplicitPartial = lower.match(/\b(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\s*[:=]?\s*\d+(?:\.\d+)?(?:k)?\s*(?:but\s*)?(?:paid|sent)\s*(?:only\s*)?[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
@@ -824,8 +832,21 @@ export function parseQuickLedgerText(input: string) {
             const rentPaidExplicit = lower.match(/\b(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\s*(?:rent|room\s*fee|rom\s*fee|romm\s*fee|monthly|fee)\b/i) ||
                                      lower.match(/(\d+(?:\.\d+)?)(k)?\s*(?:rent|room\s*fee|rom\s*fee|romm\s*fee|monthly|fee)\s*(?:is\s*)?(?:paid|sent)\b/i) ||
                                      lower.match(/\b(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\s*(?:is\s*)?(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+            const rentPaidOnDate = lower.match(/\b(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?(?:\s+(?:on|date)?\s*(\d{1,2})(?:st|nd|rd|th)?(?:\s+([a-z]+))?(?:\s+(20\d{2}))?)?\b/i);
+
             if (rentPaidExplicit) {
               rentPaid = parseFloat(rentPaidExplicit[1]) * (rentPaidExplicit[2] ? 1000 : 1);
+            } else if (rentPaidOnDate && !rentPaidOnDate[0].toLowerCase().includes('maint') && !rentPaidOnDate[0].toLowerCase().includes('refun')) {
+              const amt = parseFloat(rentPaidOnDate[1]) * (rentPaidOnDate[2] ? 1000 : 1);
+              if (amt === monthlyRent || (monthlyRent > 0 && amt > 0)) {
+                rentPaid = amt;
+                if (rentPaidOnDate[3] && rentPaidOnDate[4] && months[rentPaidOnDate[4].toLowerCase()]) {
+                  const pDay = parseInt(rentPaidOnDate[3], 10);
+                  const pMonth = months[rentPaidOnDate[4].toLowerCase()];
+                  const pYear = rentPaidOnDate[5] ? parseInt(rentPaidOnDate[5], 10) : new Date().getFullYear();
+                  rentPaymentDate = `${pYear}-${String(pMonth).padStart(2, '0')}-${String(pDay).padStart(2, '0')}`;
+                }
+              }
             } else if (/\bpaid\s*(?:rent|room\s*fee|rom\s*fee|romm\s*fee|fee)\b/i.test(lower)) {
               rentPaid = monthlyRent;
             }
@@ -886,7 +907,8 @@ export function parseQuickLedgerText(input: string) {
       maintenancePaid: maintenancePaid !== undefined ? maintenancePaid : maintenanceFee,
       sharing,
       checkInDate: customDate,
-      dueDay
+      dueDay,
+      rentPaymentDate
     };
   }
 

@@ -109,12 +109,25 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
   try {
     const admin = getSupabaseAdmin();
 
-    // 1. Resolve property ID if not provided
+    // 1. Parse input first
+    const parsed = parseQuickLedgerText(input);
+
+    // 2. Resolve property ID if not provided
     let activePropertyId = propertyId;
     if (!activePropertyId) {
-      const { data: props } = await admin.from('properties').select('id').limit(1);
-      if (props && props.length > 0) {
-        activePropertyId = props[0].id;
+      const roomNum = (parsed as any).roomNumber;
+      if (roomNum) {
+        const { data: rMatches } = await admin
+          .from('rooms')
+          .select('property_id')
+          .eq('room_number', roomNum);
+        if (rMatches && rMatches.length > 0) {
+          const preferred = rMatches.find(r => r.property_id === '64f41226-e209-42fe-b01c-35d16d169818');
+          activePropertyId = preferred ? preferred.property_id : rMatches[0].property_id;
+        }
+      }
+      if (!activePropertyId) {
+        activePropertyId = '64f41226-e209-42fe-b01c-35d16d169818';
       }
     }
 
@@ -122,7 +135,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       return { success: false, message: 'Property ID not found. Please select an active property.' };
     }
 
-    // 2. Fetch business date
+    // 3. Fetch business date
     const { data: bDateSetting } = await admin
       .from('app_settings')
       .select('value')
@@ -131,9 +144,6 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
 
     const todayDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
     const businessDate = bDateSetting?.value || todayDate;
-
-    // 3. Parse input
-    const parsed = parseQuickLedgerText(input);
 
     // ==========================================
     // EXECUTE PENDING DUES REPORT
@@ -1024,7 +1034,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
             payment_method: 'UPI',
             allocation: 'Rent',
             transaction_id: 'RENT-PAID-AT-ADMISSION',
-            business_date: effectiveCheckIn
+            business_date: (parsed as any).rentPaymentDate || effectiveCheckIn
           }])
           .select('id')
           .single();
