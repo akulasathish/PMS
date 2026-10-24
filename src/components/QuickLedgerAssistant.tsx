@@ -400,27 +400,27 @@ export default function QuickLedgerAssistant() {
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: '100%', opacity: 0 }}
               transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="relative w-full sm:max-w-lg bg-[#0c0c0e] border border-white/10 sm:rounded-3xl rounded-t-3xl shadow-2xl flex flex-col h-[85vh] sm:h-[620px] max-h-[90vh] overflow-hidden z-10"
+              className="relative w-full sm:max-w-2xl lg:max-w-3xl bg-[#0c0c0e] border border-white/10 sm:rounded-3xl rounded-t-3xl shadow-2xl flex flex-col h-[92dvh] sm:h-[680px] lg:h-[720px] max-h-[95dvh] overflow-hidden z-10 transition-all"
             >
               {/* Header */}
-              <div className="p-4 px-5 border-b border-white/[0.08] bg-zinc-900/40 backdrop-blur-md flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500/20 to-indigo-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-inner">
-                    <Zap size={18} className="fill-emerald-400" />
+              <div className="p-3.5 sm:p-4 px-4 sm:px-5 border-b border-white/[0.08] bg-zinc-900/60 backdrop-blur-md flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-emerald-500/20 to-indigo-500/20 border border-emerald-500/30 flex-shrink-0 flex items-center justify-center text-emerald-400 shadow-inner">
+                    <Zap size={16} className="fill-emerald-400 sm:w-[18px] sm:h-[18px]" />
                   </div>
-                  <div>
-                    <h3 className="text-sm font-black text-white tracking-tight flex items-center gap-1.5">
+                  <div className="min-w-0">
+                    <h3 className="text-xs sm:text-sm font-black text-white tracking-tight flex items-center gap-1.5 truncate">
                       Quick Ledger Assistant
-                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold uppercase tracking-wider">Active</span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold uppercase tracking-wider flex-shrink-0">Live</span>
                     </h3>
-                    <p className="text-[10px] text-zinc-400">Type or speak rent payments & daily expenses</p>
+                    <p className="hidden sm:block text-[10px] text-zinc-400 truncate">Instant voice & text ledger for front office</p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                   <button
                     onClick={() => setShowCheatSheet(prev => !prev)}
-                    className={`text-[10px] flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-colors border ${
+                    className={`text-[10px] sm:text-[11px] flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg transition-colors border ${
                       showCheatSheet
                         ? 'bg-indigo-500/25 text-indigo-300 border-indigo-500/40 shadow-sm'
                         : 'bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white border-white/5'
@@ -434,18 +434,19 @@ export default function QuickLedgerAssistant() {
                   {messages.length > 0 && (
                     <button
                       onClick={handleClearHistory}
-                      className="text-[10px] flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/5 hover:bg-rose-500/20 text-zinc-400 hover:text-rose-300 transition-colors border border-white/5"
+                      className="text-[10px] sm:text-[11px] flex items-center gap-1 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg bg-white/5 hover:bg-rose-500/20 text-zinc-400 hover:text-rose-300 transition-colors border border-white/5"
                       title="Clear chat history"
                     >
                       <Trash2 size={12} />
-                      <span className="hidden sm:inline">Clear Chat</span>
+                      <span className="hidden md:inline">Clear</span>
                     </button>
                   )}
                   <button
                     onClick={() => setIsOpen(false)}
-                    className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white flex items-center justify-center transition-colors"
+                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white flex items-center justify-center transition-colors"
+                    title="Close"
                   >
-                    <X size={16} />
+                    <X size={15} />
                   </button>
                 </div>
               </div>
@@ -457,21 +458,21 @@ export default function QuickLedgerAssistant() {
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
-                    className="overflow-hidden border-b border-white/[0.08] bg-black/80 backdrop-blur-xl"
+                    className="overflow-hidden border-b border-white/[0.08] bg-black/90 backdrop-blur-xl"
                   >
-                    <div className="p-3.5 space-y-3 max-h-72 overflow-y-auto">
+                    <div className="p-3.5 sm:p-4 space-y-3 max-h-80 sm:max-h-96 overflow-y-auto">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400 flex items-center gap-1.5">
+                        <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-indigo-400 flex items-center gap-1.5">
                           <Sparkles size={12} className="text-yellow-400" /> All Quick Chat Commands
                         </span>
                         <span className="text-[9px] text-zinc-500">Tap any to load into chat</span>
                       </div>
 
-                      <div className="space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
                         {BOT_COMMAND_CATEGORIES.map((cat, idx) => (
-                          <div key={idx} className="space-y-1.5">
-                            <span className="text-[10px] font-bold text-zinc-300 block">{cat.category}</span>
-                            <div className="flex flex-wrap gap-1.5">
+                          <div key={idx} className="bg-white/[0.02] border border-white/5 rounded-xl p-2.5 sm:p-3 space-y-2">
+                            <span className="text-[11px] font-bold text-indigo-300 block border-b border-white/5 pb-1">{cat.category}</span>
+                            <div className="space-y-1.5">
                               {cat.items.map((item, iIdx) => (
                                 <button
                                   key={iIdx}
@@ -480,11 +481,11 @@ export default function QuickLedgerAssistant() {
                                     setShowCheatSheet(false);
                                     if (inputRef.current) inputRef.current.focus();
                                   }}
-                                  className="text-left text-[10px] px-2.5 py-1 rounded-lg bg-white/5 hover:bg-indigo-500/20 border border-white/5 hover:border-indigo-500/30 text-zinc-300 hover:text-white transition-all flex items-center gap-1.5"
+                                  className="w-full text-left text-[10px] sm:text-[11px] px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-indigo-500/20 border border-white/5 hover:border-indigo-500/30 text-zinc-300 hover:text-white transition-all flex flex-col gap-0.5 group"
                                   title={item.prompt}
                                 >
-                                  <span className="font-semibold">{item.label}</span>
-                                  <span className="text-[9px] text-zinc-500 font-mono hidden sm:inline">&bull; {item.prompt}</span>
+                                  <span className="font-semibold text-white group-hover:text-indigo-200">{item.label}</span>
+                                  <span className="text-[9px] text-zinc-500 font-mono truncate w-full">&bull; {item.prompt}</span>
                                 </button>
                               ))}
                             </div>
@@ -497,45 +498,87 @@ export default function QuickLedgerAssistant() {
               </AnimatePresence>
 
               {/* Chat Message List */}
-              <div className="flex-1 p-4 overflow-y-auto space-y-3.5 text-xs">
+              <div className="flex-1 p-3.5 sm:p-5 overflow-y-auto space-y-3.5 text-xs">
                 {messages.length === 0 ? (
-                  <div className="h-full flex flex-col p-2 space-y-4 text-zinc-400">
-                    <div className="text-center pt-2">
-                      <div className="w-12 h-12 mx-auto rounded-2xl bg-white/[0.03] border border-white/[0.08] flex items-center justify-center text-zinc-300 mb-2">
+                  <div className="h-full flex flex-col justify-center items-center py-4 px-2 space-y-5 text-zinc-400 max-w-xl mx-auto">
+                    <div className="text-center space-y-1">
+                      <div className="w-12 h-12 mx-auto rounded-2xl bg-gradient-to-tr from-emerald-500/20 via-indigo-500/20 to-purple-500/20 border border-white/10 flex items-center justify-center text-zinc-200 mb-2.5 shadow-inner">
                         <Sparkles size={22} className="text-indigo-400" />
                       </div>
-                      <p className="font-bold text-white text-sm">Quick Ledger Assistant</p>
-                      <p className="text-[11px] text-zinc-500 max-w-xs mx-auto mt-0.5">
-                        Log rent, admit tenants, change joining/due dates, or track daily expenses.
+                      <h4 className="font-black text-white text-base tracking-tight">Quick Ledger Assistant</h4>
+                      <p className="text-xs text-zinc-400 max-w-sm mx-auto leading-relaxed">
+                        Say or type entries naturally to record rent, admit residents, track daily expenses, or pull instant statements.
                       </p>
                     </div>
 
-                    <div className="w-full text-left space-y-3 pt-1 flex-1 overflow-y-auto pr-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] uppercase font-black tracking-widest text-zinc-400">Everything You Can Say:</span>
-                        <span className="text-[9px] text-zinc-500">Tap to load & edit</span>
+                    <div className="w-full space-y-2.5">
+                      <div className="flex items-center justify-between px-1">
+                        <span className="text-[10px] uppercase font-black tracking-widest text-zinc-400">Featured Quick Actions</span>
+                        <button
+                          type="button"
+                          onClick={() => setShowCheatSheet(true)}
+                          className="text-[10px] text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1"
+                        >
+                          <span>View All 25+ Commands &rarr;</span>
+                        </button>
                       </div>
-                      <div className="space-y-2.5">
-                        {BOT_COMMAND_CATEGORIES.map((cat, idx) => (
-                          <div key={idx} className="space-y-1.5 bg-black/40 p-2.5 rounded-xl border border-white/5">
-                            <span className="text-[10px] font-bold text-indigo-300 block">{cat.category}</span>
-                            <div className="flex flex-wrap gap-1.5">
-                              {cat.items.map((item, iIdx) => (
-                                <button
-                                  key={iIdx}
-                                  onClick={() => {
-                                    setInput(item.prompt);
-                                    if (inputRef.current) inputRef.current.focus();
-                                  }}
-                                  className="text-left text-[10px] px-2.5 py-1 rounded-lg bg-white/5 hover:bg-indigo-500/20 border border-white/5 hover:border-indigo-500/30 text-zinc-300 hover:text-white transition-all"
-                                  title={item.prompt}
-                                >
-                                  {item.prompt}
-                                </button>
-                              ))}
-                            </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setInput('report of srikanth 201');
+                            if (inputRef.current) inputRef.current.focus();
+                          }}
+                          className="text-left p-3 rounded-xl bg-white/[0.03] hover:bg-indigo-500/15 border border-white/5 hover:border-indigo-500/30 transition-all group"
+                        >
+                          <div className="text-[11px] font-bold text-white group-hover:text-indigo-300 flex items-center gap-1.5">
+                            <UserCheck size={13} className="text-indigo-400" /> Resident Statement
                           </div>
-                        ))}
+                          <div className="text-[10px] text-zinc-500 truncate mt-0.5">report of srikanth 201</div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setInput('report of pending dues');
+                            if (inputRef.current) inputRef.current.focus();
+                          }}
+                          className="text-left p-3 rounded-xl bg-white/[0.03] hover:bg-amber-500/15 border border-white/5 hover:border-amber-500/30 transition-all group"
+                        >
+                          <div className="text-[11px] font-bold text-white group-hover:text-amber-300 flex items-center gap-1.5">
+                            <FileText size={13} className="text-amber-400" /> Pending Dues List
+                          </div>
+                          <div className="text-[10px] text-zinc-500 truncate mt-0.5">report of pending dues</div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setInput('join sathish to room 201, joined on 1st october 2026, due date 5th, refundable 1000 paid, maintenance 1000 paid, room fee paid 8000');
+                            if (inputRef.current) inputRef.current.focus();
+                          }}
+                          className="text-left p-3 rounded-xl bg-white/[0.03] hover:bg-emerald-500/15 border border-white/5 hover:border-emerald-500/30 transition-all group"
+                        >
+                          <div className="text-[11px] font-bold text-white group-hover:text-emerald-300 flex items-center gap-1.5">
+                            <UserPlus size={13} className="text-emerald-400" /> New Tenant Admission
+                          </div>
+                          <div className="text-[10px] text-zinc-500 truncate mt-0.5">join sathish to room 201...</div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setInput('paid 1200 groceries and 350 vegetables');
+                            if (inputRef.current) inputRef.current.focus();
+                          }}
+                          className="text-left p-3 rounded-xl bg-white/[0.03] hover:bg-rose-500/15 border border-white/5 hover:border-rose-500/30 transition-all group"
+                        >
+                          <div className="text-[11px] font-bold text-white group-hover:text-rose-300 flex items-center gap-1.5">
+                            <TrendingDown size={13} className="text-rose-400" /> Daily Property Expense
+                          </div>
+                          <div className="text-[10px] text-zinc-500 truncate mt-0.5">paid 1200 groceries...</div>
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -923,7 +966,29 @@ export default function QuickLedgerAssistant() {
                                   </div>
                                 </div>
 
-                                {/* Financial Summary Breakdown */}
+                                {/* Key Financial Highlights Grid */}
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                                  <div className="bg-black/50 rounded-xl p-2.5 border border-white/5">
+                                    <div className="text-[10px] text-zinc-400 font-medium uppercase">Monthly Rent</div>
+                                    <div className="text-xs sm:text-sm font-bold text-white font-mono mt-0.5">₹{msg.result.tenantReport.monthlyRent.toLocaleString('en-IN')}</div>
+                                  </div>
+                                  <div className="bg-black/50 rounded-xl p-2.5 border border-emerald-500/10">
+                                    <div className="text-[10px] text-emerald-400/80 font-medium uppercase">Rent Paid</div>
+                                    <div className="text-xs sm:text-sm font-bold text-emerald-400 font-mono mt-0.5">₹{msg.result.tenantReport.totalRentPaid.toLocaleString('en-IN')}</div>
+                                  </div>
+                                  <div className="bg-black/50 rounded-xl p-2.5 border border-rose-500/10">
+                                    <div className="text-[10px] text-rose-400/80 font-medium uppercase">Pending Rent</div>
+                                    <div className={`text-xs sm:text-sm font-bold font-mono mt-0.5 ${msg.result.tenantReport.pendingRentDue > 0 ? 'text-rose-400 font-black' : 'text-emerald-400'}`}>
+                                      {msg.result.tenantReport.pendingRentDue > 0 ? `₹${msg.result.tenantReport.pendingRentDue.toLocaleString('en-IN')}` : '₹0 (Clear)'}
+                                    </div>
+                                  </div>
+                                  <div className="bg-black/50 rounded-xl p-2.5 border border-cyan-500/10">
+                                    <div className="text-[10px] text-cyan-400/80 font-medium uppercase">Total Paid</div>
+                                    <div className="text-xs sm:text-sm font-bold text-cyan-300 font-mono mt-0.5">₹{msg.result.tenantReport.totalPaidOverall.toLocaleString('en-IN')}</div>
+                                  </div>
+                                </div>
+
+                                {/* Financial Details */}
                                 <div className="bg-black/40 rounded-xl p-3 border border-white/5 space-y-2">
                                   <div className="flex justify-between items-baseline">
                                     <span className="text-[11px] text-zinc-400">Total Rent Paid</span>
@@ -1163,15 +1228,15 @@ export default function QuickLedgerAssistant() {
               </div>
 
               {/* Input Area */}
-              <div className="p-3 bg-zinc-900/60 border-t border-white/[0.08] backdrop-blur-xl space-y-2">
+              <div className="p-3 sm:p-4 bg-zinc-900/60 border-t border-white/[0.08] backdrop-blur-xl space-y-2.5">
                 {/* Quick chip shortcuts bar */}
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-[10px]">
+                <div className="flex items-center gap-2 overflow-x-auto pb-1.5 scrollbar-none text-[11px] touch-pan-x">
                   <button
                     type="button"
                     onClick={() => setShowCheatSheet(prev => !prev)}
-                    className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 font-bold border border-indigo-500/30 transition-all"
+                    className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 font-bold border border-indigo-500/35 transition-all shadow-sm"
                   >
-                    <BookOpen size={10} className="text-yellow-400" />
+                    <BookOpen size={11} className="text-yellow-400" />
                     <span>All Commands</span>
                   </button>
                   {suggestions.map((sug, sIdx) => (
@@ -1179,7 +1244,7 @@ export default function QuickLedgerAssistant() {
                       key={sIdx}
                       type="button"
                       onClick={() => setInput(sug)}
-                      className="flex-shrink-0 px-2.5 py-1 rounded-full bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white border border-white/5 transition-all truncate max-w-[200px]"
+                      className="flex-shrink-0 px-3 py-1.5 rounded-full bg-white/[0.04] hover:bg-white/[0.09] text-zinc-300 hover:text-white border border-white/[0.08] transition-all whitespace-nowrap text-[11px]"
                       title={sug}
                     >
                       {sug}

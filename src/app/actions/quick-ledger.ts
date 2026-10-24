@@ -1488,7 +1488,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       if (totalAmount <= 0) {
         return {
           success: false,
-          message: 'Could not detect payment amount. Example: "sathish 101 5000 rom fee and 2000 adv paid"'
+          message: 'Could not detect payment amount. Example: "sathish room 101 5000 fee and 2000 adv paid"'
         };
       }
 
@@ -1760,7 +1760,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
 
     return {
       success: false,
-      message: 'Could not process message. Please specify either an expense (e.g., "expences 700 vegitbales") or revenue (e.g., "sathish 101 5000 rom fee").'
+      message: 'Could not process message. Please specify either an expense (e.g., "paid 700 vegetables") or revenue (e.g., "sathish room 101 5000 fee").'
     };
   } catch (err: any) {
     console.error('Quick ledger error:', err);
