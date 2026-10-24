@@ -479,6 +479,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         const effectiveMonthlyRent = monthlyRent || Number(existingResident.monthly_rent || existingResident.monthly_rate || 8000);
         const maintenanceFee = parsedMaintenance || 0;
         const refundableDeposit = parsedRefundable || advAmount || Number(existingResident.security_deposit || 0);
+        const formattedName = tenantName.charAt(0).toUpperCase() + tenantName.slice(1);
 
         // If older duplicate bookings exist for this same person in this room, cancel the extra duplicates
         if (matchingResidents.length > 1) {
@@ -498,6 +499,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         await admin
           .from('bookings')
           .update({
+            guest_name: formattedName,
             check_in: parsedCheckIn ? effectiveCheckIn : undefined,
             check_out: parsedCheckIn ? checkOut : undefined,
             rent_due_day: finalDueDay,
@@ -526,7 +528,16 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
           if (rentPay) paymentIds.push(rentPay.id);
         }
 
-        if (maintenanceFee > 0) {
+        // Check existing payments to prevent duplicate payments on repeated updates
+        const { data: existingPayments } = await admin
+          .from('payments')
+          .select('id, allocation, amount')
+          .eq('booking_id', existingResident.id);
+
+        const hasMaintPayment = (existingPayments || []).some(p => p.allocation === 'Maintenance Fee (Revenue)');
+        const hasDepPayment = (existingPayments || []).some(p => p.allocation === 'Security Deposit');
+
+        if (maintenanceFee > 0 && !hasMaintPayment) {
           await admin.from('incidental_charges').insert([{
             booking_id: existingResident.id,
             property_id: activePropertyId,
@@ -548,7 +559,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
           if (maintPay) paymentIds.push(maintPay.id);
         }
 
-        if (refundableDeposit > 0 && refundableDeposit !== Number(existingResident.security_deposit || 0)) {
+        if (refundableDeposit > 0 && (!hasDepPayment || refundableDeposit !== Number(existingResident.security_deposit || 0))) {
           const { data: depPay } = await admin.from('payments').insert([{
             booking_id: existingResident.id,
             property_id: activePropertyId,
@@ -570,7 +581,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         return {
           success: true,
           type: 'assign',
-          tenantName: existingResident.guest_name,
+          tenantName: formattedName,
           roomNumber: targetRoom.room_number,
           monthlyRent: effectiveMonthlyRent,
           advPaid: totalAdvance,
@@ -582,7 +593,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
           checkInDate: effectiveCheckIn,
           bookingId: existingResident.id,
           paymentIds,
-          message: `Updated existing resident ${existingResident.guest_name} in Room ${targetRoom.room_number}! Joined: ${effectiveCheckIn} • ${rentStatusText} • Maintenance: ₹${maintenanceFee.toLocaleString('en-IN')} • Refundable: ₹${refundableDeposit.toLocaleString('en-IN')}.`
+          message: `Updated existing resident ${formattedName} in Room ${targetRoom.room_number}! Joined: ${effectiveCheckIn} • ${rentStatusText} • Maintenance: ₹${maintenanceFee.toLocaleString('en-IN')} • Refundable: ₹${refundableDeposit.toLocaleString('en-IN')}.`
         };
       }
 

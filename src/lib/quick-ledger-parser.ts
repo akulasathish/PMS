@@ -50,8 +50,10 @@ export function levenshteinDistance(a: string, b: string): number {
 
 const NAME_MATCH_NOISE = new Set([
   'please', 'tenant', 'resident', 'guest', 'called', 'named', 'name',
-  'mr', 'mrs', 'ms', 'shri', 'from', 'in', 'room', 'rm', 'to', 'bed',
-  'the', 'of', 'for', 'is', 'a', 'an', 'and', '&'
+  'mr', 'mrs', 'ms', 'shri', 'from', 'in', 'room', 'rm', 'rom', 'romm', 'to', 'bed',
+  'the', 'of', 'for', 'is', 'a', 'an', 'and', '&',
+  'maintainance', 'maintenance', 'maintance', 'maintence', 'maintanace', 'maintanance', 'maintanence', 'maint',
+  'refundable', 'refundabale', 'refundble'
 ]);
 
 export function isResidentNameMatch(guestName?: string | null, queryName?: string | null): boolean {
@@ -62,7 +64,7 @@ export function isResidentNameMatch(guestName?: string | null, queryName?: strin
       .toLowerCase()
       .replace(/[^a-z0-9\s]/g, ' ')
       .split(/\s+/)
-      .filter(w => w && !NAME_MATCH_NOISE.has(w) && !/^\d+$/.test(w));
+      .filter(w => w && !NAME_MATCH_NOISE.has(w) && !w.startsWith('maint') && !w.startsWith('ment') && !w.startsWith('refun') && !/^\d+$/.test(w));
 
   const gTokens = cleanTokens(guestName);
   const qTokens = cleanTokens(queryName);
@@ -164,7 +166,7 @@ export function parseQuickLedgerText(input: string) {
 
     // Room number
     let roomNumber: string | null = null;
-    const explicitRoom = cleaned.match(/\b(?:room|rm|r)\s*#?\s*(\d{1,4})\b/i);
+    const explicitRoom = cleaned.match(/\b(?:room|rom|romm|rm|r)\s*#?\s*(\d{1,4})\b/i);
     if (explicitRoom) {
       roomNumber = explicitRoom[1];
       cleaned = cleaned.replace(explicitRoom[0], ' ');
@@ -178,7 +180,7 @@ export function parseQuickLedgerText(input: string) {
 
     const noiseWords = new Set([
       'please', 'checkout', 'check', 'out', 'guest', 'tenant', 'resident',
-      'from', 'in', 'room', 'rm', 'force', 'forced', 'vacate', 'now', 'to', 'bed',
+      'from', 'in', 'room', 'rm', 'rom', 'romm', 'force', 'forced', 'vacate', 'now', 'to', 'bed',
       'name', 'called', 'named', 'the', 'a', 'an', 'for', 'of', 'person', 'guy', 'tenant'
     ]);
     const nameTokens = cleaned.split(/\s+/).filter(w => w && !noiseWords.has(w) && !/^\d+$/.test(w));
@@ -194,13 +196,13 @@ export function parseQuickLedgerText(input: string) {
 
   // 0c. UPDATE TENANT / CHANGE DATES OR RENT CHECK
   const isUpdateTenant = /\b(?:change|update|set|modify|edit|correct)\b/i.test(lower) &&
-                         /\b(?:joining|joined|join|due|cycle|rent|fee|date|day|tenant|resident|maintainance|maintenance|maintance|refundable|deposit|adv)\b/i.test(lower);
+                         /\b(?:joining|joined|join|due|cycle|rent|fee|date|day|tenant|resident|maintainance|maintenance|maintance|maintence|refundable|deposit|adv)\b/i.test(lower);
   if (isUpdateTenant) {
     let cleaned = lower;
 
     // 1. Room Number: explicit 'room 201' / 'rm 201' or standalone 3-digit
     let roomNumber: string | null = null;
-    const explicitRoom = cleaned.match(/\b(?:room|rm|r)\s*#?\s*(\d{1,4})\b/i);
+    const explicitRoom = cleaned.match(/\b(?:room|rom|romm|rm|r)\s*#?\s*(\d{1,4})\b/i);
     if (explicitRoom) {
       roomNumber = explicitRoom[1];
       cleaned = cleaned.replace(explicitRoom[0], ' ');
@@ -263,24 +265,30 @@ export function parseQuickLedgerText(input: string) {
       cleaned = cleaned.replace(dueMatch[0], ' ');
     }
 
-    // 4. New Monthly Rent / Fee: 'rent 8500', 'fee 8500', 'rent to 8500'
+    // 4. New Monthly Rent / Fee: 'rent 8500', 'fee 8500', 'rent to 8500', 'romm fee paid 9000'
     let newMonthlyRent: number | null = null;
-    const rentMatch = cleaned.match(/\b(?:rent|monthly\s*rent|room\s*fee|rom\s*fee|fee|monthly)\b[^\d]*?(\d+(?:\.\d+)?)(k)?\b/i);
-    if (rentMatch) {
-      newMonthlyRent = parseFloat(rentMatch[1]) * (rentMatch[2] ? 1000 : 1);
-      cleaned = cleaned.replace(rentMatch[0], ' ');
+    const rentPaidExplicitInRent = cleaned.match(/\b(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\s*(?:is\s*)?(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+    if (rentPaidExplicitInRent) {
+      newMonthlyRent = parseFloat(rentPaidExplicitInRent[1]) * (rentPaidExplicitInRent[2] ? 1000 : 1);
+      cleaned = cleaned.replace(rentPaidExplicitInRent[0], ' ');
     } else {
-      const rentBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:rent|room\s*fee|rom\s*fee|fee)\b/i);
-      if (rentBefore) {
-        newMonthlyRent = parseFloat(rentBefore[1]) * (rentBefore[2] ? 1000 : 1);
-        cleaned = cleaned.replace(rentBefore[0], ' ');
+      const rentMatch = cleaned.match(/\b(?:rent|monthly\s*rent|room\s*fee|rom\s*fee|romm\s*fee|fee|monthly)\b[^\d]*?(\d+(?:\.\d+)?)(k)?\b/i);
+      if (rentMatch) {
+        newMonthlyRent = parseFloat(rentMatch[1]) * (rentMatch[2] ? 1000 : 1);
+        cleaned = cleaned.replace(rentMatch[0], ' ');
+      } else {
+        const rentBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:rent|room\s*fee|rom\s*fee|romm\s*fee|fee)\b/i);
+        if (rentBefore) {
+          newMonthlyRent = parseFloat(rentBefore[1]) * (rentBefore[2] ? 1000 : 1);
+          cleaned = cleaned.replace(rentBefore[0], ' ');
+        }
       }
     }
 
     // 5. Maintenance Fee: 'maintainance 1000', '1000 maintainance'
     let newMaintenanceFee: number | null = null;
-    const maintMatch = cleaned.match(/\b(?:maintainance|maintenance|maintance|non\s*refundable)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i) ||
-                       cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:maintainance|maintenance|maintance|non\s*refundable)\b/i);
+    const maintMatch = cleaned.match(/\b(?:maint[a-z]*|ment[a-z]*|non\s*refundable)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i) ||
+                       cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:maint[a-z]*|ment[a-z]*|non\s*refundable)\b/i);
     if (maintMatch) {
       newMaintenanceFee = parseFloat(maintMatch[1]) * (maintMatch[2] ? 1000 : 1);
       cleaned = cleaned.replace(maintMatch[0], ' ');
@@ -288,8 +296,8 @@ export function parseQuickLedgerText(input: string) {
 
     // 6. Refundable Deposit: 'refundabale 1000', '1000 refundable'
     let newRefundableDeposit: number | null = null;
-    const refMatch = cleaned.match(/\b(?:refundable|refundabale|security\s*deposit|sec\s*deposit|deposit|adv|advance)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i) ||
-                     cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:refundable|refundabale|security\s*deposit|sec\s*deposit|deposit|adv|advance)\b/i);
+    const refMatch = cleaned.match(/\b(?:refun[a-z]*\s*(?:ammount|amount|deposit|fee)?|security\s*deposit|sec\s*deposit|deposit|adv|advance|advan[cv]e)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i) ||
+                     cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:refun[a-z]*\s*(?:ammount|amount|deposit|fee)?|security\s*deposit|sec\s*deposit|deposit|adv|advance|advan[cv]e)\b/i);
     if (refMatch) {
       newRefundableDeposit = parseFloat(refMatch[1]) * (refMatch[2] ? 1000 : 1);
       cleaned = cleaned.replace(refMatch[0], ' ');
@@ -301,15 +309,23 @@ export function parseQuickLedgerText(input: string) {
     // 8. Tenant Name from remaining tokens
     const noiseWords = new Set([
       'please', 'existing', 'modify', 'change', 'update', 'set', 'edit', 'correct',
-      'tenant', 'resident', 'guest', 'room', 'rm', 'rent', 'fee', 'to', 'for', 'of',
+      'tenant', 'resident', 'guest', 'room', 'rm', 'rom', 'romm', 'rent', 'fee', 'to', 'for', 'of',
       'and', '&', 'is', 'as', 'the', 'in', 'on', 'bed', 'paid', 'sent',
       'name', 'called', 'named', 'person',
-      'maintainance', 'maintenance', 'maintance', 'refundable', 'refundabale', 'deposit',
+      'maintainance', 'maintenance', 'maintance', 'maintence', 'maintanace', 'maintanance', 'maintanence', 'maint',
+      'refundable', 'refundabale', 'refundble', 'deposit', 'ammount', 'amount',
       'adv', 'advance', 'due', 'date', 'day', 'joining', 'joined', 'join', 'non',
       'january', 'jan', 'february', 'feb', 'march', 'mar', 'april', 'apr', 'may', 'june', 'jun',
       'july', 'jul', 'august', 'aug', 'september', 'sep', 'october', 'oct', 'november', 'nov', 'december', 'dec'
     ]);
-    const nameTokens = cleaned.split(/\s+/).filter(w => w && !noiseWords.has(w) && !/^\d+(?:st|nd|rd|th)?$/i.test(w));
+    const nameTokens = cleaned.split(/\s+/).filter(w =>
+      w &&
+      !noiseWords.has(w) &&
+      !w.startsWith('maint') &&
+      !w.startsWith('ment') &&
+      !w.startsWith('refun') &&
+      !/^\d+(?:st|nd|rd|th)?$/i.test(w)
+    );
     const tenantName = nameTokens.join(' ').trim() || undefined;
 
     return {
@@ -327,13 +343,14 @@ export function parseQuickLedgerText(input: string) {
 
   // 0d. ASSIGN / NEW TENANT CHECK
   const isAssign = /\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining|joined|guest|daily|daily\s*basis)\b/i.test(lower) ||
-                   (/\b(?:add|guest)\b/i.test(lower) && (/\b(?:room|rm|r)\b/i.test(lower) || /\bto\b/i.test(lower) || /\b\d{3}\b/.test(lower) || /\bshare\b/i.test(lower) || /\bdays?\b/i.test(lower))) ||
-                   /\b(?:maintainance|maintenance|refundable)\b/i.test(lower);
+                   (/\b(?:add|guest)\b/i.test(lower) && (/\b(?:room|rom|romm|rm|r)\b/i.test(lower) || /\bto\b/i.test(lower) || /\b\d{3}\b/.test(lower) || /\bshare\b/i.test(lower) || /\bdays?\b/i.test(lower))) ||
+                   /\b(?:maintainance|maintenance|maintance|maintence|maintanace|maintanance|maintanence|refundable)\b/i.test(lower);
   if (isAssign) {
-    let cleaned = lower.replace(/[\\/]/g, ' ');
+    let cleaned = lower;
     if (dateRawStr) {
       cleaned = cleaned.replace(dateRawStr, ' ');
     }
+    cleaned = cleaned.replace(/[\\/]/g, ' ');
 
     // 0. Daily Basis Stay Check (Short stays: e.g. "per day 600 total 2 days paid 600", "daily basis", "3 days")
     const isDaily = /\b(?:daily|daily\s*basis|per\s*day|\bdays\b)\b/i.test(cleaned);
@@ -386,7 +403,7 @@ export function parseQuickLedgerText(input: string) {
 
       // 6. Explicit Room: 'room 204' or standalone 3-digit
       let roomNumber: string | null = null;
-      const explicitRoom = cleaned.match(/\b(?:room|rm|r)\s*#?\s*(\d{1,4})\b/i);
+      const explicitRoom = cleaned.match(/\b(?:room|rom|romm|rm|r)\s*#?\s*(\d{1,4})\b/i);
       if (explicitRoom) {
         roomNumber = explicitRoom[1];
         cleaned = cleaned.replace(explicitRoom[0], ' ');
@@ -400,7 +417,7 @@ export function parseQuickLedgerText(input: string) {
 
       // 7. Tenant Name from remaining tokens
       const noiseWords = new Set([
-        'assign', 'new', 'tenant', 'guest', 'add', 'joined', 'joining', 'join', 'to', 'in', 'room', 'rm',
+        'assign', 'new', 'tenant', 'guest', 'add', 'joined', 'joining', 'join', 'to', 'in', 'room', 'rm', 'rom', 'romm',
         'daily', 'basis', 'per', 'day', 'days', 'total', 'paid', 'sent', 'only', 'for', 'pending', 'pedning',
         'bal', 'balance', 'fee', 'rent', 'and', '&', 'at'
       ]);
@@ -439,7 +456,7 @@ export function parseQuickLedgerText(input: string) {
 
     // 2. Room Number: explicit 'room 201' / 'rm 201' or standalone 3-digit
     let roomNumber: string | null = null;
-    const explicitRoom = cleaned.match(/\b(?:room|rm|r)\s*#?\s*(\d{1,4})\b/i);
+    const explicitRoom = cleaned.match(/\b(?:room|rom|romm|rm|r)\s*#?\s*(\d{1,4})\b/i);
     if (explicitRoom) {
       roomNumber = explicitRoom[1];
       cleaned = cleaned.replace(explicitRoom[0], ' ');
@@ -462,28 +479,57 @@ export function parseQuickLedgerText(input: string) {
       dueDay = customDay;
     }
 
-    // 4. Monthly Rent / Room Fee (check suffix '8500 room fee' first, then prefix 'rent 8500')
+    // 4. Monthly Rent / Room Fee (check paid variations first, then standard prefix/suffix)
     let monthlyRent = 0;
-    const rentBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:rent|monthly|rom\s*fee|room\s*fee|fee|feee)\b/i);
-    if (rentBefore) {
-      monthlyRent = parseFloat(rentBefore[1]) * (rentBefore[2] ? 1000 : 1);
-      cleaned = cleaned.replace(rentBefore[0], ' ');
+    let rentPaid = 0;
+
+    const rentPaidPattern1 = cleaned.match(/\b(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\s*(?:is\s*)?(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+    const rentPaidPattern2 = cleaned.match(/\b(?:paid|sent)\s*[:=]?\s*(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+    const rentPaidPattern3 = cleaned.match(/\b(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\s*(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\b/i);
+    const rentPaidPattern4 = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\s*(?:is\s*)?(?:paid|sent)\b/i);
+
+    if (rentPaidPattern1) {
+      const amt = parseFloat(rentPaidPattern1[1]) * (rentPaidPattern1[2] ? 1000 : 1);
+      monthlyRent = amt;
+      rentPaid = amt;
+      cleaned = cleaned.replace(rentPaidPattern1[0], ' ');
+    } else if (rentPaidPattern2) {
+      const amt = parseFloat(rentPaidPattern2[1]) * (rentPaidPattern2[2] ? 1000 : 1);
+      monthlyRent = amt;
+      rentPaid = amt;
+      cleaned = cleaned.replace(rentPaidPattern2[0], ' ');
+    } else if (rentPaidPattern3) {
+      const amt = parseFloat(rentPaidPattern3[1]) * (rentPaidPattern3[2] ? 1000 : 1);
+      monthlyRent = amt;
+      rentPaid = amt;
+      cleaned = cleaned.replace(rentPaidPattern3[0], ' ');
+    } else if (rentPaidPattern4) {
+      const amt = parseFloat(rentPaidPattern4[1]) * (rentPaidPattern4[2] ? 1000 : 1);
+      monthlyRent = amt;
+      rentPaid = amt;
+      cleaned = cleaned.replace(rentPaidPattern4[0], ' ');
     } else {
-      const rentAfter = cleaned.match(/\b(?:rent|monthly|rom\s*fee|room\s*fee|fee|feee)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
-      if (rentAfter) {
-        monthlyRent = parseFloat(rentAfter[1]) * (rentAfter[2] ? 1000 : 1);
-        cleaned = cleaned.replace(rentAfter[0], ' ');
+      const rentBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:rent|monthly|rom\s*fee|room\s*fee|romm\s*fee|fee|feee)\b/i);
+      if (rentBefore) {
+        monthlyRent = parseFloat(rentBefore[1]) * (rentBefore[2] ? 1000 : 1);
+        cleaned = cleaned.replace(rentBefore[0], ' ');
+      } else {
+        const rentAfter = cleaned.match(/\b(?:rent|monthly|rom\s*fee|room\s*fee|romm\s*fee|room\s*rent|rom\s*rent|romm\s*rent|fee|feee)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+        if (rentAfter) {
+          monthlyRent = parseFloat(rentAfter[1]) * (rentAfter[2] ? 1000 : 1);
+          cleaned = cleaned.replace(rentAfter[0], ' ');
+        }
       }
     }
 
-    // 5. Maintenance Fee (Non-refundable) (check suffix '1000 maintainance' first, then prefix 'maintainance 1000')
+    // 5. Maintenance Fee (Non-refundable) (check suffix '1000 maintence' first, then prefix 'maintence 1000')
     let maintenanceFee = 0;
-    const maintBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:maintainance|maintenance|non\s*refundable)\b/i);
+    const maintBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:maint[a-z]*|ment[a-z]*|non\s*refundable)\b/i);
     if (maintBefore) {
       maintenanceFee = parseFloat(maintBefore[1]) * (maintBefore[2] ? 1000 : 1);
       cleaned = cleaned.replace(maintBefore[0], ' ');
     } else {
-      const maintAfter = cleaned.match(/\b(?:maintainance|maintenance|non\s*refundable)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+      const maintAfter = cleaned.match(/\b(?:maint[a-z]*|ment[a-z]*|non\s*refundable)\s*(?:fee|ammount|amount|charges|charge)?\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
       if (maintAfter) {
         maintenanceFee = parseFloat(maintAfter[1]) * (maintAfter[2] ? 1000 : 1);
         cleaned = cleaned.replace(maintAfter[0], ' ');
@@ -492,12 +538,12 @@ export function parseQuickLedgerText(input: string) {
 
     // 6. Refundable Security Deposit / Advance (check suffix '2000 adv' first, then prefix 'adv 2000')
     let refundableDeposit = 0;
-    const refBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:refundable\s*(?:ammount|amount|deposit)?|security\s*deposit|sec\s*deposit|adv|advance|advan[cv]e)\b/i);
+    const refBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:refun[a-z]*\s*(?:ammount|amount|deposit|fee)?|security\s*deposit|sec\s*deposit|deposit|adv|advance|advan[cv]e)\b/i);
     if (refBefore) {
       refundableDeposit = parseFloat(refBefore[1]) * (refBefore[2] ? 1000 : 1);
       cleaned = cleaned.replace(refBefore[0], ' ');
     } else {
-      const refAfter = cleaned.match(/\b(?:refundable\s*(?:ammount|amount|deposit)?|security\s*deposit|sec\s*deposit|adv|advance|advan[cv]e)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+      const refAfter = cleaned.match(/\b(?:refun[a-z]*\s*(?:ammount|amount|deposit|fee)?|security\s*deposit|sec\s*deposit|deposit|adv|advance|advan[cv]e)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
       if (refAfter) {
         refundableDeposit = parseFloat(refAfter[1]) * (refAfter[2] ? 1000 : 1);
         cleaned = cleaned.replace(refAfter[0], ' ');
@@ -533,25 +579,27 @@ export function parseQuickLedgerText(input: string) {
     }
 
     // 8b. Detect if monthly rent was paid at admission or pending/due
-    let rentPaid = 0;
-    const paidOnlyMatch = lower.match(/\bpaid\s*only\s*(?:for\s*)?(\d+(?:\.\d+)?)(k)?\b/i);
-    if (paidOnlyMatch) {
-      const onlyAmt = parseFloat(paidOnlyMatch[1]) * (paidOnlyMatch[2] ? 1000 : 1);
-      if (onlyAmt > (maintenanceFee + refundableDeposit)) {
-        rentPaid = onlyAmt - (maintenanceFee + refundableDeposit);
+    if (rentPaid === 0) {
+      const paidOnlyMatch = lower.match(/\bpaid\s*only\s*(?:for\s*)?(\d+(?:\.\d+)?)(k)?\b/i);
+      if (paidOnlyMatch) {
+        const onlyAmt = parseFloat(paidOnlyMatch[1]) * (paidOnlyMatch[2] ? 1000 : 1);
+        if (onlyAmt > (maintenanceFee + refundableDeposit)) {
+          rentPaid = onlyAmt - (maintenanceFee + refundableDeposit);
+        } else {
+          rentPaid = 0;
+        }
       } else {
-        rentPaid = 0;
-      }
-    } else {
-      const isRentDue = /\b(?:room\s*fee|rom\s*fee|rent|fee)\s*(?:is\s*)?(?:due|pending|pedning)\b/i.test(lower) ||
-                        /\b(?:due|pending|pedning)\s*(?:room\s*fee|rom\s*fee|rent|fee)\b/i.test(lower);
-      if (!isRentDue) {
-        const rentPaidExplicit = lower.match(/\b(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\s*(?:rent|room\s*fee|rom\s*fee|monthly|fee)\b/i) ||
-                                 lower.match(/(\d+(?:\.\d+)?)(k)?\s*(?:rent|room\s*fee|rom\s*fee|monthly|fee)\s*(?:is\s*)?(?:paid|sent)\b/i);
-        if (rentPaidExplicit) {
-          rentPaid = parseFloat(rentPaidExplicit[1]) * (rentPaidExplicit[2] ? 1000 : 1);
-        } else if (/\bpaid\s*(?:rent|room\s*fee|rom\s*fee|fee)\b/i.test(lower)) {
-          rentPaid = monthlyRent;
+        const isRentDue = /\b(?:room\s*fee|rom\s*fee|romm\s*fee|rent|fee)\s*(?:is\s*)?(?:due|pending|pedning)\b/i.test(lower) ||
+                          /\b(?:due|pending|pedning)\s*(?:room\s*fee|rom\s*fee|romm\s*fee|rent|fee)\b/i.test(lower);
+        if (!isRentDue) {
+          const rentPaidExplicit = lower.match(/\b(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\s*(?:rent|room\s*fee|rom\s*fee|romm\s*fee|monthly|fee)\b/i) ||
+                                   lower.match(/(\d+(?:\.\d+)?)(k)?\s*(?:rent|room\s*fee|rom\s*fee|romm\s*fee|monthly|fee)\s*(?:is\s*)?(?:paid|sent)\b/i) ||
+                                   lower.match(/\b(?:room|rom|romm|rm)?\s*(?:fee|rent|feee)\s*(?:is\s*)?(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+          if (rentPaidExplicit) {
+            rentPaid = parseFloat(rentPaidExplicit[1]) * (rentPaidExplicit[2] ? 1000 : 1);
+          } else if (/\bpaid\s*(?:rent|room\s*fee|rom\s*fee|romm\s*fee|fee)\b/i.test(lower)) {
+            rentPaid = monthlyRent;
+          }
         }
       }
     }
@@ -559,16 +607,24 @@ export function parseQuickLedgerText(input: string) {
     // 9. Clean noise words for Tenant Name
     cleaned = cleaned.replace(/\b(?:assign|new\s+tenant|add\s+tenant|join\s+tenant|joining|joined|add|to|in|tenant\s+name\s+called|tenant\s+called|name\s+called)\b/gi, ' ').trim();
     const noiseWords = new Set([
-      'room', 'rm', 'rent', 'monthly', 'adv', 'advance', 'advanve', 'deposit', 'due', 'day', 'in', 'at', 'fee',
-      'feee', 'for', 'to', 'and', '&', 'share', 'sharing', 'bed', 'joined', 'on', 'maintainance', 'maintenance', 'maintance', 'maint',
-      'refundable', 'refundabale', 'ammount', 'amount', 'date', 'paid', 'sent', 'joined', 'joining', 'join',
+      'room', 'rom', 'romm', 'rm', 'rent', 'monthly', 'adv', 'advance', 'advanve', 'deposit', 'due', 'day', 'in', 'at', 'fee',
+      'feee', 'for', 'to', 'and', '&', 'share', 'sharing', 'bed', 'joined', 'on',
+      'maintainance', 'maintenance', 'maintance', 'maintence', 'maintanace', 'maintanance', 'maintanence', 'maint',
+      'refundable', 'refundabale', 'refundble', 'ammount', 'amount', 'date', 'paid', 'sent', 'joining', 'join',
       'non', 'today', 'total', 'but', 'only', 'is', 'guest', 'new', 'resident', 'person', 'staying', 'stay',
       'charges', 'charge', 'pedning', 'pending', 'see', 'look', 'name', 'called', 'named', 'please', 'tenant',
       'the', 'a', 'an',
       'january', 'jan', 'february', 'feb', 'march', 'mar', 'april', 'apr', 'may', 'june', 'jun',
       'july', 'jul', 'august', 'aug', 'september', 'sep', 'october', 'oct', 'november', 'nov', 'december', 'dec'
     ]);
-    const nameTokens = cleaned.split(/\s+/).filter(w => w && !noiseWords.has(w) && !/^\d+(?:st|nd|rd|th)?$/i.test(w));
+    const nameTokens = cleaned.split(/\s+/).filter(w =>
+      w &&
+      !noiseWords.has(w) &&
+      !w.startsWith('maint') &&
+      !w.startsWith('ment') &&
+      !w.startsWith('refun') &&
+      !/^\d+(?:st|nd|rd|th)?$/i.test(w)
+    );
     const tenantName = nameTokens.join(' ').trim();
 
     return {
@@ -590,7 +646,7 @@ export function parseQuickLedgerText(input: string) {
   const isExplicitExpense = /(?:^|\b)(?:expences|expenses|expence|expense|exp)\b/.test(lower);
   const words = lower.split(/[\s,]+/);
   const hasExpenseWord = words.some(w => FOOD_AND_EXPENSE_WORDS.has(w));
-  const hasRevenueWord = /\b(?:revenue|rent|rom\s*fee|room\s*fee|fee|feee|paid|sent|adv|advance|deposit|due)\b/.test(lower);
+  const hasRevenueWord = /\b(?:revenue|rent|rom\s*fee|room\s*fee|romm\s*fee|fee|feee|paid|sent|adv|advance|deposit|due)\b/.test(lower);
 
   const isExpense = isExplicitExpense || (hasExpenseWord && !hasRevenueWord);
 
@@ -665,12 +721,12 @@ export function parseQuickLedgerText(input: string) {
 
   // 2. Room Fee / Rent / Paid: 'paid 500' or '500 paid' or 'rent 5000'
   let feeAmount = 0;
-  const feeAfter = cleaned.match(/\b(?:paid|sent|fee|feee|rent|rom\s*fee|room\s*fee)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/);
+  const feeAfter = cleaned.match(/\b(?:paid|sent|fee|feee|rent|rom\s*fee|room\s*fee|romm\s*fee)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/);
   if (feeAfter) {
     feeAmount = parseFloat(feeAfter[1]) * (feeAfter[2] ? 1000 : 1);
     cleaned = cleaned.replace(feeAfter[0], ' ');
   } else {
-    const feeBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:paid|sent|fee|feee|rent|rom\s*fee|room\s*fee)\b/);
+    const feeBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:paid|sent|fee|feee|rent|rom\s*fee|room\s*fee|romm\s*fee)\b/);
     if (feeBefore) {
       feeAmount = parseFloat(feeBefore[1]) * (feeBefore[2] ? 1000 : 1);
       cleaned = cleaned.replace(feeBefore[0], ' ');
@@ -679,7 +735,7 @@ export function parseQuickLedgerText(input: string) {
 
   // 3. Explicit room match: 'room 204' or 'rm 204' or 'r 204'
   let roomNumber: string | null = null;
-  const explicitRoom = cleaned.match(/\b(?:room|rm|r)\s*#?\s*(\d{1,4})\b/);
+  const explicitRoom = cleaned.match(/\b(?:room|rom|romm|rm|r)\s*#?\s*(\d{1,4})\b/i);
   if (explicitRoom) {
     roomNumber = explicitRoom[1];
     cleaned = cleaned.replace(explicitRoom[0], ' ');
@@ -714,12 +770,21 @@ export function parseQuickLedgerText(input: string) {
 
   // 6. Name
   const noiseWords = [
-    'rom', 'room', 'fee', 'rent', 'and', '&', 'paid', 'sent', 'adv', 'advance', 'due', 'for', 'of', 'pg', 'feee',
+    'rom', 'romm', 'room', 'fee', 'rent', 'and', '&', 'paid', 'sent', 'adv', 'advance', 'due', 'for', 'of', 'pg', 'feee',
+    'maintainance', 'maintenance', 'maintance', 'maintence', 'maintanace', 'maintanance', 'maintanence', 'maint',
+    'refundable', 'refundabale', 'refundble', 'ammount', 'amount',
     'revenue', 'on', 'date', 'joined', 'joining', 'join', 'guest', 'tenant', 'resident', 'name', 'called', 'named', 'please', 'the', 'a', 'an',
     'jan', 'january', 'feb', 'february', 'mar', 'march', 'apr', 'april', 'may', 'jun', 'june',
     'jul', 'july', 'aug', 'august', 'sep', 'september', 'oct', 'october', 'nov', 'november', 'dec', 'december'
   ];
-  const nameTokens = cleaned.split(/\s+/).filter(w => w && !noiseWords.includes(w) && !/^\d+(?:st|nd|rd|th)?$/i.test(w));
+  const nameTokens = cleaned.split(/\s+/).filter(w =>
+    w &&
+    !noiseWords.includes(w) &&
+    !w.startsWith('maint') &&
+    !w.startsWith('ment') &&
+    !w.startsWith('refun') &&
+    !/^\d+(?:st|nd|rd|th)?$/i.test(w)
+  );
   const tenantName = nameTokens.join(' ').trim();
 
   return {
