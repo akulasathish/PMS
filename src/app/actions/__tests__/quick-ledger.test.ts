@@ -677,5 +677,27 @@ describe('Quick Ledger NLP Parser', () => {
       expect(isResidentNameMatch('Danush Of Every Month', 'danush')).toBe(true);
       expect(isResidentNameMatch('Danush', 'danush')).toBe(true);
     });
+
+    it('should ignore noise typos like rroom ent and strip them cleanly from resident names', () => {
+      const parsed1 = parseQuickLedgerText('join Srikanth rroom ent to room 201');
+      expect(parsed1.type).toBe('assign');
+      if (parsed1.type === 'assign') {
+        expect(parsed1.tenantName?.toLowerCase()).toBe('srikanth');
+        expect(parsed1.roomNumber).toBe('201');
+      }
+
+      const parsed2 = parseQuickLedgerText('report of srikanth rroom ent 201');
+      expect(parsed2.type).toBe('tenant_report');
+      if (parsed2.type === 'tenant_report') {
+        expect(parsed2.tenantName?.toLowerCase()).toBe('srikanth');
+        expect(parsed2.roomNumber).toBe('201');
+      }
+
+      const parsed3 = parseQuickLedgerText('checkout srikanth rroom ent room 201');
+      expect(parsed3.type).toBe('checkout');
+      if (parsed3.type === 'checkout') {
+        expect(parsed3.tenantName?.toLowerCase()).toBe('srikanth');
+      }
+    });
   });
 });

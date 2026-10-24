@@ -1,7 +1,7 @@
 "use server";
 
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { parseQuickLedgerText, QuickLedgerItem, isResidentNameMatch } from '@/lib/quick-ledger-parser';
+import { parseQuickLedgerText, QuickLedgerItem, isResidentNameMatch, sanitizeGuestName } from '@/lib/quick-ledger-parser';
 
 export interface QuickLedgerDueItem {
   bookingId: string;
@@ -645,7 +645,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         const effectiveMonthlyRent = monthlyRent || Number(existingResident.monthly_rent || existingResident.monthly_rate || 8000);
         const maintenanceFee = parsedMaintenance || 0;
         const refundableDeposit = parsedRefundable || advAmount || Number(existingResident.security_deposit || 0);
-        const formattedName = tenantName.charAt(0).toUpperCase() + tenantName.slice(1);
+        const formattedName = sanitizeGuestName(tenantName);
 
         // If older duplicate bookings exist for this same person in this room, cancel the extra duplicates
         if (matchingResidents.length > 1) {
@@ -806,7 +806,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         inDate.setDate(inDate.getDate() + stayDays);
         const checkOut = inDate.toISOString().split('T')[0];
 
-        const formattedName = tenantName.charAt(0).toUpperCase() + tenantName.slice(1);
+        const formattedName = sanitizeGuestName(tenantName);
         const bookingNotes = `Daily Basis: ${stayDays} Day${stayDays > 1 ? 's' : ''} @ ₹${perDayRate.toLocaleString('en-IN')}/day • Total: ₹${totalAmount.toLocaleString('en-IN')}`;
 
         const { data: newBooking, error: bookErr } = await admin
@@ -898,7 +898,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
 
       const maintenanceFee = parsedMaintenance || 0;
       const refundableDeposit = parsedRefundable || advAmount || 0;
-      const formattedName = tenantName.charAt(0).toUpperCase() + tenantName.slice(1);
+      const formattedName = sanitizeGuestName(tenantName);
 
       // Build notes string for clear display in profile
       const noteParts: string[] = [];
