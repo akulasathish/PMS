@@ -310,31 +310,42 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       const [paymentsRes, incidentalsRes] = await Promise.all([
         admin
           .from('payments')
-          .select('id, amount, allocation, payment_method, method, business_date, created_at, is_void')
+          .select('id, amount, allocation, transaction_id, payment_method, method, business_date, created_at, is_void')
           .eq('booking_id', matchedBooking.id)
           .order('created_at', { ascending: false }),
         admin
           .from('incidental_charges')
-          .select('id, amount, description, category, business_date')
+          .select('id, amount, description, business_date')
           .eq('booking_id', matchedBooking.id)
       ]);
 
       const validPayments = (paymentsRes.data || []).filter(p => !p.is_void);
       const incidentals = incidentalsRes.data || [];
 
+      const isMaintPayment = (p: any) =>
+        (p.allocation && (p.allocation.toLowerCase().includes('maint') || p.allocation.toLowerCase().includes('maintenance'))) ||
+        (p.transaction_id && p.transaction_id.toLowerCase().includes('maint'));
+
+      const isDepositPayment = (p: any) =>
+        (p.allocation && (p.allocation.toLowerCase().includes('deposit') || p.allocation.toLowerCase().includes('refundable') || p.allocation.toLowerCase().includes('security'))) ||
+        (p.transaction_id && p.transaction_id.toLowerCase().includes('deposit'));
+
+      const isRentPayment = (p: any) =>
+        !isMaintPayment(p) && !isDepositPayment(p);
+
       const monthlyRent = Number(matchedBooking.monthly_rent || matchedBooking.monthly_rate || 8000);
-      const rentPayments = validPayments.filter(p => p.allocation === 'Rent' || !p.allocation);
+      const rentPayments = validPayments.filter(isRentPayment);
       const totalRentPaid = rentPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
       const pendingRentDue = Math.max(0, monthlyRent - totalRentPaid);
 
       const refundableDeposit = Number(matchedBooking.security_deposit || 0);
-      const depositPayments = validPayments.filter(p => p.allocation === 'Security Deposit');
+      const depositPayments = validPayments.filter(isDepositPayment);
       const depositPaid = depositPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
 
-      const maintPayments = validPayments.filter(p => p.allocation === 'Maintenance Fee (Revenue)');
+      const maintPayments = validPayments.filter(isMaintPayment);
       const maintenancePaid = maintPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
 
-      const maintCharges = incidentals.filter(inc => inc.category === 'Maintenance' || inc.description?.toLowerCase().includes('maintenance'));
+      const maintCharges = incidentals.filter(inc => inc.description?.toLowerCase().includes('maintenance'));
       const maintenanceFee = maintCharges.reduce((s, inc) => s + Number(inc.amount || 0), 0) || maintenancePaid;
 
       const totalPaidOverall = validPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
@@ -345,7 +356,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       const paymentsList = validPayments.map(p => ({
         id: p.id,
         amount: Number(p.amount || 0),
-        allocation: p.allocation || 'Rent',
+        allocation: isDepositPayment(p) ? 'Security Deposit' : isMaintPayment(p) ? 'Maintenance Fee' : 'Rent',
         method: p.payment_method || p.method || 'UPI',
         date: p.business_date || p.created_at?.slice(0, 10) || ''
       }));
@@ -368,12 +379,13 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       };
 
       const rentStatusStr = pendingRentDue > 0 ? `₹${pendingRentDue.toLocaleString('en-IN')} Due` : 'Fully Cleared';
+      const maintStr = maintenanceFee > 0 ? ` • Maintenance Paid: ₹${maintenancePaid.toLocaleString('en-IN')}` : '';
 
       return {
         success: true,
         type: 'tenant_report',
         tenantReport: report,
-        message: `Statement for ${matchedBooking.guest_name} (Room ${roomDisp}): Monthly Rent: ₹${monthlyRent.toLocaleString('en-IN')}/mo • Rent Paid: ₹${totalRentPaid.toLocaleString('en-IN')} (${rentStatusStr}) • Deposit Paid: ₹${depositPaid.toLocaleString('en-IN')} • Total Paid Till Date: ₹${totalPaidOverall.toLocaleString('en-IN')}.`
+        message: `Statement for ${matchedBooking.guest_name} (Room ${roomDisp}): Monthly Rent: ₹${monthlyRent.toLocaleString('en-IN')}/mo • Rent Paid: ₹${totalRentPaid.toLocaleString('en-IN')} (${rentStatusStr}) • Deposit Paid: ₹${depositPaid.toLocaleString('en-IN')}${maintStr} • Total Paid Till Date: ₹${totalPaidOverall.toLocaleString('en-IN')}.`
       };
     }
 
@@ -546,7 +558,6 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
               property_id: activePropertyId,
               description: 'Non-Refundable Maintenance Fee',
               amount: maintenanceFee,
-              category: 'Maintenance',
               business_date: effectivePaymentDate
             }]);
 
@@ -556,7 +567,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
             amount: maintenanceFee,
             method: 'UPI',
             payment_method: 'UPI',
-            allocation: 'Maintenance Fee (Revenue)',
+            allocation: null,
             business_date: effectivePaymentDate,
             transaction_id: 'QUICK-LEDGER-MAINTENANCE'
           });
@@ -693,14 +704,17 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         // Check existing payments to prevent duplicate payments on repeated updates
         const { data: existingPayments } = await admin
           .from('payments')
-          .select('id, allocation, amount')
+          .select('id, allocation, amount, transaction_id')
           .eq('booking_id', existingResident.id);
 
         const existingRentPaid = (existingPayments || [])
           .filter(p => p.allocation === 'Rent')
           .reduce((s, p) => s + Number(p.amount || 0), 0);
 
-        const hasMaintPayment = (existingPayments || []).some(p => p.allocation === 'Maintenance Fee (Revenue)');
+        const hasMaintPayment = (existingPayments || []).some(
+          p => ((p.allocation as string | null) && ((p.allocation as string).toLowerCase().includes('maint') || (p.allocation as string).toLowerCase().includes('maintenance'))) ||
+               (p.transaction_id && p.transaction_id.toLowerCase().includes('maint'))
+        );
         const hasDepPayment = (existingPayments || []).some(p => p.allocation === 'Security Deposit');
 
         // Only insert rent difference if user provided rentPaid and it exceeds already recorded rent
@@ -726,7 +740,6 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
             property_id: activePropertyId,
             description: 'Non-Refundable Maintenance Fee',
             amount: maintenanceFee,
-            category: 'Maintenance',
             business_date: effectiveCheckIn
           }]);
           if (parsedMaintPaid !== 0) {
@@ -736,7 +749,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
               amount: parsedMaintPaid !== undefined ? parsedMaintPaid : maintenanceFee,
               method: 'UPI',
               payment_method: 'UPI',
-              allocation: 'Maintenance Fee (Revenue)',
+              allocation: null,
               transaction_id: 'MAINTENANCE-FEE-AT-UPDATE',
               business_date: effectiveCheckIn
             }]).select('id').single();
@@ -973,7 +986,6 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
             property_id: activePropertyId,
             description: 'Non-Refundable Maintenance Fee',
             amount: maintenanceFee,
-            category: 'Maintenance',
             business_date: effectiveCheckIn
           }]);
 
@@ -986,7 +998,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
               amount: parsedMaintPaid !== undefined ? parsedMaintPaid : maintenanceFee,
               method: 'UPI',
               payment_method: 'UPI',
-              allocation: 'Maintenance Fee (Revenue)',
+              allocation: null,
               transaction_id: 'MAINTENANCE-FEE-AT-CREATION',
               business_date: effectiveCheckIn
             }])
@@ -1252,7 +1264,6 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
             property_id: activePropertyId,
             description: 'Non-Refundable Maintenance Fee',
             amount: newMaintenanceFee,
-            category: 'Maintenance',
             business_date: payDate
           }]);
           const { data: maintP } = await admin.from('payments').insert([{
@@ -1261,7 +1272,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
             amount: newMaintenanceFee,
             method: 'UPI',
             payment_method: 'UPI',
-            allocation: 'Maintenance Fee (Revenue)',
+            allocation: null,
             business_date: payDate,
             transaction_id: 'MODIFIED-MAINTENANCE-PAYMENT'
           }]).select('id').single();
@@ -1700,7 +1711,6 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
           property_id: activePropertyId,
           description: 'Non-Refundable Maintenance Fee',
           amount: parsedMaintenance,
-          category: 'Maintenance',
           business_date: effectivePaymentDate
         }]);
 
@@ -1710,7 +1720,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
           amount: parsedMaintenance,
           method: 'UPI',
           payment_method: 'UPI',
-          allocation: 'Maintenance Fee (Revenue)',
+          allocation: null,
           business_date: effectivePaymentDate,
           transaction_id: 'QUICK-LEDGER-MAINTENANCE'
         });

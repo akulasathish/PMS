@@ -204,7 +204,6 @@ export async function createBooking(formData: FormData) {
           property_id: propertyId,
           description: 'Non-Refundable Admission / Maintenance Fee',
           amount: feePerRoom,
-          category: 'Maintenance',
           created_at: new Date().toISOString()
         });
 
@@ -215,7 +214,7 @@ export async function createBooking(formData: FormData) {
           method: prepaidMethod || 'Cash',
           payment_method: prepaidMethod || 'Cash',
           transaction_id: 'NON-REFUNDABLE-FEE-AT-CREATION',
-          allocation: 'Maintenance Fee (Revenue)',
+          allocation: null,
           business_date: prepaidDate || checkIn
         });
       }

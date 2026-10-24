@@ -290,7 +290,7 @@ export async function getFolioSummary(bookingId: string) {
     // 1. Room Rent Ledger
     roomRentRate = Number((booking as any).monthly_rent || (booking as any).monthly_rate || roomAmount);
     roomRentPaid = payments
-      .filter(item => !item.is_void && item.allocation === 'Rent')
+      .filter(item => !item.is_void && (item.allocation === 'Rent' || (!item.allocation && !item.transaction_id?.toLowerCase().includes('maint') && !item.transaction_id?.toLowerCase().includes('deposit'))))
       .reduce((sum, item) => sum + Number(item.amount || 0), 0);
 
     // 2. Maintenance Fee Ledger
@@ -302,7 +302,7 @@ export async function getFolioSummary(bookingId: string) {
     const notesMaintAmt = notesMaintMatch ? parseFloat(notesMaintMatch[1].replace(/,/g, '')) : 0;
     expectedMaintenance = Math.max(maintChargesSum, notesMaintAmt);
     maintenancePaid = payments
-      .filter(item => !item.is_void && item.allocation === 'Maintenance')
+      .filter(item => !item.is_void && ((item.allocation as any) === 'Maintenance' || (item.allocation as any) === 'Maintenance Fee' || (item.transaction_id && item.transaction_id.toLowerCase().includes('maint'))))
       .reduce((sum, item) => sum + Number(item.amount || 0), 0);
 
     // 3. Refundable Fee Ledger
