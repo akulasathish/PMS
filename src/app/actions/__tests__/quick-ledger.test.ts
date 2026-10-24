@@ -115,6 +115,16 @@ describe('Quick Ledger NLP Parser', () => {
       expect((result as any).monthPayments[1].month).toBe('October');
       expect((result as any).monthPayments[1].isFullPayment).toBe(true);
     });
+
+    it('should parse month-first date "raghu room 203 paid 1000 maintainance and 1000 refundable on september 1st 2026"', () => {
+      const result = parseQuickLedgerText('raghu room 203 paid 1000 maintainance and 1000 refundable on september 1st 2026');
+      expect(result.type).toBe('revenue');
+      expect(result.tenantName?.toLowerCase()).toBe('raghu');
+      expect(result.roomNumber).toBe('203');
+      expect((result as any).maintenanceFee).toBe(1000);
+      expect((result as any).advAmount).toBe(1000);
+      expect(result.paymentDate).toBe('2026-09-01');
+    });
   });
 
   describe('Tenant Admission / Assign Parsing', () => {
@@ -259,6 +269,21 @@ describe('Quick Ledger NLP Parser', () => {
         expect(result.roomNumber).toBe('202');
         expect(result.checkInDate).toBe('2026-06-01');
         expect(result.dueDay).toBe(1);
+        expect(result.monthlyRent).toBe(9000);
+        expect((result as any).rentPaid).toBe(9000);
+        expect(result.maintenanceFee).toBe(1000);
+        expect(result.refundableDeposit).toBe(1000);
+      }
+    });
+
+    it('should parse "add raghu in 203 joined 24th october due date 29th room fee paid 9000 maintence 1000 refundable 1000"', () => {
+      const result = parseQuickLedgerText('add raghu in 203 joined 24th october due date 29th room fee paid 9000 maintence 1000 refundable 1000');
+      expect(result.type).toBe('assign');
+      if (result.type === 'assign') {
+        expect(result.tenantName.toLowerCase()).toBe('raghu');
+        expect(result.roomNumber).toBe('203');
+        expect(result.checkInDate).toBe('2026-10-24');
+        expect(result.dueDay).toBe(29);
         expect(result.monthlyRent).toBe(9000);
         expect((result as any).rentPaid).toBe(9000);
         expect(result.maintenanceFee).toBe(1000);

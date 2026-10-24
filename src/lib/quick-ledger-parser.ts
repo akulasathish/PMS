@@ -125,6 +125,7 @@ export function parseQuickLedgerText(input: string) {
   const dateMatch = lower.match(/\b(?:(?:joined|paid|date|join)\s+)?(?:on\s+)?(\d{1,2})(?:st|nd|rd|th)?\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember))(?:\s+(20\d{2}))?\b/i) ||
                     lower.match(/(?:(?:joined|paid|date|join)\s+)?on\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s+([a-z]+))?/i) ||
                     lower.match(/\bdate\s+(\d{1,2})(?:st|nd|rd|th)?\b/i);
+  const monthFirstMatch = lower.match(/\b(?:(?:joined|paid|date|join)\s+)?(?:on\s+)?(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember))\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s+(20\d{2}))?\b/i);
 
   if (slashDateMatch) {
     const day = parseInt(slashDateMatch[1], 10);
@@ -148,6 +149,17 @@ export function parseQuickLedgerText(input: string) {
     customDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     customDay = day;
     dateRawStr = dateMatch[0];
+  } else if (monthFirstMatch) {
+    const day = parseInt(monthFirstMatch[2], 10);
+    const now = new Date();
+    let year = now.getFullYear();
+    if (monthFirstMatch[3] && monthFirstMatch[3].length === 4) {
+      year = parseInt(monthFirstMatch[3], 10);
+    }
+    const month = months[monthFirstMatch[1].toLowerCase()] || (now.getMonth() + 1);
+    customDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    customDay = day;
+    dateRawStr = monthFirstMatch[0];
   }
 
   // 0a. PENDING DUES REPORT CHECK
@@ -174,7 +186,8 @@ export function parseQuickLedgerText(input: string) {
 
     // Room number
     let roomNumber: string | null = null;
-    const explicitRoom = cleaned.match(/\b(?:room|rom|romm|rm|r)\s*#?\s*(\d{1,4})\b/i);
+    const explicitRoom = cleaned.match(/\b(?:room|rom|romm|rm)\s*#?\s*([a-z]?\d{1,4}[a-z]?)\b/i) ||
+                         cleaned.match(/\br#\s*([a-z]?\d{1,4}[a-z]?)\b/i);
     if (explicitRoom) {
       roomNumber = explicitRoom[1];
       cleaned = cleaned.replace(explicitRoom[0], ' ');
@@ -210,7 +223,8 @@ export function parseQuickLedgerText(input: string) {
 
     // 1. Room Number: explicit 'room 201' / 'rm 201' or standalone 3-digit
     let roomNumber: string | null = null;
-    const explicitRoom = cleaned.match(/\b(?:room|rom|romm|rm|r)\s*#?\s*(\d{1,4})\b/i);
+    const explicitRoom = cleaned.match(/\b(?:room|rom|romm|rm)\s*#?\s*([a-z]?\d{1,4}[a-z]?)\b/i) ||
+                         cleaned.match(/\br#\s*([a-z]?\d{1,4}[a-z]?)\b/i);
     if (explicitRoom) {
       roomNumber = explicitRoom[1];
       cleaned = cleaned.replace(explicitRoom[0], ' ');
@@ -467,7 +481,8 @@ export function parseQuickLedgerText(input: string) {
 
     // 2. Room Number: explicit 'room 201' / 'rm 201' or standalone 3-digit
     let roomNumber: string | null = null;
-    const explicitRoom = cleaned.match(/\b(?:room|rom|romm|rm|r)\s*#?\s*(\d{1,4})\b/i);
+    const explicitRoom = cleaned.match(/\b(?:room|rom|romm|rm)\s*#?\s*([a-z]?\d{1,4}[a-z]?)\b/i) ||
+                         cleaned.match(/\br#\s*([a-z]?\d{1,4}[a-z]?)\b/i);
     if (explicitRoom) {
       roomNumber = explicitRoom[1];
       cleaned = cleaned.replace(explicitRoom[0], ' ');
@@ -730,7 +745,8 @@ export function parseQuickLedgerText(input: string) {
 
   // 1. Explicit or standalone room number first
   let roomNumber: string | null = null;
-  const explicitRoom = cleaned.match(/\b(?:room|rom|romm|rm|r)\s*#?\s*(\d{1,4})\b/i);
+  const explicitRoom = cleaned.match(/\b(?:room|rom|romm|rm)\s*#?\s*([a-z]?\d{1,4}[a-z]?)\b/i) ||
+                       cleaned.match(/\br#\s*([a-z]?\d{1,4}[a-z]?)\b/i);
   if (explicitRoom) {
     roomNumber = explicitRoom[1];
     cleaned = cleaned.replace(explicitRoom[0], ' ');
@@ -789,17 +805,17 @@ export function parseQuickLedgerText(input: string) {
     }
   }
 
-  // 4. Advance / Deposit: 'adv 2000' or '2000 adv'
+  // 4. Advance / Refundable Deposit: '1000 refundable', 'refundable 1000', 'adv 2000'
   let advAmount = 0;
-  const advAfter = cleaned.match(/\b(?:adv|advance|deposit)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/);
-  if (advAfter) {
-    advAmount = parseFloat(advAfter[1]) * (advAfter[2] ? 1000 : 1);
-    cleaned = cleaned.replace(advAfter[0], ' ');
+  const refBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:refun[a-z]*|security\s*deposit|sec\s*deposit|deposit|adv|advance|advan[cv]e)\b/i);
+  if (refBefore) {
+    advAmount = parseFloat(refBefore[1]) * (refBefore[2] ? 1000 : 1);
+    cleaned = cleaned.replace(refBefore[0], ' ');
   } else {
-    const advBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:adv|advance|deposit)\b/);
-    if (advBefore) {
-      advAmount = parseFloat(advBefore[1]) * (advBefore[2] ? 1000 : 1);
-      cleaned = cleaned.replace(advBefore[0], ' ');
+    const refAfter = cleaned.match(/\b(?:refun[a-z]*\s*(?:ammount|amount|deposit|fee)?|security\s*deposit|sec\s*deposit|deposit|adv|advance|advan[cv]e)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+    if (refAfter) {
+      advAmount = parseFloat(refAfter[1]) * (refAfter[2] ? 1000 : 1);
+      cleaned = cleaned.replace(refAfter[0], ' ');
     }
   }
 
