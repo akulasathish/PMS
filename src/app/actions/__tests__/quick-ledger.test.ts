@@ -70,6 +70,59 @@ describe('Quick Ledger NLP Parser', () => {
       expect(result.items![2].amount).toBe(800);
       expect(result.items![2].category).toBe('Food');
     });
+
+    it('should parse PG utility expenses like "current bill 15000" and "wifi 1200"', () => {
+      const r1 = parseQuickLedgerText('current bill 15000');
+      expect(r1.type).toBe('expense');
+      expect(r1.items![0].amount).toBe(15000);
+      expect(r1.items![0].category).toBe('Utilities');
+
+      const r2 = parseQuickLedgerText('wifi 1200');
+      expect(r2.type).toBe('expense');
+      expect(r2.items![0].amount).toBe(1200);
+      expect(r2.items![0].category).toBe('Utilities');
+    });
+
+    it('should parse maintenance expenses like "carpenter 800" and "pest control 1500"', () => {
+      const r1 = parseQuickLedgerText('carpenter 800');
+      expect(r1.type).toBe('expense');
+      expect(r1.items![0].amount).toBe(800);
+      expect(r1.items![0].category).toBe('Maintenance');
+
+      const r2 = parseQuickLedgerText('pest control 1500');
+      expect(r2.type).toBe('expense');
+      expect(r2.items![0].amount).toBe(1500);
+      expect(r2.items![0].category).toBe('Maintenance');
+    });
+
+    it('should parse cleaning supplies "harpic 250, mop 150, broom 100"', () => {
+      const result = parseQuickLedgerText('harpic 250, mop 150, broom 100');
+      expect(result.type).toBe('expense');
+      expect(result.items!.length).toBe(3);
+      expect(result.items![0].amount).toBe(250);
+      expect(result.items![0].category).toBe('Laundry');
+      expect(result.items![1].amount).toBe(150);
+      expect(result.items![2].amount).toBe(100);
+    });
+
+    it('should parse multi-category expenses "current bill 12000, water tanker 2500, cook salary 10000"', () => {
+      const result = parseQuickLedgerText('current bill 12000, water tanker 2500, cook salary 10000');
+      expect(result.type).toBe('expense');
+      expect(result.items!.length).toBe(3);
+      expect(result.items![0].amount).toBe(12000);
+      expect(result.items![0].category).toBe('Utilities');
+      expect(result.items![1].amount).toBe(2500);
+      expect(result.items![1].category).toBe('Utilities');
+      expect(result.items![2].amount).toBe(10000);
+      expect(result.items![2].category).toBe('Staff');
+    });
+
+    it('should parse verb-based expense "spent 500 on auto"', () => {
+      const result = parseQuickLedgerText('spent 500 on auto');
+      expect(result.type).toBe('expense');
+      expect(result.items![0].amount).toBe(500);
+      expect(result.items![0].description.toLowerCase()).toContain('auto');
+    });
   });
 
   describe('Revenue Parsing', () => {

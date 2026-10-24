@@ -13,15 +13,30 @@ export interface QuickLedgerItem {
 }
 
 const FOOD_AND_EXPENSE_WORDS = new Set([
+  // Food & Groceries
   'curd', 'milk', 'rice', 'oil', 'vegitbale', 'vegitbales', 'vegetable', 'vegetables', 'vegitables', 'veggies',
-  'chicken', 'egg', 'eggs', 'tea', 'coffee', 'sugar', 'gas', 'cylinder', 'tanker', 'water',
-  'diesel', 'petrol', 'salary', 'acid', 'broom', 'mop', 'soap', 'salt', 'chilli', 'masala',
+  'chicken', 'egg', 'eggs', 'tea', 'coffee', 'sugar', 'gas', 'cylinder',
   'paneer', 'dal', 'dall', 'atta', 'flour', 'wheat', 'onion', 'onions', 'potato', 'potatoes',
   'tomato', 'tomatoes', 'trader', 'traders', 'rythu', 'bidda', 'kirana', 'grocer', 'groceries', 'grocery', 'grociers', 'grocier',
   'provision', 'provisions', 'supermarket', 'dmart', 'ration', 'bread', 'butter', 'cheese', 'ghee',
   'aloo', 'pyaz', 'mirchi', 'allam', 'vellulli', 'pappu', 'nune', 'ginger', 'garlic', 'fruits', 'fruit', 'banana', 'apple',
   'biscuit', 'biscuits', 'snacks', 'namkeen', 'sweets', 'lemon', 'pudina', 'kothimeera',
-  'mess', 'food', 'breakfast', 'lunch', 'dinner', 'plumber', 'repair', 'electrician', 'cleaning'
+  'mess', 'food', 'breakfast', 'lunch', 'dinner',
+
+  // Utilities & Bills
+  'water', 'tanker', 'electricity', 'current', 'power', 'bill', 'bills', 'eb', 'wifi', 'internet', 'recharge', 'diesel', 'petrol', 'generator',
+
+  // Staff & Labor
+  'salary', 'salaries', 'cleaner', 'cook', 'helper', 'security', 'manager', 'maid', 'sweeper', 'staff', 'wages', 'payroll',
+
+  // Maintenance & Repairs
+  'plumber', 'plumbing', 'pipe', 'tap', 'repair', 'repairs', 'carpenter', 'paint', 'painting', 'bulb', 'light', 'fan', 'switch', 'ac', 'drain', 'hardware', 'maintenance', 'electrician', 'pest', 'cctv', 'motor', 'lift', 'lock', 'keys', 'service', 'servicing',
+
+  // Cleaning & Laundry
+  'acid', 'broom', 'mop', 'soap', 'phenyl', 'harpic', 'detergent', 'cleaning', 'bleaching', 'laundry', 'washing',
+
+  // Municipal & Miscellaneous
+  'ghmc', 'garbage', 'waste', 'newspaper', 'paper', 'cable', 'dish', 'medicine', 'auto', 'transport', 'courier'
 ]);
 
 export function categorizeExpense(description: string): string {
@@ -29,16 +44,16 @@ export function categorizeExpense(description: string): string {
   if (/(?:rice|oil|vegitbale|vegetable|veggie|chicken|grocer|grocier|kirana|trader|milk|gas|cylinder|mess|food|breakfast|lunch|dinner|egg|tea|coffee|curd|tomato|onion|dall|dal|paneer|atta|flour|wheat|potato|sugar|salt|chilli|masala|bread|butter|cheese|ghee|aloo|pyaz|mirchi|allam|vellulli|pappu|nune|provision|dmart|ration|biscuit|fruit|snack|sweet|ginger|garlic|lemon)/i.test(lower)) {
     return 'Food';
   }
-  if (/(?:water|tanker|electricity|current|power|bill|eb|wifi|internet|recharge|diesel|petrol)/i.test(lower)) {
+  if (/(?:water|tanker|electricity|current|power|bill|eb|wifi|internet|recharge|diesel|petrol|generator)/i.test(lower)) {
     return 'Utilities';
   }
-  if (/(?:salary|cleaner|cook|helper|security|manager|sweep|maid|payroll|staff)/i.test(lower)) {
+  if (/(?:salary|cleaner|cook|helper|security|manager|sweep|maid|payroll|staff|wages)/i.test(lower)) {
     return 'Staff';
   }
-  if (/(?:plumber|plumbing|pipe|tap|repair|carpenter|paint|bulb|light|fan|switch|ac|drain|hardware|maintenance|electrician)/i.test(lower)) {
+  if (/(?:plumber|plumbing|pipe|tap|repair|carpenter|paint|bulb|light|fan|switch|ac|drain|hardware|maintenance|electrician|pest|cctv|motor|lift|lock|key|service)/i.test(lower)) {
     return 'Maintenance';
   }
-  if (/(?:laundry|washing|detergent|soap|acid|cleaning|broom|mop)/i.test(lower)) {
+  if (/(?:laundry|washing|detergent|soap|acid|cleaning|broom|mop|phenyl|harpic|bleach)/i.test(lower)) {
     return 'Laundry';
   }
   return 'Others';
@@ -791,15 +806,15 @@ export function parseQuickLedgerText(input: string) {
   }
 
   // 1. EXPENSES CHECK (Explicit keywords or known expense item words)
-  const isExplicitExpense = /(?:^|\b)(?:expences|expenses|expence|expense|exp)\b/.test(lower);
+  const isExplicitExpense = /(?:^|\b)(?:expences|expenses|expence|expense|exp|spent|spend|spending|paid\s+for)\b/i.test(lower);
   const words = lower.split(/[\s,]+/);
   const hasExpenseWord = words.some(w => FOOD_AND_EXPENSE_WORDS.has(w) || /^groc/i.test(w) || /^veget/i.test(w) || /^vegit/i.test(w));
-  const hasRevenueWord = /\b(?:revenue|rent|rom\s*fee|room\s*fee|romm\s*fee|fee|feee|paid|sent|adv|advance|deposit|due)\b/.test(lower);
+  const hasRevenueWord = /\b(?:revenue|rent|rom\s*fee|room\s*fee|romm\s*fee|fee|feee|paid|sent|adv|advance|deposit|due)\b/.test(lower) && !isExplicitExpense;
 
   const isExpense = isExplicitExpense || (hasExpenseWord && !hasRevenueWord);
 
   if (isExpense) {
-    const cleaned = lower.replace(/\b(?:expences|expenses|expence|expense|exp)\b/g, ' ')
+    const cleaned = lower.replace(/\b(?:expences|expenses|expence|expense|exp|spent|spend|spending|paid\s+for)\b/g, ' ')
                          .replace(/,/g, ' ')
                          .trim();
     const tokens = cleaned.split(/\s+/).filter(Boolean);
@@ -817,7 +832,8 @@ export function parseQuickLedgerText(input: string) {
           descWords.push(tokens[i]);
           i++;
         }
-        const desc = descWords.join(' ') || 'General Expense';
+        const rawDesc = descWords.join(' ').replace(/^(?:on|for)\s+/i, '').trim();
+        const desc = rawDesc || 'General Expense';
         items.push({
           amount: amt,
           description: desc.charAt(0).toUpperCase() + desc.slice(1),
@@ -834,7 +850,8 @@ export function parseQuickLedgerText(input: string) {
           if (numMatch2) {
             let amt = parseFloat(numMatch2[1]);
             if (numMatch2[2]) amt *= 1000;
-            const desc = descWords.join(' ') || 'General Expense';
+            const rawDesc = descWords.join(' ').replace(/^(?:on|for)\s+/i, '').trim();
+            const desc = rawDesc || 'General Expense';
             items.push({
               amount: amt,
               description: desc.charAt(0).toUpperCase() + desc.slice(1),
