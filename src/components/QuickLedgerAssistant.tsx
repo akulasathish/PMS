@@ -719,6 +719,18 @@ export default function QuickLedgerAssistant() {
                                         <span className="text-[11px] text-zinc-400">Individual Rent</span>
                                         <span className="text-xs font-bold text-emerald-400">₹{msg.result.monthlyRent?.toLocaleString('en-IN')}/mo</span>
                                       </div>
+                                      {msg.result.feePaid !== undefined ? (
+                                        <div className="flex justify-between items-baseline">
+                                          <span className="text-[11px] text-zinc-400">Rent Paid Now</span>
+                                          <span className="text-xs font-bold text-emerald-400 font-mono">₹{msg.result.feePaid.toLocaleString('en-IN')}</span>
+                                        </div>
+                                      ) : null}
+                                      {msg.result.monthlyRent !== undefined && msg.result.feePaid !== undefined && (msg.result.monthlyRent - msg.result.feePaid) > 0 ? (
+                                        <div className="flex justify-between items-baseline">
+                                          <span className="text-[11px] font-bold text-rose-300">Pending Rent Due</span>
+                                          <span className="text-xs font-bold text-rose-400 font-mono">₹{(msg.result.monthlyRent - msg.result.feePaid).toLocaleString('en-IN')}</span>
+                                        </div>
+                                      ) : null}
                                       {msg.result.refundableDeposit ? (
                                         <div className="flex justify-between items-baseline">
                                           <span className="text-[11px] text-zinc-400">Refundable Amount</span>

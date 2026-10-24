@@ -515,11 +515,27 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         const paymentIds: string[] = [];
         const rentPaid = Number(parsedRentPaid || 0);
 
-        if (rentPaid > 0) {
+        // Check existing payments to prevent duplicate payments on repeated updates
+        const { data: existingPayments } = await admin
+          .from('payments')
+          .select('id, allocation, amount')
+          .eq('booking_id', existingResident.id);
+
+        const existingRentPaid = (existingPayments || [])
+          .filter(p => p.allocation === 'Rent')
+          .reduce((s, p) => s + Number(p.amount || 0), 0);
+
+        const hasMaintPayment = (existingPayments || []).some(p => p.allocation === 'Maintenance Fee (Revenue)');
+        const hasDepPayment = (existingPayments || []).some(p => p.allocation === 'Security Deposit');
+
+        // Only insert rent difference if user provided rentPaid and it exceeds already recorded rent
+        const rentDifference = rentPaid > existingRentPaid ? rentPaid - existingRentPaid : (existingRentPaid === 0 ? rentPaid : 0);
+
+        if (rentDifference > 0) {
           const { data: rentPay } = await admin.from('payments').insert([{
             booking_id: existingResident.id,
             property_id: activePropertyId,
-            amount: rentPaid,
+            amount: rentDifference,
             method: 'UPI',
             payment_method: 'UPI',
             allocation: 'Rent',
@@ -528,15 +544,6 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
           }]).select('id').single();
           if (rentPay) paymentIds.push(rentPay.id);
         }
-
-        // Check existing payments to prevent duplicate payments on repeated updates
-        const { data: existingPayments } = await admin
-          .from('payments')
-          .select('id, allocation, amount')
-          .eq('booking_id', existingResident.id);
-
-        const hasMaintPayment = (existingPayments || []).some(p => p.allocation === 'Maintenance Fee (Revenue)');
-        const hasDepPayment = (existingPayments || []).some(p => p.allocation === 'Security Deposit');
 
         if (maintenanceFee > 0 && !hasMaintPayment) {
           await admin.from('incidental_charges').insert([{
@@ -574,9 +581,10 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
           if (depPay) paymentIds.push(depPay.id);
         }
 
+        const totalRentPaid = Math.max(rentPaid, existingRentPaid);
         const totalAdvance = refundableDeposit + maintenanceFee;
-        const rentStatusText = rentPaid > 0 
-          ? `Rent: ₹${effectiveMonthlyRent.toLocaleString('en-IN')}/mo (Paid: ₹${rentPaid.toLocaleString('en-IN')})` 
+        const rentStatusText = totalRentPaid > 0 
+          ? `Rent: ₹${effectiveMonthlyRent.toLocaleString('en-IN')}/mo (Paid: ₹${totalRentPaid.toLocaleString('en-IN')})` 
           : `Rent: ₹${effectiveMonthlyRent.toLocaleString('en-IN')}/mo (Due: ₹${effectiveMonthlyRent.toLocaleString('en-IN')})`;
 
         return {
@@ -588,13 +596,13 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
           advPaid: totalAdvance,
           refundableDeposit,
           maintenanceFee,
-          feePaid: rentPaid,
+          feePaid: totalRentPaid,
           dueDay: finalDueDay,
           sharing: sharing || undefined,
           checkInDate: effectiveCheckIn,
           bookingId: existingResident.id,
           paymentIds,
-          message: `Updated existing resident ${formattedName} in Room ${targetRoom.room_number}! Joined: ${effectiveCheckIn} • ${rentStatusText} • Maintenance: ₹${maintenanceFee.toLocaleString('en-IN')} • Refundable: ₹${refundableDeposit.toLocaleString('en-IN')}.`
+          message: `Updated existing resident ${formattedName} in Room ${targetRoom.room_number}! Joined: ${effectiveCheckIn} • ${rentStatusText} • Maintenance: ₹${maintenanceFee.toLocaleString('en-IN')} (Paid) • Refundable: ₹${refundableDeposit.toLocaleString('en-IN')}.`
         };
       }
 
