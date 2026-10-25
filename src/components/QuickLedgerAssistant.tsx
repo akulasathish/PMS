@@ -1036,6 +1036,29 @@ export default function QuickLedgerAssistant() {
                                   </div>
                                 </div>
 
+                                {/* Month-by-Month Breakdown (if multi-month) */}
+                                {msg.result.tenantReport.monthBreakdown && msg.result.tenantReport.monthBreakdown.length > 1 ? (
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider px-1">Month-by-Month Rent Breakdown</div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                      {msg.result.tenantReport.monthBreakdown.map((m, idx) => (
+                                        <div key={idx} className="bg-black/30 rounded-lg p-2 border border-white/5 flex items-center justify-between text-[11px]">
+                                          <div>
+                                            <div className="font-semibold text-zinc-200">{m.month}</div>
+                                            <div className="text-[10px] text-zinc-400 font-mono">Rent: ₹{m.rentCharged.toLocaleString('en-IN')}</div>
+                                          </div>
+                                          <div className="text-right">
+                                            <div className="font-bold text-emerald-400 font-mono">₹{m.rentPaid.toLocaleString('en-IN')} Paid</div>
+                                            <span className={`text-[10px] font-semibold px-1 rounded ${m.due > 0 ? 'text-rose-400 bg-rose-500/10' : 'text-emerald-400 bg-emerald-500/10'}`}>
+                                              {m.status}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ) : null}
+
                                 {/* Recent Payments History */}
                                 {msg.result.tenantReport.payments && msg.result.tenantReport.payments.length > 0 ? (
                                   <div className="space-y-1.5">
@@ -1045,6 +1068,7 @@ export default function QuickLedgerAssistant() {
                                         <div key={p.id || idx} className="bg-black/30 rounded-lg p-2 border border-white/5 flex items-center justify-between text-[11px]">
                                           <div>
                                             <span className="font-semibold text-zinc-200">{p.allocation}</span>
+                                            {p.billingPeriod ? <span className="text-[10px] text-amber-300 ml-1.5 font-medium">({p.billingPeriod})</span> : null}
                                             <span className="text-[10px] text-zinc-500 ml-2 font-mono">{p.date} • {p.method}</span>
                                           </div>
                                           <span className="font-bold text-emerald-400 font-mono">₹{p.amount.toLocaleString('en-IN')}</span>

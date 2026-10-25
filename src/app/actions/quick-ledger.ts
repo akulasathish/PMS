@@ -19,6 +19,15 @@ export interface QuickLedgerPaymentRecord {
   allocation: string;
   method: string;
   date: string;
+  billingPeriod?: string;
+}
+
+export interface QuickLedgerMonthBreakdown {
+  month: string;
+  rentCharged: number;
+  rentPaid: number;
+  due: number;
+  status: string;
 }
 
 export interface QuickLedgerTenantReport {
@@ -28,6 +37,7 @@ export interface QuickLedgerTenantReport {
   checkInDate: string;
   dueDay: number;
   monthlyRent: number;
+  totalAccruedRent?: number;
   totalRentPaid: number;
   pendingRentDue: number;
   refundableDeposit: number;
@@ -35,6 +45,7 @@ export interface QuickLedgerTenantReport {
   maintenanceFee: number;
   maintenancePaid: number;
   totalPaidOverall: number;
+  monthBreakdown?: QuickLedgerMonthBreakdown[];
   payments: QuickLedgerPaymentRecord[];
 }
 
@@ -161,7 +172,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
           .eq('property_id', activePropertyId),
         admin
           .from('payments')
-          .select('booking_id, amount, allocation, is_void')
+          .select('booking_id, amount, allocation, is_void, billing_period, business_date, created_at, transaction_id')
           .eq('property_id', activePropertyId),
         admin
           .from('incidental_charges')
@@ -208,7 +219,25 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         const roomDisp = roomMap.get(b.room_id) || 'Unknown';
         const monthlyRent = Number(b.monthly_rent || b.monthly_rate || (b.is_monthly ? 0 : b.total_amount) || 0);
         const incAmt = incidentalsByBooking.get(b.id) || 0;
-        const totalCharged = monthlyRent + incAmt;
+
+        // For monthly bookings, count distinct billing periods / months with rent payments
+        const isMaint = (p: any) =>
+          ((p.allocation as string | null) && ((p.allocation as string).toLowerCase().includes('maint') || (p.allocation as string).toLowerCase().includes('maintenance'))) ||
+          (p.transaction_id && p.transaction_id.toLowerCase().includes('maint'));
+        const isDep = (p: any) =>
+          ((p.allocation as string | null) && ((p.allocation as string).toLowerCase().includes('deposit') || (p.allocation as string).toLowerCase().includes('refundable') || (p.allocation as string).toLowerCase().includes('security'))) ||
+          (p.transaction_id && p.transaction_id.toLowerCase().includes('deposit'));
+        const isRent = (p: any) => !isMaint(p) && !isDep(p);
+
+        const bRentPayments = payments.filter(p => !p.is_void && p.booking_id === b.id && isRent(p));
+        const distinctMonths = new Set<string>();
+        for (const p of bRentPayments) {
+          const mKey = p.billing_period || (p.business_date ? p.business_date.slice(0, 7) : null);
+          if (mKey) distinctMonths.add(mKey);
+        }
+        const monthsCount = Math.max(1, distinctMonths.size);
+        const totalRentCharged = b.is_monthly ? monthlyRent * monthsCount : monthlyRent;
+        const totalCharged = totalRentCharged + incAmt;
         const rentPaid = rentPaymentsByBooking.get(b.id) || 0;
         const due = Math.max(0, totalCharged - rentPaid);
         const checkInDay = b.check_in ? parseInt(b.check_in.split('-')[2], 10) : 1;
@@ -310,7 +339,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       const [paymentsRes, incidentalsRes] = await Promise.all([
         admin
           .from('payments')
-          .select('id, amount, allocation, transaction_id, payment_method, method, business_date, created_at, is_void')
+          .select('id, amount, allocation, transaction_id, billing_period, payment_method, method, business_date, created_at, is_void')
           .eq('booking_id', matchedBooking.id)
           .order('created_at', { ascending: false }),
         admin
@@ -336,7 +365,57 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       const monthlyRent = Number(matchedBooking.monthly_rent || matchedBooking.monthly_rate || 8000);
       const rentPayments = validPayments.filter(isRentPayment);
       const totalRentPaid = rentPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
-      const pendingRentDue = Math.max(0, monthlyRent - totalRentPaid);
+
+      // Multi-month breakdown calculation
+      const mNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+      const getPaymentMonth = (p: any): string => {
+        if (p.billing_period) return p.billing_period;
+        const d = p.business_date || p.created_at?.slice(0, 10);
+        if (d) {
+          const parts = d.split('-');
+          if (parts.length >= 2) {
+            const idx = parseInt(parts[1], 10) - 1;
+            if (idx >= 0 && idx < 12) return `${mNames[idx]} ${parts[0]}`;
+          }
+        }
+        return 'Current Period';
+      };
+
+      const rentByMonth = new Map<string, number>();
+      for (const p of rentPayments) {
+        const mKey = getPaymentMonth(p);
+        rentByMonth.set(mKey, (rentByMonth.get(mKey) || 0) + Number(p.amount || 0));
+      }
+
+      const monthBreakdown: QuickLedgerMonthBreakdown[] = [];
+      let totalAccruedRent = 0;
+      let pendingRentDue = 0;
+
+      if (rentByMonth.size > 1) {
+        for (const [mName, mPaid] of rentByMonth.entries()) {
+          const mDue = Math.max(0, monthlyRent - mPaid);
+          totalAccruedRent += monthlyRent;
+          pendingRentDue += mDue;
+          monthBreakdown.push({
+            month: mName,
+            rentCharged: monthlyRent,
+            rentPaid: mPaid,
+            due: mDue,
+            status: mDue > 0 ? `₹${mDue.toLocaleString('en-IN')} Due` : 'Fully Cleared'
+          });
+        }
+      } else {
+        totalAccruedRent = monthlyRent;
+        pendingRentDue = Math.max(0, monthlyRent - totalRentPaid);
+        const singleMonth = rentByMonth.keys().next().value || 'Current Month';
+        monthBreakdown.push({
+          month: singleMonth,
+          rentCharged: monthlyRent,
+          rentPaid: totalRentPaid,
+          due: pendingRentDue,
+          status: pendingRentDue > 0 ? `₹${pendingRentDue.toLocaleString('en-IN')} Due` : 'Fully Cleared'
+        });
+      }
 
       const refundableDeposit = Number(matchedBooking.security_deposit || 0);
       const depositPayments = validPayments.filter(isDepositPayment);
@@ -358,7 +437,8 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         amount: Number(p.amount || 0),
         allocation: isDepositPayment(p) ? 'Security Deposit' : isMaintPayment(p) ? 'Maintenance Fee' : 'Rent',
         method: p.payment_method || p.method || 'UPI',
-        date: p.business_date || p.created_at?.slice(0, 10) || ''
+        date: p.business_date || p.created_at?.slice(0, 10) || '',
+        billingPeriod: p.billing_period || undefined
       }));
 
       const report: QuickLedgerTenantReport = {
@@ -368,6 +448,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         checkInDate: matchedBooking.check_in || '',
         dueDay,
         monthlyRent,
+        totalAccruedRent,
         totalRentPaid,
         pendingRentDue,
         refundableDeposit,
@@ -375,17 +456,21 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         maintenanceFee,
         maintenancePaid,
         totalPaidOverall,
+        monthBreakdown,
         payments: paymentsList
       };
 
       const rentStatusStr = pendingRentDue > 0 ? `₹${pendingRentDue.toLocaleString('en-IN')} Due` : 'Fully Cleared';
       const maintStr = maintenanceFee > 0 ? ` • Maintenance Paid: ₹${maintenancePaid.toLocaleString('en-IN')}` : '';
+      const breakdownSummary = monthBreakdown.length > 1
+        ? ` • Month Breakdown: ${monthBreakdown.map(m => `${m.month.split(' ')[0]}: ₹${m.rentPaid.toLocaleString('en-IN')} Paid (${m.status})`).join(' | ')}`
+        : '';
 
       return {
         success: true,
         type: 'tenant_report',
         tenantReport: report,
-        message: `Statement for ${matchedBooking.guest_name} (Room ${roomDisp}): Monthly Rent: ₹${monthlyRent.toLocaleString('en-IN')}/mo • Rent Paid: ₹${totalRentPaid.toLocaleString('en-IN')} (${rentStatusStr}) • Deposit Paid: ₹${depositPaid.toLocaleString('en-IN')}${maintStr} • Total Paid Till Date: ₹${totalPaidOverall.toLocaleString('en-IN')}.`
+        message: `Statement for ${matchedBooking.guest_name} (Room ${roomDisp}): Monthly Rent: ₹${monthlyRent.toLocaleString('en-IN')}/mo${breakdownSummary} • Total Rent Paid: ₹${totalRentPaid.toLocaleString('en-IN')} (${rentStatusStr}) • Deposit Paid: ₹${depositPaid.toLocaleString('en-IN')}${maintStr} • Total Paid Till Date: ₹${totalPaidOverall.toLocaleString('en-IN')}.`
       };
     }
 
@@ -1756,9 +1841,20 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         .filter(p => p.allocation === 'Rent')
         .reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
-      // Recalculate remaining due
+      // Recalculate remaining due taking into account distinct billing months
+      const distinctMonths = new Set<string>();
+      for (const p of [...validPayments, ...paymentRows]) {
+        if (p.allocation === 'Rent' || !p.allocation) {
+          const mKey = p.billing_period || (p.business_date ? p.business_date.slice(0, 7) : null);
+          if (mKey) distinctMonths.add(mKey);
+        }
+      }
+      const monthsCount = Math.max(1, distinctMonths.size);
+      const totalRentOwed = matchedBooking.is_monthly
+        ? Number(matchedBooking.monthly_rent || matchedBooking.monthly_rate || 0) * monthsCount
+        : baseRoomCharge;
       const newRentPaid = rentPaidBeforeThis + totalRentRecorded;
-      const newBalanceDue = Math.max(0, (baseRoomCharge + incidentalsSum) - newRentPaid);
+      const newBalanceDue = Math.max(0, (totalRentOwed + incidentalsSum) - newRentPaid);
 
       return {
         success: true,

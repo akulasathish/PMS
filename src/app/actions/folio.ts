@@ -288,10 +288,17 @@ export async function getFolioSummary(bookingId: string) {
 
   if (booking.is_monthly) {
     // 1. Room Rent Ledger
-    roomRentRate = Number((booking as any).monthly_rent || (booking as any).monthly_rate || roomAmount);
-    roomRentPaid = payments
-      .filter(item => !item.is_void && (item.allocation === 'Rent' || (!item.allocation && !item.transaction_id?.toLowerCase().includes('maint') && !item.transaction_id?.toLowerCase().includes('deposit'))))
-      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const monthlyRate = Number((booking as any).monthly_rent || (booking as any).monthly_rate || roomAmount);
+    const validRentPayments = payments
+      .filter(item => !item.is_void && (item.allocation === 'Rent' || (!item.allocation && !item.transaction_id?.toLowerCase().includes('maint') && !item.transaction_id?.toLowerCase().includes('deposit'))));
+    const distinctMonths = new Set<string>();
+    for (const p of validRentPayments) {
+      const mKey = p.billing_period || (p.business_date ? p.business_date.slice(0, 7) : null);
+      if (mKey) distinctMonths.add(mKey);
+    }
+    const monthsCount = Math.max(1, distinctMonths.size);
+    roomRentRate = monthlyRate * monthsCount;
+    roomRentPaid = validRentPayments.reduce((sum, item) => sum + Number(item.amount || 0), 0);
 
     // 2. Maintenance Fee Ledger
     const maintChargesList = incidentals.filter(
