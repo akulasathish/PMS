@@ -272,6 +272,14 @@ export async function getFolioSummary(bookingId: string) {
     : payments?.reduce((sum, item) => sum + Number(item.amount), 0) || 0;
   const balanceDue = totalCharges - totalPayments;
 
+  // Fetch current business_date from app_settings
+  const { data: settings } = await supabaseAdmin
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'business_date')
+    .single();
+  const activeBusinessDate = settings?.value || getTodayLocalYYYYMMDD();
+
   // Compute separate ledgers for monthly/co-living bookings (3 distinct ledgers: Room Rent, Maintenance Fee, Refundable Fee)
   let securityDepositRequired = 0;
   let securityDepositPaid = 0;
@@ -286,19 +294,85 @@ export async function getFolioSummary(bookingId: string) {
   let maintenanceDue = 0;
   let totalOutstanding = balanceDue;
 
+  let monthlyRentRate = roomAmount;
+  let currentMonthRentPaid = 0;
+  let currentMonthRentDue = 0;
+  let previousOverdueRent = 0;
+  let lifetimeRentPaid = 0;
+  let totalPaidTillDate = 0;
+  const monthBreakdown: Array<{
+    month: string;
+    rentCharged: number;
+    rentPaid: number;
+    due: number;
+    status: string;
+  }> = [];
+
   if (booking.is_monthly) {
     // 1. Room Rent Ledger
     const monthlyRate = Number((booking as any).monthly_rent || (booking as any).monthly_rate || roomAmount);
+    monthlyRentRate = monthlyRate;
+
     const validRentPayments = payments
       .filter(item => !item.is_void && (item.allocation === 'Rent' || (!item.allocation && !item.transaction_id?.toLowerCase().includes('maint') && !item.transaction_id?.toLowerCase().includes('deposit'))));
-    const distinctMonths = new Set<string>();
+
+    const mNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const getPaymentMonth = (p: any): string => {
+      if (p.billing_period) return p.billing_period;
+      const d = p.business_date || p.created_at?.slice(0, 10);
+      if (d) {
+        const parts = d.split('-');
+        if (parts.length >= 2) {
+          const idx = parseInt(parts[1], 10) - 1;
+          if (idx >= 0 && idx < 12) return `${mNames[idx]} ${parts[0]}`;
+        }
+      }
+      return 'Current Period';
+    };
+
+    const rentByMonth = new Map<string, number>();
     for (const p of validRentPayments) {
-      const mKey = p.billing_period || (p.business_date ? p.business_date.slice(0, 7) : null);
-      if (mKey) distinctMonths.add(mKey);
+      const mKey = getPaymentMonth(p);
+      rentByMonth.set(mKey, (rentByMonth.get(mKey) || 0) + Number(p.amount || 0));
     }
-    const monthsCount = Math.max(1, distinctMonths.size);
-    roomRentRate = monthlyRate * monthsCount;
-    roomRentPaid = validRentPayments.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+    const [actYr, actMo] = activeBusinessDate.split('-');
+    const currentMonthKey = `${mNames[parseInt(actMo, 10) - 1]} ${actYr}`;
+
+    lifetimeRentPaid = validRentPayments.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    currentMonthRentPaid = rentByMonth.get(currentMonthKey) || 0;
+    currentMonthRentDue = Math.max(0, monthlyRate - currentMonthRentPaid);
+
+    for (const [mName, mPaid] of rentByMonth.entries()) {
+      const mDue = Math.max(0, monthlyRate - mPaid);
+      if (mName !== currentMonthKey) {
+        previousOverdueRent += mDue;
+      }
+      monthBreakdown.push({
+        month: mName,
+        rentCharged: monthlyRate,
+        rentPaid: mPaid,
+        due: mDue,
+        status: mDue > 0 ? `₹${mDue.toLocaleString('en-IN')} Due` : 'Cleared'
+      });
+    }
+
+    if (!rentByMonth.has(currentMonthKey) && rentByMonth.size > 0) {
+      const [bYr, bMo, bDay] = (booking.check_in || activeBusinessDate).split('-').map(Number);
+      const dueDay = (booking as any).rent_due_day || bDay || 1;
+      const todayDay = parseInt(activeBusinessDate.split('-')[2], 10);
+      if (todayDay >= dueDay) {
+        currentMonthRentDue = monthlyRate;
+      } else {
+        currentMonthRentDue = 0;
+      }
+    }
+
+    // In the Room Rent Card:
+    // Display monthly rate (e.g. ₹7,000) and current month payment (e.g. ₹7,000)
+    roomRentRate = monthlyRate;
+    roomRentPaid = currentMonthRentPaid > 0 ? currentMonthRentPaid : (previousOverdueRent === 0 ? lifetimeRentPaid : 0);
+    roomRentDue = currentMonthRentDue + previousOverdueRent;
 
     // 2. Maintenance Fee Ledger
     const maintChargesList = incidentals.filter(
@@ -342,7 +416,8 @@ export async function getFolioSummary(bookingId: string) {
       roomRentPaid = roomRentRate + surplusRent;
     }
 
-    roomRentDue = Math.max(0, roomRentRate - roomRentPaid);
+    currentMonthRentDue = Math.max(0, roomRentRate - roomRentPaid);
+    roomRentDue = currentMonthRentDue + previousOverdueRent;
     maintenanceDue = Math.max(0, expectedMaintenance - maintenancePaid);
     securityDepositDue = Math.max(0, securityDepositRequired - securityDepositPaid);
     totalOutstanding = roomRentDue + maintenanceDue + securityDepositDue;
@@ -417,14 +492,6 @@ export async function getFolioSummary(bookingId: string) {
     }
   }
 
-  // Fetch current business_date from app_settings to default the payment logging date
-  const { data: settings } = await supabaseAdmin
-    .from('app_settings')
-    .select('value')
-    .eq('key', 'business_date')
-    .single();
-  const activeBusinessDate = settings?.value || getTodayLocalYYYYMMDD();
-
   return {
     success: true,
     data: {
@@ -465,6 +532,13 @@ export async function getFolioSummary(bookingId: string) {
       roomRentRate,
       roomRentPaid,
       roomRentDue,
+      monthlyRentRate,
+      currentMonthRentPaid,
+      currentMonthRentDue,
+      previousOverdueRent,
+      lifetimeRentPaid,
+      totalPaidTillDate: booking.is_monthly ? payments?.filter(p => !p.is_void)?.reduce((sum, item) => sum + Number(item.amount || 0), 0) || 0 : totalPayments,
+      monthBreakdown,
       expectedMaintenance,
       maintenancePaid,
       maintenanceDue,

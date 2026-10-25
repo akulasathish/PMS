@@ -696,17 +696,23 @@ export function FolioModal({ bookingId, propertyId, propertyCategory, guestName,
                           </span>
                           <div className="mt-4 space-y-2">
                             <div className="flex justify-between text-xs">
-                              <span className="text-zinc-500">Rate / Charged:</span>
-                              <span className="font-mono text-zinc-300">₹{Number(folio.roomRentRate || folio.rentChargesSum || 0).toFixed(2)}</span>
+                              <span className="text-zinc-500">Monthly Rent:</span>
+                              <span className="font-mono text-zinc-300">₹{Number(folio.monthlyRentRate || folio.roomRentRate || folio.rentChargesSum || 0).toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between text-xs">
                               <span className="text-zinc-500">Rent Paid:</span>
-                              <span className="font-mono text-emerald-400">₹{Number(folio.roomRentPaid || folio.rentPaid || 0).toFixed(2)}</span>
+                              <span className="font-mono text-emerald-400">₹{Number(folio.currentMonthRentPaid ?? folio.roomRentPaid ?? 0).toFixed(2)}</span>
                             </div>
+                            {Number(folio.previousOverdueRent || 0) > 0 && (
+                              <div className="flex justify-between text-xs">
+                                <span className="text-amber-400">Previous Overdue:</span>
+                                <span className="font-mono text-amber-400 font-bold">₹{Number(folio.previousOverdueRent).toFixed(2)}</span>
+                              </div>
+                            )}
                             <div className="h-px bg-white/5 my-1" />
                             <div className="flex justify-between text-sm font-bold">
                               <span className="text-white">Rent Due:</span>
-                              <span className="font-mono text-emerald-400">
+                              <span className={`font-mono ${Number(folio.roomRentDue || 0) > 0 ? 'text-rose-400 font-black' : 'text-emerald-400'}`}>
                                 ₹{Number(folio.roomRentDue ?? Math.max(0, (folio.roomRentRate || 0) - (folio.roomRentPaid || 0))).toFixed(2)}
                               </span>
                             </div>
@@ -1099,6 +1105,50 @@ export function FolioModal({ bookingId, propertyId, propertyCategory, guestName,
                       </div>
                       
                     </div>
+
+                    {folio?.isMonthly && (
+                      <div className="mt-6 pt-6 border-t border-white/10 space-y-4">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-black/40 rounded-2xl p-4 border border-white/10">
+                          <div>
+                            <div className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider">Tenant Lifetime Settlement Summary</div>
+                            <div className="text-xs text-zinc-400 mt-1">
+                              Lifetime Rent Paid: <span className="font-mono text-emerald-400 font-bold">₹{Number(folio.lifetimeRentPaid || folio.totalPayments || 0).toFixed(2)}</span>
+                              {folio.securityDepositPaid ? <> • Deposit: <span className="font-mono text-indigo-400 font-bold">₹{Number(folio.securityDepositPaid || 0).toFixed(2)}</span></> : null}
+                              {folio.maintenancePaid ? <> • Maint: <span className="font-mono text-amber-400 font-bold">₹{Number(folio.maintenancePaid || 0).toFixed(2)}</span></> : null}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider">Total Paid Till Date</div>
+                            <div className="text-base sm:text-lg font-black text-cyan-300 font-mono">
+                              ₹{Number(folio.totalPaidTillDate || folio.totalPayments || 0).toFixed(2)}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Month-by-Month Breakdown (if multi-month) */}
+                        {folio.monthBreakdown && folio.monthBreakdown.length > 1 && (
+                          <div className="space-y-2">
+                            <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider px-1">Month-by-Month Rent Breakdown</div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                              {folio.monthBreakdown.map((m: any, idx: number) => (
+                                <div key={idx} className="bg-black/30 rounded-xl p-3 border border-white/5 flex items-center justify-between text-xs">
+                                  <div>
+                                    <div className="font-bold text-white">{m.month}</div>
+                                    <div className="text-[10px] text-zinc-500 font-mono">Rate: ₹{Number(m.rentCharged).toFixed(2)}</div>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="font-bold text-emerald-400 font-mono">₹{Number(m.rentPaid).toFixed(2)} Paid</div>
+                                    <div className={`text-[10px] font-bold ${m.due > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                                      {m.due > 0 ? `₹${Number(m.due).toFixed(2)} Due` : 'Cleared'}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </motion.div>
                 )}
 
