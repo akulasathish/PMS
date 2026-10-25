@@ -806,6 +806,11 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         const rentDifference = rentPaid > existingRentPaid ? rentPaid - existingRentPaid : (existingRentPaid === 0 ? rentPaid : 0);
 
         if (rentDifference > 0) {
+          const [pYr, pMo] = effectiveCheckIn.split('-');
+          const monthNamesList = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+          const mIdx = parseInt(pMo, 10) - 1;
+          const updateBillingPeriod = (mIdx >= 0 && mIdx < 12) ? `${monthNamesList[mIdx]} ${pYr}` : null;
+
           const { data: rentPay } = await admin.from('payments').insert([{
             booking_id: existingResident.id,
             property_id: activePropertyId,
@@ -813,6 +818,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
             method: 'UPI',
             payment_method: 'UPI',
             allocation: 'Rent',
+            billing_period: updateBillingPeriod,
             transaction_id: 'RENT-PAID-AT-UPDATE',
             business_date: effectiveCheckIn
           }]).select('id').single();
@@ -1121,6 +1127,12 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       // 6c. If monthly rent was paid at admission, record rent payment
       const rentPaid = Number(parsedRentPaid || 0);
       if (rentPaid > 0) {
+        const payDate = (parsed as any).rentPaymentDate || effectiveCheckIn;
+        const [pYr, pMo] = payDate.split('-');
+        const monthNamesList = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        const mIdx = parseInt(pMo, 10) - 1;
+        const admissionBillingPeriod = (mIdx >= 0 && mIdx < 12) ? `${monthNamesList[mIdx]} ${pYr}` : null;
+
         const { data: rentPay } = await admin
           .from('payments')
           .insert([{
@@ -1130,8 +1142,9 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
             method: 'UPI',
             payment_method: 'UPI',
             allocation: 'Rent',
+            billing_period: admissionBillingPeriod,
             transaction_id: 'RENT-PAID-AT-ADMISSION',
-            business_date: (parsed as any).rentPaymentDate || effectiveCheckIn
+            business_date: payDate
           }])
           .select('id')
           .single();
@@ -1761,6 +1774,11 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
 
       // 1. Standard Room Fee payment (if no multi-month breakdown)
       if (feeAmount > 0 && (!parsedMonthPayments || parsedMonthPayments.length === 0)) {
+        const [payYr, payMo] = effectivePaymentDate.split('-');
+        const monthNamesList = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        const mIdx = parseInt(payMo, 10) - 1;
+        const autoBillingPeriod = (mIdx >= 0 && mIdx < 12) ? `${monthNamesList[mIdx]} ${payYr}` : undefined;
+
         paymentRows.push({
           booking_id: matchedBooking.id,
           property_id: activePropertyId,
@@ -1768,6 +1786,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
           method: 'UPI',
           payment_method: 'UPI',
           allocation: 'Rent',
+          billing_period: autoBillingPeriod,
           business_date: effectivePaymentDate,
           transaction_id: 'QUICK-LEDGER-FEE'
         });
