@@ -235,13 +235,33 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
           const mKey = p.billing_period || (p.business_date ? p.business_date.slice(0, 7) : null);
           if (mKey) distinctMonths.add(mKey);
         }
+
+        const checkInDay = b.check_in ? parseInt(b.check_in.split('-')[2], 10) : 1;
+        const dueDay = (b as any).rent_due_day || (b as any).billing_cycle_date || checkInDay;
+        const todayDay = parseInt(businessDate.split('-')[2], 10);
+
+        // Check if current month cycle has kicked in and is unpaid
+        const [actYr, actMo] = businessDate.split('-');
+        const monthNamesList = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        const currentMonthName = monthNamesList[parseInt(actMo, 10) - 1];
+        const currentMonthKey = `${currentMonthName} ${actYr}`;
+        const hasPaidCurrentMonth = Array.from(distinctMonths).some(
+          m => m.toLowerCase().includes(currentMonthName.toLowerCase()) || m.startsWith(businessDate.slice(0, 7))
+        );
+
+        if (!hasPaidCurrentMonth && b.check_in) {
+          const isBeforeCurrentMonth = b.check_in.slice(0, 7) < businessDate.slice(0, 7);
+          const isDueDayReached = todayDay >= dueDay;
+          if (isBeforeCurrentMonth && isDueDayReached) {
+            distinctMonths.add(currentMonthKey);
+          }
+        }
+
         const monthsCount = Math.max(1, distinctMonths.size);
         const totalRentCharged = b.is_monthly ? monthlyRent * monthsCount : monthlyRent;
         const totalCharged = totalRentCharged + incAmt;
         const rentPaid = rentPaymentsByBooking.get(b.id) || 0;
         const due = Math.max(0, totalCharged - rentPaid);
-        const checkInDay = b.check_in ? parseInt(b.check_in.split('-')[2], 10) : 1;
-        const dueDay = (b as any).rent_due_day || (b as any).billing_cycle_date || checkInDay;
 
         if (due > 0.01) {
           duesList.push({

@@ -388,8 +388,11 @@ export async function getFolioSummary(bookingId: string) {
 
     // In the Room Rent Card:
     // Display monthly rate (e.g. ₹7,000) and current month payment (e.g. ₹7,000)
+    const isCheckedInThisMonth = (booking.check_in || '').startsWith(activeBusinessDate.slice(0, 7));
     roomRentRate = monthlyRate;
-    roomRentPaid = currentMonthRentPaid > 0 ? currentMonthRentPaid : (previousOverdueRent === 0 ? lifetimeRentPaid : 0);
+    roomRentPaid = currentMonthRentPaid > 0 
+      ? currentMonthRentPaid 
+      : (isCheckedInThisMonth && previousOverdueRent === 0 ? lifetimeRentPaid : 0);
     roomRentDue = currentMonthRentDue + previousOverdueRent;
 
     // 2. Maintenance Fee Ledger
