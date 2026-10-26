@@ -1125,8 +1125,8 @@ export function FolioModal({ bookingId, propertyId, propertyCategory, guestName,
                           </div>
                         </div>
 
-                        {/* Month-by-Month Breakdown (if multi-month) */}
-                        {folio.monthBreakdown && folio.monthBreakdown.length > 1 && (
+                        {/* Month-by-Month Breakdown (if monthly) */}
+                        {folio.monthBreakdown && folio.monthBreakdown.length > 0 && (
                           <div className="space-y-2">
                             <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider px-1">Month-by-Month Rent Breakdown</div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
@@ -1320,51 +1320,66 @@ export function FolioModal({ bookingId, propertyId, propertyCategory, guestName,
                             {paymentAllocation === 'Rent' && (
                               <div className="space-y-1.5">
                                 <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">Billing Cycle Period</label>
-                                <select 
-                                  name="billingPeriod" 
-                                  className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all appearance-none cursor-pointer"
-                                >
-                                  <option value="">Not Applicable / General Rent</option>
-                                  {(() => {
-                                    const checkInStr = folio?.checkIn;
-                                    const busDateStr = folio?.businessDate || getTodayLocalYYYYMMDD();
-                                    if (!checkInStr) return null;
+                                {(() => {
+                                  const checkInStr = folio?.checkIn;
+                                  const busDateStr = folio?.businessDate || getTodayLocalYYYYMMDD();
+                                  if (!checkInStr) return null;
 
-                                    const base = new Date(checkInStr);
-                                    const currentBusiness = new Date(busDateStr);
-                                    
-                                    const options = [];
-                                    // Generate 4 cycles: past, current, and upcoming
-                                    for (let i = -1; i <= 2; i++) {
-                                      const start = new Date(base);
-                                      start.setMonth(base.getMonth() + i);
-                                      const end = new Date(base);
-                                      end.setMonth(base.getMonth() + i + 1);
+                                  const base = new Date(checkInStr);
+                                  const currentBusiness = new Date(busDateStr);
 
-                                      // Format as DD MMM YYYY
-                                      const startFormatted = start.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-                                      const endFormatted = end.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-                                      const periodVal = `${startFormatted} to ${endFormatted}`;
+                                  // Calculate month offset between check-in and active business date
+                                  const monthsDiff = (currentBusiness.getFullYear() - base.getFullYear()) * 12 + (currentBusiness.getMonth() - base.getMonth());
+                                  const minOffset = Math.min(0, monthsDiff - 1);
+                                  const maxOffset = Math.max(monthsDiff + 2, 2);
 
-                                      // Determine tag relative to current business date
-                                      let tag = "";
-                                      if (currentBusiness >= start && currentBusiness < end) {
-                                        tag = " (Current Cycle)";
-                                      } else if (currentBusiness >= end) {
-                                        tag = " (Past Cycle)";
-                                      } else if (currentBusiness < start) {
-                                        tag = " (Upcoming Cycle)";
-                                      }
+                                  const cycleOptions: { value: string; label: string }[] = [];
+                                  let defaultCycleVal = "";
 
-                                      options.push(
-                                        <option key={i} value={periodVal}>
-                                          {periodVal}{tag}
-                                        </option>
-                                      );
+                                  for (let i = minOffset; i <= maxOffset; i++) {
+                                    const start = new Date(base);
+                                    start.setMonth(base.getMonth() + i);
+                                    const end = new Date(base);
+                                    end.setMonth(base.getMonth() + i + 1);
+
+                                    // Format as DD MMM YYYY
+                                    const startFormatted = start.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                                    const endFormatted = end.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                                    const periodVal = `${startFormatted} to ${endFormatted}`;
+
+                                    // Determine tag relative to current business date
+                                    let tag = "";
+                                    const isCurrent = currentBusiness >= start && currentBusiness < end;
+                                    if (isCurrent) {
+                                      tag = " (Current Cycle)";
+                                      defaultCycleVal = periodVal;
+                                    } else if (currentBusiness >= end) {
+                                      tag = " (Past Cycle)";
+                                    } else if (currentBusiness < start) {
+                                      tag = " (Upcoming Cycle)";
                                     }
-                                    return options;
-                                  })()}
-                                </select>
+
+                                    cycleOptions.push({
+                                      value: periodVal,
+                                      label: `${periodVal}${tag}`
+                                    });
+                                  }
+
+                                  return (
+                                    <select 
+                                      name="billingPeriod" 
+                                      defaultValue={defaultCycleVal}
+                                      className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all appearance-none cursor-pointer"
+                                    >
+                                      <option value="">Not Applicable / General Rent</option>
+                                      {cycleOptions.map((opt, idx) => (
+                                        <option key={idx} value={opt.value}>
+                                          {opt.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  );
+                                })()}
                               </div>
                             )}
                           </div>

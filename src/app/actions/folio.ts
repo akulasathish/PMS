@@ -320,6 +320,10 @@ export async function getFolioSummary(bookingId: string) {
     const mNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     const getPaymentMonth = (p: any): string => {
       if (p.billing_period) {
+        const m = p.billing_period.match(/\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember))\b.*?\b(20\d{2})\b/i);
+        if (m) {
+          return `${normalizeMonthName(m[1])} ${m[2]}`;
+        }
         const parts = p.billing_period.trim().split(/\s+/);
         if (parts.length === 2) {
           return `${normalizeMonthName(parts[0])} ${parts[1]}`;
@@ -364,7 +368,7 @@ export async function getFolioSummary(bookingId: string) {
       });
     }
 
-    if (!rentByMonth.has(currentMonthKey) && rentByMonth.size > 0) {
+    if (!rentByMonth.has(currentMonthKey)) {
       const [bYr, bMo, bDay] = (booking.check_in || activeBusinessDate).split('-').map(Number);
       const dueDay = (booking as any).rent_due_day || bDay || 1;
       const todayDay = parseInt(activeBusinessDate.split('-')[2], 10);
@@ -373,6 +377,13 @@ export async function getFolioSummary(bookingId: string) {
       } else {
         currentMonthRentDue = 0;
       }
+      monthBreakdown.push({
+        month: currentMonthKey,
+        rentCharged: monthlyRate,
+        rentPaid: 0,
+        due: currentMonthRentDue,
+        status: currentMonthRentDue > 0 ? `₹${currentMonthRentDue.toLocaleString('en-IN')} Due` : 'Cleared'
+      });
     }
 
     // In the Room Rent Card:
