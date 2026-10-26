@@ -80,10 +80,28 @@ export const isNoiseToken = (w: string): boolean => {
   if (/^(?:r+e+n+t+|ent|ren|rnt|reent|rrent|remt)$/i.test(lw)) return true;
   if (/^(?:f+e+|feee)$/i.test(lw)) return true;
   if (/^(?:he|she|they|having|has|had|have|his|her|their|him|them|update|accordingly|accorgingly)$/i.test(lw)) return true;
+  if (/^(?:cleared?|clear|settled?|settle|balance|due|dues|overdue|pending)$/i.test(lw)) return true;
   if (/^\d+(?:st|nd|rd|th)?$/i.test(lw)) return true;
   if (lw.startsWith('maint') || lw.startsWith('ment') || lw.startsWith('refun') || lw.startsWith('paym') || lw.startsWith('payn')) return true;
   return false;
 };
+
+export function normalizeMonthName(m: string): string {
+  const lm = m.toLowerCase().trim();
+  if (lm.startsWith('jan')) return 'January';
+  if (lm.startsWith('feb')) return 'February';
+  if (lm.startsWith('mar')) return 'March';
+  if (lm.startsWith('apr')) return 'April';
+  if (lm === 'may') return 'May';
+  if (lm.startsWith('jun')) return 'June';
+  if (lm.startsWith('jul')) return 'July';
+  if (lm.startsWith('aug')) return 'August';
+  if (lm.startsWith('sep')) return 'September';
+  if (lm.startsWith('oct')) return 'October';
+  if (lm.startsWith('nov')) return 'November';
+  if (lm.startsWith('dec')) return 'December';
+  return m.charAt(0).toUpperCase() + m.slice(1).toLowerCase();
+}
 
 const NAME_MATCH_NOISE = new Set([
   'please', 'tenant', 'resident', 'guest', 'called', 'named', 'name',
@@ -92,7 +110,8 @@ const NAME_MATCH_NOISE = new Set([
   'rent', 'ent', 'ren', 'rnt', 'reent', 'rrent', 'remt', 'fee', 'feee',
   'every', 'month', 'months', 'monthly', 'each', 'per', 'year',
   'maintainance', 'maintenance', 'maintance', 'maintence', 'maintanace', 'maintanance', 'maintanence', 'maint',
-  'refundable', 'refundabale', 'refundble'
+  'refundable', 'refundabale', 'refundble',
+  'clear', 'cleared', 'settle', 'settled', 'balance', 'due', 'dues', 'overdue', 'pending'
 ]);
 
 export function isResidentNameMatch(guestName?: string | null, queryName?: string | null): boolean {
@@ -231,10 +250,12 @@ export function parseQuickLedgerText(input: string) {
   // 0c-0. INDIVIDUAL TENANT REPORT / STATEMENT CHECK
   // e.g. "report of srikanth 201", "srikanth 201 report", "dues of srikanth 201", "how much did srikanth pay", "statement of srikanth"
   const hasPaymentAmount = /\b(?:paid|sent)\s*[:=]?\s*\d+/i.test(lower) || /\b\d+\s*(?:paid|sent)\b/i.test(lower);
+  const hasClearAction = /\b(?:clear(?:ed)?|settl(?:ed)?)\b/i.test(lower) && /\b\d{3,6}\b/.test(lower);
   const isCheckout = /\b(?:checkout|check\s*out|vacate)\b/i.test(lower);
   const isIndividualReport = /(?:report|statement|ledger|history|status|dues|balance|details|summary|how\s+much)/i.test(lower) &&
                              !isCheckout &&
-                             !hasPaymentAmount;
+                             !hasPaymentAmount &&
+                             !hasClearAction;
 
   if (isIndividualReport) {
     let cleaned = lower;
@@ -999,28 +1020,49 @@ export function parseQuickLedgerText(input: string) {
   const monthNames = 'january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec';
   const monthPayments: MonthPaymentBreakdown[] = [];
 
-  // Pattern A: "overdue amount of 2000 of september month" / "2000 of september" / "2000 september due"
-  const patternA = new RegExp(`(?:over\\s*due|due|pending)?\\s*(?:ammount|amount|rent|fee)?\\s*(?:of|is)?\\s*(\\d+(?:\\.\\d+)?)(k)?\\s*(?:of|for|in)?\\s*(${monthNames})(?:\\s+month)?`, 'gi');
+  // Pattern A: "1000 sep month due cleared" / "overdue amount of 2000 of september month" / "2000 of september" / "2000 september due"
+  const patternA = new RegExp(
+    `(?:over\\s*due|dues|due|pending)?\\s*(?:ammount|amount|rent|fee)?\\s*(?:of|is)?\\s*(\\d+(?:\\.\\d+)?)(k)?\\s*(?:of|for|in)?\\s*(${monthNames})(?:\\s+month)?(?:\\s*(?:over\\s*due|dues|due|pending))?(?:\\s*(?:cleared?|settled?|paid))?`,
+    'gi'
+  );
   let matchA;
   while ((matchA = patternA.exec(cleaned)) !== null) {
     const amt = parseFloat(matchA[1]) * (matchA[2] ? 1000 : 1);
-    const mName = matchA[3];
-    const isOverdue = /over\s*due|due|pending/i.test(matchA[0]);
+    const mName = normalizeMonthName(matchA[3]);
+    const isOverdue = /over\s*due|dues|due|pending|clear/i.test(matchA[0]);
     monthPayments.push({
-      month: mName.charAt(0).toUpperCase() + mName.slice(1).toLowerCase(),
+      month: mName,
       amount: amt,
       isOverdue
     });
     cleaned = cleaned.replace(matchA[0], ' ');
   }
 
+  // Pattern A2: Month before Amount: "sep month 1000 due cleared" / "sep month due 1000 cleared" / "sep 1000" / "september overdue 2000"
+  const patternA2 = new RegExp(
+    `(?:for|in|of)?\\s*(${monthNames})(?:\\s+month)?\\s*(?:over\\s*due|dues|due|pending)?\\s*(?:ammount|amount|rent|fee)?\\s*(?:of|is)?\\s*(\\d+(?:\\.\\d+)?)(k)?(?:\\s*(?:over\\s*due|dues|due|pending))?(?:\\s*(?:cleared?|settled?|paid))?`,
+    'gi'
+  );
+  let matchA2;
+  while ((matchA2 = patternA2.exec(cleaned)) !== null) {
+    const mName = normalizeMonthName(matchA2[1]);
+    const amt = parseFloat(matchA2[2]) * (matchA2[3] ? 1000 : 1);
+    const isOverdue = /over\s*due|dues|due|pending|clear/i.test(matchA2[0]);
+    monthPayments.push({
+      month: mName,
+      amount: amt,
+      isOverdue
+    });
+    cleaned = cleaned.replace(matchA2[0], ' ');
+  }
+
   // Pattern B: "full payment for october" / "full rent for october"
   const patternB = new RegExp(`(?:full|total)?\\s*(?:paym[a-z]*|rent|fee)\\s+(?:for|of|in)\\s*(${monthNames})(?:\\s+month)?`, 'gi');
   let matchB;
   while ((matchB = patternB.exec(cleaned)) !== null) {
-    const mName = matchB[1];
+    const mName = normalizeMonthName(matchB[1]);
     monthPayments.push({
-      month: mName.charAt(0).toUpperCase() + mName.slice(1).toLowerCase(),
+      month: mName,
       amount: 0,
       isFullPayment: true
     });
@@ -1100,8 +1142,8 @@ export function parseQuickLedgerText(input: string) {
   const noiseWords = [
     'rom', 'romm', 'room', 'rroom', 'rooom', 'rrom', 'rooomm', 'rm',
     'fee', 'feee', 'rent', 'ent', 'ren', 'rnt', 'reent', 'rrent', 'remt',
-    'and', '&', 'paid', 'sent', 'adv', 'advance', 'due', 'for', 'of', 'pg',
-    'record', 'payment', 'payments', 'paymnet', 'paymnets', 'full', 'overdue', 'month', 'months', 'every',
+    'and', '&', 'paid', 'sent', 'adv', 'advance', 'due', 'dues', 'overdue', 'pending', 'clear', 'cleared', 'settle', 'settled', 'balance', 'for', 'of', 'pg',
+    'record', 'payment', 'payments', 'paymnet', 'paymnets', 'full', 'month', 'months', 'every',
     'maintainance', 'maintenance', 'maintance', 'maintence', 'maintanace', 'maintanance', 'maintanence', 'maint',
     'refundable', 'refundabale', 'refundble', 'ammount', 'amount',
     'revenue', 'on', 'date', 'joined', 'joining', 'join', 'guest', 'tenant', 'resident', 'name', 'called', 'named', 'please', 'the', 'a', 'an',

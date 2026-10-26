@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { logAction } from './audit';
 import { calculateEarlyCheckinFee, calculateLateCheckoutFee } from '@/lib/billing-rules';
 import { getTodayLocalYYYYMMDD } from '@/lib/types';
+import { normalizeMonthName } from '@/lib/quick-ledger-parser';
 
 export async function postIncidentalCharge(formData: FormData) {
   const supabase = createSSRClient();
@@ -318,7 +319,13 @@ export async function getFolioSummary(bookingId: string) {
 
     const mNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     const getPaymentMonth = (p: any): string => {
-      if (p.billing_period) return p.billing_period;
+      if (p.billing_period) {
+        const parts = p.billing_period.trim().split(/\s+/);
+        if (parts.length === 2) {
+          return `${normalizeMonthName(parts[0])} ${parts[1]}`;
+        }
+        return p.billing_period;
+      }
       const d = p.business_date || p.created_at?.slice(0, 10);
       if (d) {
         const parts = d.split('-');

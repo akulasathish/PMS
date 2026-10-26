@@ -699,5 +699,40 @@ describe('Quick Ledger NLP Parser', () => {
         expect(parsed3.tenantName?.toLowerCase()).toBe('srikanth');
       }
     });
+
+    it('should cleanly parse overdue rent clearance like "301 sathish 1000 sep month due cleared" without noise', () => {
+      const p1 = parseQuickLedgerText('301 sathish 1000 sep month due cleared');
+      expect(p1.type).toBe('revenue');
+      if (p1.type === 'revenue') {
+        expect(p1.roomNumber).toBe('301');
+        expect(p1.tenantName).toBe('sathish');
+        expect(p1.monthPayments).toBeDefined();
+        expect(p1.monthPayments?.[0]).toEqual({
+          month: 'September',
+          amount: 1000,
+          isOverdue: true
+        });
+        expect(p1.totalAmount).toBe(1000);
+      }
+
+      const p2 = parseQuickLedgerText('301 sathish 1000 sep dues cleared');
+      expect(p2.type).toBe('revenue');
+      if (p2.type === 'revenue') {
+        expect(p2.roomNumber).toBe('301');
+        expect(p2.tenantName).toBe('sathish');
+        expect(p2.monthPayments?.[0].month).toBe('September');
+        expect(p2.monthPayments?.[0].isOverdue).toBe(true);
+      }
+
+      const p3 = parseQuickLedgerText('301 sathish sep month 1000 due cleared');
+      expect(p3.type).toBe('revenue');
+      if (p3.type === 'revenue') {
+        expect(p3.roomNumber).toBe('301');
+        expect(p3.tenantName).toBe('sathish');
+        expect(p3.monthPayments?.[0].month).toBe('September');
+        expect(p3.monthPayments?.[0].amount).toBe(1000);
+        expect(p3.monthPayments?.[0].isOverdue).toBe(true);
+      }
+    });
   });
 });
