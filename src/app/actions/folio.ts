@@ -182,7 +182,7 @@ export async function getFolioSummary(bookingId: string) {
   // 1. Fetch base booking details
   const { data: booking, error: bookingErr } = await supabaseAdmin
     .from('bookings')
-    .select('id, total_amount, status, property_id, check_in, check_out, guest_name, guest_email, guest_phone, room_id, is_monthly, monthly_rent, security_deposit, rent_due_day, created_at, notes')
+    .select('id, total_amount, status, property_id, check_in, check_out, guest_name, guest_email, guest_phone, room_id, is_monthly, monthly_rent, security_deposit, rent_due_day, created_at, notes, discount_amount, discount_reason')
     .eq('id', bookingId)
     .single();
 
@@ -352,7 +352,8 @@ export async function getFolioSummary(bookingId: string) {
 
     lifetimeRentPaid = validRentPayments.reduce((sum, item) => sum + Number(item.amount || 0), 0);
     currentMonthRentPaid = rentByMonth.get(currentMonthKey) || 0;
-    currentMonthRentDue = Math.max(0, monthlyRate - currentMonthRentPaid);
+    const effectiveMonthlyRate = Math.max(0, monthlyRate - discountAmount);
+    currentMonthRentDue = Math.max(0, effectiveMonthlyRate - currentMonthRentPaid);
 
     for (const [mName, mPaid] of rentByMonth.entries()) {
       const mDue = Math.max(0, monthlyRate - mPaid);
@@ -373,13 +374,13 @@ export async function getFolioSummary(bookingId: string) {
       const dueDay = (booking as any).rent_due_day || bDay || 1;
       const todayDay = parseInt(activeBusinessDate.split('-')[2], 10);
       if (todayDay >= dueDay) {
-        currentMonthRentDue = monthlyRate;
+        currentMonthRentDue = effectiveMonthlyRate;
       } else {
         currentMonthRentDue = 0;
       }
       monthBreakdown.push({
         month: currentMonthKey,
-        rentCharged: monthlyRate,
+        rentCharged: effectiveMonthlyRate,
         rentPaid: 0,
         due: currentMonthRentDue,
         status: currentMonthRentDue > 0 ? `₹${currentMonthRentDue.toLocaleString('en-IN')} Due` : 'Cleared'
@@ -387,9 +388,9 @@ export async function getFolioSummary(bookingId: string) {
     }
 
     // In the Room Rent Card:
-    // Display monthly rate (e.g. ₹7,000) and current month payment (e.g. ₹7,000)
+    // Display effective monthly rate (reflecting prorated transition adjustments if any)
     const isCheckedInThisMonth = (booking.check_in || '').startsWith(activeBusinessDate.slice(0, 7));
-    roomRentRate = monthlyRate;
+    roomRentRate = effectiveMonthlyRate;
     roomRentPaid = currentMonthRentPaid > 0 
       ? currentMonthRentPaid 
       : (isCheckedInThisMonth && previousOverdueRent === 0 ? lifetimeRentPaid : 0);

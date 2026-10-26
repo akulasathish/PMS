@@ -163,7 +163,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       const [bookingsRes, roomsRes, paymentsRes, incidentalsRes] = await Promise.all([
         admin
           .from('bookings')
-          .select('id, guest_name, room_id, status, is_monthly, monthly_rent, monthly_rate, total_amount, rent_due_day, check_in')
+          .select('id, guest_name, room_id, status, is_monthly, monthly_rent, monthly_rate, total_amount, rent_due_day, check_in, discount_amount')
           .eq('property_id', activePropertyId)
           .in('status', ['Checked In', 'Confirmed', 'in_house']),
         admin
@@ -217,7 +217,9 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
 
       for (const b of bookings) {
         const roomDisp = roomMap.get(b.room_id) || 'Unknown';
+        const discountAmt = Number((b as any).discount_amount || 0);
         const monthlyRent = Number(b.monthly_rent || b.monthly_rate || (b.is_monthly ? 0 : b.total_amount) || 0);
+        const effectiveMonthlyRent = Math.max(0, monthlyRent - discountAmt);
         const incAmt = incidentalsByBooking.get(b.id) || 0;
 
         // For monthly bookings, count distinct billing periods / months with rent payments
@@ -258,7 +260,9 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         }
 
         const monthsCount = Math.max(1, distinctMonths.size);
-        const totalRentCharged = b.is_monthly ? monthlyRent * monthsCount : monthlyRent;
+        const totalRentCharged = b.is_monthly 
+          ? (monthlyRent * Math.max(0, monthsCount - 1) + effectiveMonthlyRent)
+          : effectiveMonthlyRent;
         const totalCharged = totalRentCharged + incAmt;
         const rentPaid = rentPaymentsByBooking.get(b.id) || 0;
         const due = Math.max(0, totalCharged - rentPaid);
@@ -268,7 +272,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
             bookingId: b.id,
             guestName: b.guest_name || 'Guest',
             roomNumber: roomDisp,
-            monthlyRent,
+            monthlyRent: effectiveMonthlyRent,
             paid: rentPaid,
             due,
             dueDay
@@ -1318,6 +1322,28 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         updates.rent_due_day = newDueDay;
         updates.billing_cycle_date = newDueDay;
         changesList.push(`Rent Due Date: ${newDueDay}th`);
+
+        // If shifting due day for an active resident whose first cycle is completed, calculate transition prorated amount
+        const oldDueDay = matchedBooking.rent_due_day || (matchedBooking.check_in ? parseInt(matchedBooking.check_in.split('-')[2], 10) : 1);
+        if (oldDueDay && oldDueDay !== newDueDay && matchedBooking.is_monthly) {
+          const monthlyRate = Number(matchedBooking.monthly_rent || matchedBooking.monthly_rate || 0);
+          if (monthlyRate > 0) {
+            let gapDays = 0;
+            if (newDueDay > oldDueDay) {
+              gapDays = newDueDay - oldDueDay;
+            } else {
+              // Across month boundary: e.g. from 23rd Oct to 10th Nov
+              gapDays = (31 - oldDueDay) + newDueDay; // 31 - 23 = 8 + 10 = 18 days
+            }
+            const dailyRate = monthlyRate / 30;
+            const proratedDue = Math.round(gapDays * dailyRate);
+            const discount = Math.max(0, monthlyRate - proratedDue);
+
+            updates.discount_amount = discount;
+            updates.discount_reason = `Transition gap (${gapDays} days from ${oldDueDay}th to ${newDueDay}th: ₹${proratedDue.toLocaleString('en-IN')})`;
+            changesList.push(`Transition Prorated Due: ₹${proratedDue.toLocaleString('en-IN')} (${gapDays} days till ${newDueDay}th)`);
+          }
+        }
       }
 
       if (newMonthlyRent) {

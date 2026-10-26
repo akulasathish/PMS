@@ -402,12 +402,15 @@ export function parseQuickLedgerText(input: string) {
       }
     }
 
-    // 3. Due Day: 'due date to 10th', 'due to 10th', 'due 10', 'due date 1st', 'due date is 1st of every month'
+    // 3. Due Day: 'due date to 10th', 'due to 10th', 'due 10', 'due date 1st', 'due date is 1st of every month', 'change due date of akshith to 10th'
     let newDueDay: number | null = null;
-    const dueMatch = cleaned.match(/\b(?:due\s*(?:date|day|dat)?|cycle)\b[^\d]*?(\d{1,2})(?:st|nd|rd|th)?(?:\s+(?:of\s+)?(?:every|each)\s+month|\s+(?:every|each)\s+month)?\b/i);
+    const dueMatch = cleaned.match(/\b(?:due\s*(?:date|day|dat)?|cycle)\b(?:\s+(?:to|is|as|on|set\s+to|=|:))?\s*(\d{1,2})(?:st|nd|rd|th)?(?:\s+(?:of\s+)?(?:every|each)\s+month|\s+(?:every|each)\s+month)?\b/i) ||
+                     cleaned.match(/\b(?:due\s*(?:date|day|dat)?|cycle)\b.*?\b(?:to|is|as|on|=|:)\s*(\d{1,2})(?:st|nd|rd|th)?\b/i) ||
+                     cleaned.match(/\b(?:due\s*(?:date|day|dat)?|cycle)\b[^\d]*?(\d{1,2})(?:st|nd|rd|th)?(?:\s+(?:of\s+)?(?:every|each)\s+month|\s+(?:every|each)\s+month)?\b/i);
     if (dueMatch) {
       newDueDay = parseInt(dueMatch[1], 10);
-      cleaned = cleaned.replace(dueMatch[0], ' ');
+      cleaned = cleaned.replace(/\b(?:due\s*(?:date|day|dat)?|cycle)\b/i, ' ');
+      cleaned = cleaned.replace(new RegExp('\\b(?:to|is|as|on|=|:)?\\s*' + newDueDay + '(?:st|nd|rd|th)?\\b', 'i'), ' ');
     }
 
     // 4. New Monthly Rent / Fee: 'rent 8500', 'fee 8500', 'rent to 8500', 'romm fee paid 9000'
@@ -457,7 +460,7 @@ export function parseQuickLedgerText(input: string) {
       'tenant', 'resident', 'guest', 'room', 'rm', 'rom', 'romm', 'rroom', 'rooom', 'rrom', 'rooomm',
       'rent', 'ent', 'ren', 'rnt', 'reent', 'rrent', 'remt', 'fee', 'feee', 'to', 'for', 'of',
       'and', '&', 'is', 'as', 'the', 'in', 'on', 'bed', 'paid', 'sent',
-      'name', 'called', 'named', 'person',
+      'name', 'called', 'named', 'person', 'wants', 'want', 'his', 'her', 'their',
       'every', 'month', 'months', 'monthly', 'each', 'per', 'year', 'weekly', 'week',
       'maintainance', 'maintenance', 'maintance', 'maintence', 'maintanace', 'maintanance', 'maintanence', 'maint',
       'refundable', 'refundabale', 'refundble', 'deposit', 'ammount', 'amount',

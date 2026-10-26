@@ -558,6 +558,25 @@ describe('Quick Ledger NLP Parser', () => {
       }
     });
 
+    it('should parse "change due date of 204 akshith to 10th"', () => {
+      const result = parseQuickLedgerText('change due date of 204 akshith to 10th');
+      expect(result.type).toBe('update_tenant');
+      if (result.type === 'update_tenant') {
+        expect(result.roomNumber).toBe('204');
+        expect(result.tenantName?.toLowerCase()).toContain('akshith');
+        expect(result.newDueDay).toBe(10);
+      }
+    });
+
+    it('should parse "akshith wants to change his due date to 10th"', () => {
+      const result = parseQuickLedgerText('akshith wants to change his due date to 10th');
+      expect(result.type).toBe('update_tenant');
+      if (result.type === 'update_tenant') {
+        expect(result.tenantName?.toLowerCase()).toBe('akshith');
+        expect(result.newDueDay).toBe(10);
+      }
+    });
+
     it('should parse "change joining date to 1st and due date to 10th for room 201 srikanth"', () => {
       const result = parseQuickLedgerText('change joining date to 1st and due date to 10th for room 201 srikanth');
       expect(result.type).toBe('update_tenant');
