@@ -442,16 +442,19 @@ describe('Quick Ledger NLP Parser', () => {
       }
     });
 
-    it('should parse short daily stay "guest rajesh room 201 3 days 1500 paid"', () => {
-      const result = parseQuickLedgerText('guest rajesh room 201 3 days 1500 paid');
+    it('should parse multi-date admission sentence without colliding year 2026 into rent', () => {
+      const input = 'add shaikshavali to room 203 joined on 8th june 2026 maintaiance paid 1000 refundable paid 1000 on 8th june 2026 room fee for october month 7000 paid on 8th october';
+      const result = parseQuickLedgerText(input);
       expect(result.type).toBe('assign');
       if (result.type === 'assign') {
-        expect(result.tenantName.toLowerCase()).toBe('rajesh');
-        expect(result.roomNumber).toBe('201');
-        expect((result as any).isDaily).toBe(true);
-        expect((result as any).stayDays).toBe(3);
-        expect((result as any).totalAmount).toBe(1500);
-        expect((result as any).paidAmount).toBe(1500);
+        expect(result.tenantName.toLowerCase()).toBe('shaikshavali');
+        expect(result.roomNumber).toBe('203');
+        expect(result.monthlyRent).toBe(7000);
+        expect(result.rentPaid).toBe(7000);
+        expect(result.maintenanceFee).toBe(1000);
+        expect(result.refundableDeposit).toBe(1000);
+        expect(result.checkInDate).toBe('2026-06-08');
+        expect(result.dueDay).toBe(8);
       }
     });
   });

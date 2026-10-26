@@ -500,6 +500,9 @@ export function parseQuickLedgerText(input: string) {
     if (dateRawStr) {
       cleaned = cleaned.replace(dateRawStr, ' ');
     }
+    // Strip additional date mentions (e.g. "on 8th june 2026", "on 8th october") so calendar years never get confused with rent amounts
+    cleaned = cleaned.replace(/\b(?:on\s+)?\d{1,2}(?:st|nd|rd|th)?\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember))(?:\s+20\d{2})?\b/gi, ' ');
+    cleaned = cleaned.replace(/\b(?:on\s+)?\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/gi, ' ');
     cleaned = cleaned.replace(/[\\/,]/g, ' ');
 
     // 0. Daily Basis Stay Check (Short stays: e.g. "per day 600 total 2 days paid 600", "daily basis", "3 days")
@@ -676,7 +679,16 @@ export function parseQuickLedgerText(input: string) {
         rentPaid = parseFloat(rentExplicitPartial[3]) * (rentExplicitPartial[4] ? 1000 : 1);
         cleaned = cleaned.replace(rentExplicitPartial[0], ' ');
       } else {
-        // 4c. Check Rent Paid Full
+        // 4c. Check Rent Paid Full or with Month Mention (e.g. "room fee for october month 7000 paid")
+        const rentWithMonth = cleaned.match(/\b(?:r+o+m+|rm)?\s*(?:fee|feee|r+e+n+t+|ent|ren|rnt|reent|remt)\s*(?:for\s+(?:[a-z]+\s+)?(?:month\s+)?)?[:=]?\s*(\d+(?:\.\d+)?)(k)?(?:\s+(?:is\s*)?(?:paid|sent))?\b/i);
+        if (rentWithMonth) {
+          const amt = parseFloat(rentWithMonth[1]) * (rentWithMonth[2] ? 1000 : 1);
+          monthlyRent = amt;
+          if (/paid|sent/i.test(rentWithMonth[0])) {
+            rentPaid = amt;
+          }
+          cleaned = cleaned.replace(rentWithMonth[0], ' ');
+        }
         const rentPaidPattern1 = cleaned.match(/\b(?:r+o+m+|rm)?\s*(?:fee|feee|r+e+n+t+|ent|ren|rnt|reent|remt)\s*(?:is\s*)?(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
         const rentPaidPattern2 = cleaned.match(/\b(?:paid|sent)\s*[:=]?\s*(?:r+o+m+|rm)?\s*(?:fee|feee|r+e+n+t+|ent|ren|rnt|reent|remt)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
         const rentPaidPattern3 = cleaned.match(/\b(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\s*(?:r+o+m+|rm)?\s*(?:fee|feee|r+e+n+t+|ent|ren|rnt|reent|remt)\b/i);
@@ -711,13 +723,19 @@ export function parseQuickLedgerText(input: string) {
         } else {
           const rentBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:r+e+n+t+|ent|ren|rnt|reent|remt|monthly|r+o+m+\s*fee|rm\s*fee|fee|feee)\b/i);
           if (rentBefore) {
-            monthlyRent = parseFloat(rentBefore[1]) * (rentBefore[2] ? 1000 : 1);
-            cleaned = cleaned.replace(rentBefore[0], ' ');
+            const parsedAmt = parseFloat(rentBefore[1]) * (rentBefore[2] ? 1000 : 1);
+            if (parsedAmt < 2020 || parsedAmt > 2035 || rentBefore[2]) {
+              monthlyRent = parsedAmt;
+              cleaned = cleaned.replace(rentBefore[0], ' ');
+            }
           } else {
             const rentAfter = cleaned.match(/\b(?:r+e+n+t+|ent|ren|rnt|reent|remt|monthly|r+o+m+\s*fee|rm\s*fee|r+o+m+\s*rent|rm\s*rent|fee|feee)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
             if (rentAfter) {
-              monthlyRent = parseFloat(rentAfter[1]) * (rentAfter[2] ? 1000 : 1);
-              cleaned = cleaned.replace(rentAfter[0], ' ');
+              const parsedAmt = parseFloat(rentAfter[1]) * (rentAfter[2] ? 1000 : 1);
+              if (parsedAmt < 2020 || parsedAmt > 2035 || rentAfter[2]) {
+                monthlyRent = parsedAmt;
+                cleaned = cleaned.replace(rentAfter[0], ' ');
+              }
             }
           }
         }

@@ -685,7 +685,7 @@ export default function QuickLedgerAssistant() {
                                   <div className="text-[11px]">
                                     <span className="text-zinc-500">Pending Due: </span>
                                     <span className={`font-black ${msg.result.newBalanceDue && msg.result.newBalanceDue > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                                      ₹{msg.result.newBalanceDue?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                      ₹{Number(msg.result.newBalanceDue || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                                     </span>
                                   </div>
 

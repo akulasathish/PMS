@@ -582,7 +582,8 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       }
 
       // 0. Check if this is a payment log for an ALREADY ACTIVE resident
-      const isPaymentIntent = /\b(?:paid|sent)\b/i.test(input) || (parsedRentPaid && parsedRentPaid > 0);
+      const isAddIntent = /^\s*(?:add|assign|new\s+tenant|join\s+tenant)\b/i.test(input);
+      const isPaymentIntent = (/\b(?:paid|sent)\b/i.test(input) || (parsedRentPaid && parsedRentPaid > 0)) && !isAddIntent;
       let existingBooking: any = null;
 
       if (tenantName) {
@@ -699,6 +700,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
           feePaid: feeAmount,
           advPaid: refundableDeposit,
           totalPaid: totalLogged,
+          newBalanceDue: 0,
           paymentIds,
           message: `Recorded payment for ${existingBooking.guest_name} (Room ${roomDisp}): Room Rent: ₹${feeAmount.toLocaleString('en-IN')} • Maintenance: ₹${maintenanceFee.toLocaleString('en-IN')} • Refundable Deposit: ₹${refundableDeposit.toLocaleString('en-IN')}. Total paid: ₹${totalLogged.toLocaleString('en-IN')} on ${effectivePaymentDate}.`
         };
