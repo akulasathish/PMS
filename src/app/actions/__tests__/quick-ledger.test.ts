@@ -568,6 +568,45 @@ describe('Quick Ledger NLP Parser', () => {
       }
     });
 
+    it('should parse "move akshith to room 201"', () => {
+      const result = parseQuickLedgerText('move akshith to room 201');
+      expect(result.type).toBe('move_tenant');
+      if (result.type === 'move_tenant') {
+        expect(result.tenantName?.toLowerCase()).toBe('akshith');
+        expect(result.toRoom).toBe('201');
+      }
+    });
+
+    it('should parse "move akshith from 204 to 201"', () => {
+      const result = parseQuickLedgerText('move akshith from 204 to 201');
+      expect(result.type).toBe('move_tenant');
+      if (result.type === 'move_tenant') {
+        expect(result.tenantName?.toLowerCase()).toBe('akshith');
+        expect(result.fromRoom).toBe('204');
+        expect(result.toRoom).toBe('201');
+      }
+    });
+
+    it('should parse "shift ajay from 203 to 202 rent 7500"', () => {
+      const result = parseQuickLedgerText('shift ajay from 203 to 202 rent 7500');
+      expect(result.type).toBe('move_tenant');
+      if (result.type === 'move_tenant') {
+        expect(result.tenantName?.toLowerCase()).toBe('ajay');
+        expect(result.fromRoom).toBe('203');
+        expect(result.toRoom).toBe('202');
+        expect(result.newRent).toBe(7500);
+      }
+    });
+
+    it('should parse "transfer vamshi to 201"', () => {
+      const result = parseQuickLedgerText('transfer vamshi to 201');
+      expect(result.type).toBe('move_tenant');
+      if (result.type === 'move_tenant') {
+        expect(result.tenantName?.toLowerCase()).toBe('vamshi');
+        expect(result.toRoom).toBe('201');
+      }
+    });
+
     it('should parse "akshith wants to change his due date to 10th"', () => {
       const result = parseQuickLedgerText('akshith wants to change his due date to 10th');
       expect(result.type).toBe('update_tenant');

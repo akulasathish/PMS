@@ -332,6 +332,62 @@ export function parseQuickLedgerText(input: string) {
     };
   }
 
+  // 0b2. MOVE / SHIFT / TRANSFER TENANT TO ANOTHER ROOM
+  const isMove = /\b(?:move|shift|transfer|relocate)\b/i.test(lower) ||
+                 (/\bchange\s*room\b/i.test(lower));
+  if (isMove) {
+    let cleaned = lower;
+
+    // Optional new rent: 'rent 8000', 'fee 8000'
+    let newRent: number | null = null;
+    const rentMatch = cleaned.match(/\b(?:rent|fee|rate)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+    if (rentMatch) {
+      newRent = parseFloat(rentMatch[1]) * (rentMatch[2] ? 1000 : 1);
+      cleaned = cleaned.replace(rentMatch[0], ' ');
+    }
+
+    // Destination room: 'to room 201', 'into 201', 'to 201'
+    let toRoom: string | null = null;
+    const toMatch = cleaned.match(/\b(?:to|into|in)\s*(?:room|rom|rm)?\s*#?\s*([a-z]?\d{1,4}[a-z]?)\b/i);
+    if (toMatch) {
+      toRoom = toMatch[1];
+      cleaned = cleaned.replace(toMatch[0], ' ');
+    }
+
+    // Source room: 'from room 204', 'from 204', 'out of 204'
+    let fromRoom: string | null = null;
+    const fromMatch = cleaned.match(/\b(?:from|out\s*of)\s*(?:room|rom|rm)?\s*#?\s*([a-z]?\d{1,4}[a-z]?)\b/i);
+    if (fromMatch) {
+      fromRoom = fromMatch[1];
+      cleaned = cleaned.replace(fromMatch[0], ' ');
+    }
+
+    // Any lingering room number (e.g., 'move 204 akshith to 201')
+    const lingeringRoom = cleaned.match(/\b(?:room|rom|rm)?\s*#?\s*([1-9]\d{2,3}[a-z]?)\b/i);
+    if (lingeringRoom) {
+      if (!fromRoom) fromRoom = lingeringRoom[1];
+      cleaned = cleaned.replace(lingeringRoom[0], ' ');
+    }
+
+    const noiseWords = new Set([
+      'move', 'shift', 'transfer', 'relocate', 'change', 'room', 'rom', 'rm',
+      'of', 'from', 'to', 'into', 'in', 'tenant', 'guest', 'resident', 'please',
+      'bed', 'person', 'guy', 'now', 'the', 'a', 'an', 'and', '&'
+    ]);
+    const nameTokens = cleaned.split(/\s+/).filter(w =>
+      w && !noiseWords.has(w) && !isNoiseToken(w) && !/^\d+$/.test(w)
+    );
+    const tenantName = nameTokens.join(' ').trim() || undefined;
+
+    return {
+      type: 'move_tenant' as const,
+      tenantName,
+      fromRoom: fromRoom || undefined,
+      toRoom: toRoom || undefined,
+      newRent: newRent || undefined
+    };
+  }
+
   // 0c. UPDATE TENANT / CHANGE DATES OR RENT CHECK
   const isConversationalUpdate = /\bupdate\s+(?:accordingly|accorgingly|it|this|details|please|in\s+database)\b/i.test(lower) ||
                                  /\b(?:please\s+)?update\b\s*$/i.test(lower);

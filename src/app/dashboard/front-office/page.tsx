@@ -6140,10 +6140,25 @@ export default function FrontOfficeTerminal() {
                       disabled={!canUpgrade() || actionLoading}
                       className="flex-1 bg-black/40 border border-white/[0.06] text-sm text-zinc-300 rounded-xl px-3 py-2.5 focus:outline-none focus:border-indigo-500/50 disabled:opacity-50 appearance-none"
                     >
-                      <option value="">Select Available Room...</option>
-                      {rooms.filter(r => r.status === "Available" && r.id !== selectedBooking.room_id).map(r => (
-                        <option key={r.id} value={r.id}>Room {r.room_number} ({r.type})</option>
-                      ))}
+                      <option value="">Select Destination Room...</option>
+                      {rooms
+                        .filter(r => {
+                          if (r.id === selectedBooking.room_id) return false;
+                          const activeOccupants = bookings.filter(b => b.room_id === r.id && b.status !== 'Cancelled' && b.status !== 'Checked Out').length;
+                          const cap = (r as any).sharing_capacity || 2;
+                          return activeOccupants < cap || r.status === "Available";
+                        })
+                        .sort((a, b) => a.room_number.localeCompare(b.room_number, undefined, { numeric: true, sensitivity: 'base' }))
+                        .map(r => {
+                          const activeOccupants = bookings.filter(b => b.room_id === r.id && b.status !== 'Cancelled' && b.status !== 'Checked Out').length;
+                          const cap = (r as any).sharing_capacity || 2;
+                          const freeBeds = Math.max(0, cap - activeOccupants);
+                          return (
+                            <option key={r.id} value={r.id}>
+                              Room {r.room_number} ({r.type || 'Standard'}) {freeBeds > 0 ? `• ${freeBeds} bed(s) free` : ''}
+                            </option>
+                          );
+                        })}
                     </select>
                     <button 
                       onClick={handleExecuteUpgrade}

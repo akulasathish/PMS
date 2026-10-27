@@ -51,7 +51,7 @@ export interface QuickLedgerTenantReport {
 
 export interface QuickLedgerResult {
   success: boolean;
-  type?: 'revenue' | 'expense' | 'assign' | 'dues_report' | 'today_summary' | 'update_tenant' | 'checkout' | 'tenant_report';
+  type?: 'revenue' | 'expense' | 'assign' | 'dues_report' | 'today_summary' | 'update_tenant' | 'checkout' | 'tenant_report' | 'move_tenant';
   message: string;
   error?: string;
   
@@ -98,6 +98,11 @@ export interface QuickLedgerResult {
     dueDay?: number;
     monthlyRent?: number;
   };
+
+  // Move tenant specific
+  fromRoom?: string;
+  toRoom?: string;
+  newRent?: number;
 
   // Dues report specific
   totalDues?: number;
@@ -1641,6 +1646,165 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         message: isForce
           ? `⚠️ Force checked out ${matchedBooking.guest_name} from Room ${roomDisp}! (Pending dues of ₹${balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2 })} recorded in notes).`
           : `Checked out ${matchedBooking.guest_name} from Room ${roomDisp} successfully! Folio settled (₹0 balance).`
+      };
+    }
+
+    // ==========================================
+    // EXECUTE MOVE / TRANSFER TENANT
+    // ==========================================
+    if (parsed.type === 'move_tenant') {
+      const { tenantName, fromRoom, toRoom, newRent } = parsed as any;
+
+      if (!toRoom) {
+        return {
+          success: false,
+          message: 'Please specify the destination room to move into. Example: "move akshith to room 201"'
+        };
+      }
+
+      // Query active bookings and rooms
+      const [bookingsRes, roomsRes] = await Promise.all([
+        admin
+          .from('bookings')
+          .select('id, guest_name, room_id, status, is_monthly, monthly_rent, monthly_rate, total_amount, rent_due_day, check_in, notes, security_deposit')
+          .eq('property_id', activePropertyId)
+          .in('status', ['Checked In', 'Confirmed', 'in_house']),
+        admin
+          .from('rooms')
+          .select('id, room_number, status, sharing_capacity, type')
+          .eq('property_id', activePropertyId)
+      ]);
+
+      if (bookingsRes.error || roomsRes.error) {
+        return { success: false, message: 'Database error fetching rooms or bookings.' };
+      }
+
+      const bookings = bookingsRes.data || [];
+      const rooms = roomsRes.data || [];
+
+      const roomById = new Map(rooms.map(r => [r.id, r]));
+      const roomByNum = new Map(rooms.map(r => [r.room_number.toString().toLowerCase(), r]));
+
+      const destRoom = roomByNum.get(toRoom.toString().toLowerCase());
+      if (!destRoom) {
+        return {
+          success: false,
+          message: `Destination Room ${toRoom} does not exist in this property.`
+        };
+      }
+
+      // Find resident
+      let matchedBooking = null;
+      if (fromRoom && tenantName) {
+        const sourceRoom = roomByNum.get(fromRoom.toString().toLowerCase());
+        if (sourceRoom) {
+          matchedBooking = bookings.find(b => b.room_id === sourceRoom.id && isResidentNameMatch(b.guest_name, tenantName));
+        }
+      }
+      if (!matchedBooking && tenantName) {
+        matchedBooking = bookings.find(b => isResidentNameMatch(b.guest_name, tenantName));
+      }
+      if (!matchedBooking && fromRoom && !tenantName) {
+        const inRoom = bookings.filter(b => {
+          const r = roomById.get(b.room_id);
+          return r && r.room_number.toString().toLowerCase() === fromRoom.toString().toLowerCase();
+        });
+        if (inRoom.length === 1) {
+          matchedBooking = inRoom[0];
+        } else if (inRoom.length > 1) {
+          return {
+            success: false,
+            message: `Room ${fromRoom} has ${inRoom.length} residents (${inRoom.map(b => b.guest_name).join(', ')}). Please specify the tenant name.`
+          };
+        }
+      }
+
+      if (!matchedBooking) {
+        return {
+          success: false,
+          message: `Could not find active resident "${tenantName || ''}"${fromRoom ? ' in Room ' + fromRoom : ''} to move.`
+        };
+      }
+
+      if (matchedBooking.room_id === destRoom.id) {
+        return {
+          success: false,
+          message: `${matchedBooking.guest_name} is already in Room ${destRoom.room_number}.`
+        };
+      }
+
+      // Check capacity of destination room
+      const destRoomOccupants = bookings.filter(b => b.room_id === destRoom.id);
+      const destCapacity = destRoom.sharing_capacity || 4;
+      if (destRoomOccupants.length >= destCapacity) {
+        return {
+          success: false,
+          message: `Room ${destRoom.room_number} is already full (${destRoomOccupants.length}/${destCapacity} beds occupied by ${destRoomOccupants.map(b => b.guest_name).join(', ')}).`
+        };
+      }
+
+      const oldRoom = roomById.get(matchedBooking.room_id);
+      const oldRoomNum = oldRoom?.room_number || fromRoom || 'Previous Room';
+
+      // 1. Update Booking
+      const bookingUpdates: any = {
+        room_id: destRoom.id,
+        original_room_id: oldRoom?.id || matchedBooking.room_id
+      };
+      if (newRent) {
+        bookingUpdates.monthly_rent = newRent;
+        bookingUpdates.monthly_rate = newRent;
+      }
+      const moveNote = `Moved from Room ${oldRoomNum} to Room ${destRoom.room_number} on ${businessDate}`;
+      bookingUpdates.notes = matchedBooking.notes ? `${matchedBooking.notes} • ${moveNote}` : moveNote;
+
+      const { error: updateErr } = await admin
+        .from('bookings')
+        .update(bookingUpdates)
+        .eq('id', matchedBooking.id);
+
+      if (updateErr) {
+        return { success: false, message: `Failed to move tenant: ${updateErr.message}` };
+      }
+
+      // 2. Mark destination room Occupied
+      await admin.from('rooms').update({ status: 'Occupied' }).eq('id', destRoom.id);
+
+      // 3. Check old room: if no other active guests left, mark Dirty
+      if (oldRoom) {
+        const remainingInOld = bookings.filter(b => b.room_id === oldRoom.id && b.id !== matchedBooking.id);
+        if (remainingInOld.length === 0) {
+          await admin.from('rooms').update({ status: 'Dirty' }).eq('id', oldRoom.id);
+        }
+      }
+
+      // 4. Log Audit
+      await admin.from('audit_logs').insert({
+        property_id: activePropertyId,
+        action: 'ROOM_MOVE',
+        details: {
+          guest_name: matchedBooking.guest_name,
+          booking_id: matchedBooking.id,
+          from_room: oldRoomNum,
+          to_room: destRoom.room_number,
+          new_rent: newRent || matchedBooking.monthly_rent
+        }
+      });
+
+      return {
+        success: true,
+        type: 'move_tenant',
+        tenantName: matchedBooking.guest_name,
+        roomNumber: destRoom.room_number.toString(),
+        fromRoom: oldRoomNum.toString(),
+        toRoom: destRoom.room_number.toString(),
+        newRent: newRent || undefined,
+        bookingId: matchedBooking.id,
+        prevValues: {
+          checkIn: oldRoom?.id,
+          monthlyRent: matchedBooking.monthly_rent
+        },
+        message: `Successfully moved ${matchedBooking.guest_name} from Room ${oldRoomNum} to Room ${destRoom.room_number}${newRent ? ` (Rent updated to ₹${newRent.toLocaleString('en-IN')})` : ''}. All past payments, deposits, and dues remain intact.`
       };
     }
 

@@ -23,7 +23,8 @@ import {
   LogOut,
   AlertTriangle,
   CreditCard,
-  UserCheck
+  UserCheck,
+  ArrowRightLeft
 } from 'lucide-react';
 import { processQuickLedger, undoQuickLedgerAction, QuickLedgerResult } from '@/app/actions/quick-ledger';
 import { useRouter, usePathname } from 'next/navigation';
@@ -836,6 +837,42 @@ export default function QuickLedgerAssistant() {
                                     <RotateCcw size={12} className={msg.undoState === 'undoing' ? 'animate-spin' : ''} />
                                     {msg.undoState === 'undone' ? 'Undone' : msg.undoState === 'undoing' ? 'Undoing...' : 'Undo'}
                                   </button>
+                                </div>
+                              </div>
+                            ) : msg.result.type === 'move_tenant' ? (
+                              /* MOVE TENANT SUCCESS CARD */
+                              <div className="bg-indigo-950/30 border border-indigo-500/30 rounded-2xl p-4 shadow-lg space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-1.5 text-indigo-400 font-black text-[11px] uppercase tracking-wider">
+                                    <ArrowRightLeft size={15} />
+                                    <span>Resident Room Shifted</span>
+                                  </div>
+                                  <span className="text-[10px] text-zinc-500 font-mono">{msg.timestamp}</span>
+                                </div>
+
+                                <div className="bg-black/40 rounded-xl p-3 border border-white/5 space-y-1.5">
+                                  <div className="flex justify-between items-baseline">
+                                    <span className="text-[11px] text-zinc-400">Resident</span>
+                                    <span className="text-xs font-bold text-white capitalize">{msg.result.tenantName}</span>
+                                  </div>
+                                  <div className="flex justify-between items-baseline">
+                                    <span className="text-[11px] text-zinc-400">Moved From</span>
+                                    <span className="text-xs font-bold text-zinc-400">Room {msg.result.fromRoom}</span>
+                                  </div>
+                                  <div className="flex justify-between items-baseline">
+                                    <span className="text-[11px] text-zinc-400">New Room</span>
+                                    <span className="text-xs font-bold text-emerald-400">Room {msg.result.toRoom}</span>
+                                  </div>
+                                  {msg.result.newRent ? (
+                                    <div className="flex justify-between items-baseline">
+                                      <span className="text-[11px] text-zinc-400">New Monthly Rent</span>
+                                      <span className="text-xs font-bold text-indigo-300">₹{msg.result.newRent.toLocaleString('en-IN')}/mo</span>
+                                    </div>
+                                  ) : null}
+                                </div>
+
+                                <div className="flex items-center justify-between pt-1">
+                                  <span className="text-[10px] text-emerald-400 font-semibold">Updated in Front Office</span>
                                 </div>
                               </div>
                             ) : msg.result.type === 'update_tenant' ? (

@@ -616,13 +616,7 @@ export async function upgradeRoom(bookingId: string, oldRoomId: string, newRoomI
 
   const supabaseAdmin = getSupabaseAdmin();
 
-  // 1. Mark the OLD room as Dirty (since they were likely in it)
-  await supabaseAdmin.from('rooms').update({ status: 'Dirty' }).eq('id', oldRoomId);
-
-  // 2. Mark the NEW room as Occupied
-  await supabaseAdmin.from('rooms').update({ status: 'Occupied' }).eq('id', newRoomId);
-
-  // 3. Move the booking to the new room, and log the original room
+  // 1. Move the booking to the new room, and log the original room
   const { error } = await supabaseAdmin
     .from('bookings')
     .update({ room_id: newRoomId, original_room_id: oldRoomId })
@@ -631,6 +625,23 @@ export async function upgradeRoom(bookingId: string, oldRoomId: string, newRoomI
   if (error) {
     console.error("Failed to upgrade room:", error);
     return { error: `Upgrade Error: ${error.message}` };
+  }
+
+  // 2. Mark the NEW room as Occupied
+  await supabaseAdmin.from('rooms').update({ status: 'Occupied' }).eq('id', newRoomId);
+
+  // 3. Mark the OLD room as Dirty ONLY IF no other active guests remain in it
+  if (oldRoomId) {
+    const { data: remainingGuests } = await supabaseAdmin
+      .from('bookings')
+      .select('id')
+      .eq('room_id', oldRoomId)
+      .neq('id', bookingId)
+      .in('status', ['Checked In', 'Confirmed', 'in_house']);
+
+    if (!remainingGuests || remainingGuests.length === 0) {
+      await supabaseAdmin.from('rooms').update({ status: 'Dirty' }).eq('id', oldRoomId);
+    }
   }
 
   revalidatePath('/dashboard/front-office');
