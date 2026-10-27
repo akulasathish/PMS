@@ -611,7 +611,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       }
 
       // 0. Check if this is a payment log for an ALREADY ACTIVE resident
-      const isAddIntent = /^\s*(?:add|assign|new\s+tenant|join\s+tenant)\b/i.test(input);
+      const isAddIntent = /^\s*(?:add|assign|new\s+tenant|join\s+tenant|join)\b/i.test(input);
       const isPaymentIntent = (/\b(?:paid|sent)\b/i.test(input) || (parsedRentPaid && parsedRentPaid > 0)) && !isAddIntent;
       let existingBooking: any = null;
 

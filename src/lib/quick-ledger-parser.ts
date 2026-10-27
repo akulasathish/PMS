@@ -137,18 +137,27 @@ export function isResidentNameMatch(guestName?: string | null, queryName?: strin
     return true;
   }
 
-  // 2. Token-level matching (prefix and typo tolerance)
+  const isTokenMatch = (q: string, g: string): boolean => {
+    if (q === g) return true;
+    if (q.length >= 4 && g.length >= 4) {
+      if (q.startsWith(g) || g.startsWith(q)) return true;
+      if (levenshteinDistance(q, g) <= 1) return true;
+      if (Math.min(q.length, g.length) >= 8 && levenshteinDistance(q, g) <= 2) return true;
+    }
+    return false;
+  };
+
+  // If both have multiple tokens (e.g. 'Sai Ganesh' vs 'Sai Krishna'):
+  // Must match ALL tokens of query (or at least 2 tokens) so common prefixes like 'Sai' alone don't trigger false positives
+  if (gTokens.length >= 2 && qTokens.length >= 2) {
+    const qMatches = qTokens.filter(q => gTokens.some(g => isTokenMatch(q, g))).length;
+    return qMatches >= Math.min(qTokens.length, gTokens.length);
+  }
+
+  // If one is a single token (e.g. searching 'Krishna' for 'Sai Krishna')
   for (const q of qTokens) {
     for (const g of gTokens) {
-      if (q === g) return true;
-      if (q.length >= 4 && g.length >= 4) {
-        // e.g. "srikant" vs "srikanth"
-        if (q.startsWith(g) || g.startsWith(q)) return true;
-        // Levenshtein distance <= 1 for 5+ char tokens (e.g. srikant / srikanth / shrikanth)
-        if (levenshteinDistance(q, g) <= 1) return true;
-        // Levenshtein distance <= 2 for 8+ char tokens
-        if (Math.min(q.length, g.length) >= 8 && levenshteinDistance(q, g) <= 2) return true;
-      }
+      if (isTokenMatch(q, g)) return true;
     }
   }
 
