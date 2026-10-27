@@ -11,6 +11,9 @@ export interface QuickLedgerDueItem {
   paid: number;
   due: number;
   dueDay: number;
+  rentDue?: number;
+  maintDue?: number;
+  depositDue?: number;
 }
 
 export interface QuickLedgerPaymentRecord {
@@ -168,7 +171,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       const [bookingsRes, roomsRes, paymentsRes, incidentalsRes] = await Promise.all([
         admin
           .from('bookings')
-          .select('id, guest_name, room_id, status, is_monthly, monthly_rent, monthly_rate, total_amount, rent_due_day, check_in, discount_amount')
+          .select('id, guest_name, room_id, status, is_monthly, monthly_rent, monthly_rate, total_amount, rent_due_day, check_in, discount_amount, security_deposit, notes')
           .eq('property_id', activePropertyId)
           .in('status', ['Checked In', 'Confirmed', 'in_house']),
         admin
@@ -268,19 +271,46 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         const totalRentCharged = b.is_monthly 
           ? (monthlyRent * Math.max(0, monthsCount - 1) + effectiveMonthlyRent)
           : effectiveMonthlyRent;
-        const totalCharged = totalRentCharged + incAmt;
         const rentPaid = rentPaymentsByBooking.get(b.id) || 0;
-        const due = Math.max(0, totalCharged - rentPaid);
+        const rentDue = Math.max(0, totalRentCharged - rentPaid);
 
-        if (due > 0.01) {
+        // 1. Maintenance Due
+        const maintCharges = incidentals.filter(
+          inc => inc.booking_id === b.id && (inc.description?.toLowerCase().includes('maint') || (inc as any).category?.toLowerCase().includes('maint'))
+        );
+        const maintChargesSum = maintCharges.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+        const notesMaintMatch = ((b as any)?.notes || '').match(/Maintenance:\s*₹?([\d,]+(?:\.\d+)?)/i);
+        const notesMaintAmt = notesMaintMatch ? parseFloat(notesMaintMatch[1].replace(/,/g, '')) : 0;
+        const expectedMaint = Math.max(maintChargesSum, notesMaintAmt);
+        const maintPaid = payments
+          .filter(p => !p.is_void && p.booking_id === b.id && isMaint(p))
+          .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+        const maintDue = Math.max(0, expectedMaint - maintPaid);
+
+        // 2. Deposit Due
+        const notesDepMatch = ((b as any)?.notes || '').match(/Refundable:\s*₹?([\d,]+(?:\.\d+)?)/i);
+        const notesDepAmt = notesDepMatch ? parseFloat(notesDepMatch[1].replace(/,/g, '')) : 0;
+        const baseDepRequired = Number((b as any).security_deposit || 0);
+        const expectedDeposit = Math.max(baseDepRequired, notesDepAmt);
+        const depositPaid = payments
+          .filter(p => !p.is_void && p.booking_id === b.id && isDep(p))
+          .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+        const depositDue = Math.max(0, expectedDeposit - depositPaid);
+
+        const totalDue = rentDue + maintDue + depositDue;
+
+        if (totalDue > 0.01) {
           duesList.push({
             bookingId: b.id,
             guestName: b.guest_name || 'Guest',
             roomNumber: roomDisp,
             monthlyRent: effectiveMonthlyRent,
             paid: rentPaid,
-            due,
-            dueDay
+            due: totalDue,
+            dueDay,
+            rentDue,
+            maintDue,
+            depositDue
           });
         }
       }

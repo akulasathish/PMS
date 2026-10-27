@@ -1165,6 +1165,15 @@ export default function QuickLedgerAssistant() {
                                             <div className="text-[10px] text-zinc-400 mt-0.5">
                                               Rent: ₹{d.monthlyRent.toLocaleString('en-IN')}/mo • Due day: {d.dueDay}th
                                             </div>
+                                            {((d.maintDue && d.maintDue > 0) || (d.depositDue && d.depositDue > 0)) ? (
+                                              <div className="text-[9px] text-amber-400/90 font-medium mt-0.5">
+                                                {[
+                                                  d.rentDue !== undefined && d.rentDue > 0 ? `Rent: ₹${d.rentDue.toLocaleString('en-IN')}` : null,
+                                                  d.maintDue && d.maintDue > 0 ? `Maint: ₹${d.maintDue.toLocaleString('en-IN')}` : null,
+                                                  d.depositDue && d.depositDue > 0 ? `Deposit: ₹${d.depositDue.toLocaleString('en-IN')}` : null
+                                                ].filter(Boolean).join(' • ')}
+                                              </div>
+                                            ) : null}
                                           </div>
 
                                           <div className="text-right">
