@@ -258,11 +258,21 @@ export function parseQuickLedgerText(input: string) {
 
   // 0c-0. INDIVIDUAL TENANT REPORT / STATEMENT CHECK
   // e.g. "report of srikanth 201", "srikanth 201 report", "dues of srikanth 201", "how much did srikanth pay", "statement of srikanth"
-  const hasPaymentAmount = /\b(?:paid|sent)\s*[:=]?\s*\d+/i.test(lower) || /\b\d+\s*(?:paid|sent)\b/i.test(lower);
+  const isPaymentAction = /\b(?:record|log|enter|received?)\s+(?:a\s+)?payment\b/i.test(lower);
+  const hasPaymentAmount = /\b(?:paid|sent)\s*[:=]?\s*\d+/i.test(lower) || 
+                           /\b\d+\s*(?:paid|sent)\b/i.test(lower) ||
+                           /\b(?:payment|amount|ammount|fee|rent)\s*(?:of)?\s*\d+/i.test(lower);
   const hasClearAction = /\b(?:clear(?:ed)?|settl(?:ed)?)\b/i.test(lower) && /\b\d{3,6}\b/.test(lower);
   const isCheckout = /\b(?:checkout|check\s*out|vacate)\b/i.test(lower);
-  const isIndividualReport = /(?:report|statement|ledger|history|status|dues|balance|details|summary|how\s+much)/i.test(lower) &&
+  const isUpdateIntent = /\b(?:change|update|shift|switch|modify|wants\s+to\s+change)\b/i.test(lower);
+  const isMoveIntent = /\b(?:move|transfer)\b/i.test(lower);
+  const isAddIntent = /^\s*(?:add|assign|new\s+tenant|join\b)/i.test(lower) || /\b(?:joined\s+on|check-?in|admission)\b/i.test(lower);
+  const isIndividualReport = /(?:report|statement|ledger|history|status|dues?|balance|details|summary|how\s+much|info)/i.test(lower) &&
                              !isCheckout &&
+                             !isPaymentAction &&
+                             !isUpdateIntent &&
+                             !isMoveIntent &&
+                             !isAddIntent &&
                              !hasPaymentAmount &&
                              !hasClearAction;
 
@@ -288,7 +298,8 @@ export function parseQuickLedgerText(input: string) {
       'resident', 'person', 'guy', 'room', 'rm', 'rom', 'romm', 'rroom', 'rooom', 'rrom', 'rooomm',
       'rent', 'ent', 'ren', 'rnt', 'reent', 'rrent', 'remt', 'fee', 'feee',
       'the', 'a', 'an', 'show', 'check',
-      'give', 'me', 'i', 'want', 'to', 'see', 'please', 'tell', 'about', 'is', 'in'
+      'give', 'me', 'i', 'want', 'to', 'see', 'please', 'tell', 'about', 'is', 'in',
+      'why', 'not', 'showing', 'payment', 'payments', 'month', 'october', 'september', 'august', 'july', 'june', 'what'
     ]);
 
     const nameTokens = cleaned.split(/[\s,]+/).filter(w => w && !reportNoise.has(w) && !isNoiseToken(w) && !/^\d+$/.test(w));

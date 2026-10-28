@@ -2,6 +2,7 @@
 
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { parseQuickLedgerText, QuickLedgerItem, isResidentNameMatch, sanitizeGuestName } from '@/lib/quick-ledger-parser';
+import { getFolioSummary } from '@/app/actions/folio';
 
 export interface QuickLedgerDueItem {
   bookingId: string;
@@ -422,72 +423,35 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       const isRentPayment = (p: any) =>
         !isMaintPayment(p) && !isDepositPayment(p);
 
-      const monthlyRent = Number(matchedBooking.monthly_rent || matchedBooking.monthly_rate || 8000);
       const rentPayments = validPayments.filter(isRentPayment);
-      const totalRentPaid = rentPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
 
-      // Multi-month breakdown calculation
-      const mNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-      const getPaymentMonth = (p: any): string => {
-        if (p.billing_period) return p.billing_period;
-        const d = p.business_date || p.created_at?.slice(0, 10);
-        if (d) {
-          const parts = d.split('-');
-          if (parts.length >= 2) {
-            const idx = parseInt(parts[1], 10) - 1;
-            if (idx >= 0 && idx < 12) return `${mNames[idx]} ${parts[0]}`;
-          }
-        }
-        return 'Current Period';
-      };
+      // Compute accurate financials and multi-month breakdown using folio summary
+      const folioRes = await getFolioSummary(matchedBooking.id);
+      const folioData = folioRes.success ? folioRes.data : null;
 
-      const rentByMonth = new Map<string, number>();
-      for (const p of rentPayments) {
-        const mKey = getPaymentMonth(p);
-        rentByMonth.set(mKey, (rentByMonth.get(mKey) || 0) + Number(p.amount || 0));
-      }
+      const monthlyRent = Number(matchedBooking.monthly_rent || matchedBooking.monthly_rate || folioData?.monthlyRentRate || 8000);
+      const totalRentPaid = folioData ? folioData.lifetimeRentPaid : rentPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
+      const pendingRentDue = folioData ? folioData.roomRentDue : Math.max(0, monthlyRent - totalRentPaid);
+      const totalAccruedRent = totalRentPaid + pendingRentDue;
 
-      const monthBreakdown: QuickLedgerMonthBreakdown[] = [];
-      let totalAccruedRent = 0;
-      let pendingRentDue = 0;
+      const monthBreakdown: QuickLedgerMonthBreakdown[] = (folioData?.monthBreakdown || []).map(m => ({
+        month: m.month,
+        rentCharged: m.rentCharged,
+        rentPaid: m.rentPaid,
+        due: m.due,
+        status: m.status
+      }));
 
-      if (rentByMonth.size > 1) {
-        for (const [mName, mPaid] of rentByMonth.entries()) {
-          const mDue = Math.max(0, monthlyRent - mPaid);
-          totalAccruedRent += monthlyRent;
-          pendingRentDue += mDue;
-          monthBreakdown.push({
-            month: mName,
-            rentCharged: monthlyRent,
-            rentPaid: mPaid,
-            due: mDue,
-            status: mDue > 0 ? `₹${mDue.toLocaleString('en-IN')} Due` : 'Fully Cleared'
-          });
-        }
-      } else {
-        totalAccruedRent = monthlyRent;
-        pendingRentDue = Math.max(0, monthlyRent - totalRentPaid);
-        const singleMonth = rentByMonth.keys().next().value || 'Current Month';
-        monthBreakdown.push({
-          month: singleMonth,
-          rentCharged: monthlyRent,
-          rentPaid: totalRentPaid,
-          due: pendingRentDue,
-          status: pendingRentDue > 0 ? `₹${pendingRentDue.toLocaleString('en-IN')} Due` : 'Fully Cleared'
-        });
-      }
-
-      const refundableDeposit = Number(matchedBooking.security_deposit || 0);
+      const refundableDeposit = folioData ? folioData.securityDepositRequired : Number(matchedBooking.security_deposit || 0);
       const depositPayments = validPayments.filter(isDepositPayment);
-      const depositPaid = depositPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
+      const depositPaid = folioData ? folioData.securityDepositPaid : depositPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
 
       const maintPayments = validPayments.filter(isMaintPayment);
-      const maintenancePaid = maintPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
-
+      const maintenancePaid = folioData ? folioData.maintenancePaid : maintPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
       const maintCharges = incidentals.filter(inc => inc.description?.toLowerCase().includes('maintenance'));
-      const maintenanceFee = maintCharges.reduce((s, inc) => s + Number(inc.amount || 0), 0) || maintenancePaid;
+      const maintenanceFee = folioData ? folioData.expectedMaintenance : (maintCharges.reduce((s, inc) => s + Number(inc.amount || 0), 0) || maintenancePaid);
 
-      const totalPaidOverall = validPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
+      const totalPaidOverall = folioData ? folioData.totalPaidTillDate : validPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
       const roomDisp = matchedBooking.room_number || roomNumber || 'Unknown';
       const checkInDay = matchedBooking.check_in ? parseInt(matchedBooking.check_in.split('-')[2], 10) : 1;
       const dueDay = (matchedBooking as any).rent_due_day || checkInDay;
@@ -522,15 +486,18 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
 
       const rentStatusStr = pendingRentDue > 0 ? `₹${pendingRentDue.toLocaleString('en-IN')} Due` : 'Fully Cleared';
       const maintStr = maintenanceFee > 0 ? ` • Maintenance Paid: ₹${maintenancePaid.toLocaleString('en-IN')}` : '';
-      const breakdownSummary = monthBreakdown.length > 1
-        ? ` • Month Breakdown: ${monthBreakdown.map(m => `${m.month.split(' ')[0]}: ₹${m.rentPaid.toLocaleString('en-IN')} Paid (${m.status})`).join(' | ')}`
+      const breakdownSummary = monthBreakdown.length > 0
+        ? ` • Month Breakdown: ${monthBreakdown.map(m => `${m.month}: ₹${m.rentPaid.toLocaleString('en-IN')} Paid (${m.status})`).join(' | ')}`
+        : '';
+      const totalDueStr = folioData && folioData.totalOutstanding > 0
+        ? ` • Total Outstanding Due: ₹${folioData.totalOutstanding.toLocaleString('en-IN')}`
         : '';
 
       return {
         success: true,
         type: 'tenant_report',
         tenantReport: report,
-        message: `Statement for ${matchedBooking.guest_name} (Room ${roomDisp}): Monthly Rent: ₹${monthlyRent.toLocaleString('en-IN')}/mo${breakdownSummary} • Total Rent Paid: ₹${totalRentPaid.toLocaleString('en-IN')} (${rentStatusStr}) • Deposit Paid: ₹${depositPaid.toLocaleString('en-IN')}${maintStr} • Total Paid Till Date: ₹${totalPaidOverall.toLocaleString('en-IN')}.`
+        message: `Statement for ${matchedBooking.guest_name} (Room ${roomDisp}): Monthly Rent: ₹${monthlyRent.toLocaleString('en-IN')}/mo${breakdownSummary} • Total Rent Paid: ₹${totalRentPaid.toLocaleString('en-IN')} (${rentStatusStr})${totalDueStr} • Deposit Paid: ₹${depositPaid.toLocaleString('en-IN')}${maintStr} • Total Paid Till Date: ₹${totalPaidOverall.toLocaleString('en-IN')}.`
       };
     }
 
