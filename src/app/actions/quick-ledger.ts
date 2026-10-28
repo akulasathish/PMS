@@ -267,11 +267,12 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
           }
         }
 
-        const monthsCount = Math.max(1, distinctMonths.size);
+        const isFutureCheckIn = Boolean(b.check_in && b.check_in > businessDate);
+        const monthsCount = isFutureCheckIn ? 0 : Math.max(1, distinctMonths.size);
         const totalRentCharged = b.is_monthly 
-          ? (monthlyRent * Math.max(0, monthsCount - 1) + effectiveMonthlyRent)
-          : effectiveMonthlyRent;
-        const rentPaid = rentPaymentsByBooking.get(b.id) || 0;
+          ? (monthsCount === 0 ? 0 : (monthlyRent * Math.max(0, monthsCount - 1) + effectiveMonthlyRent))
+          : (isFutureCheckIn ? 0 : effectiveMonthlyRent);
+        const rentPaid = bRentPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
         const rentDue = Math.max(0, totalRentCharged - rentPaid);
 
         // 1. Maintenance Due

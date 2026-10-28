@@ -369,28 +369,30 @@ export async function getFolioSummary(bookingId: string) {
       });
     }
 
+    const isFutureCheckIn = Boolean(booking.check_in && booking.check_in > activeBusinessDate);
+
     if (!rentByMonth.has(currentMonthKey)) {
       const [bYr, bMo, bDay] = (booking.check_in || activeBusinessDate).split('-').map(Number);
       const dueDay = (booking as any).rent_due_day || bDay || 1;
       const todayDay = parseInt(activeBusinessDate.split('-')[2], 10);
-      if (todayDay >= dueDay) {
+      if (!isFutureCheckIn && todayDay >= dueDay) {
         currentMonthRentDue = effectiveMonthlyRate;
       } else {
         currentMonthRentDue = 0;
       }
       monthBreakdown.push({
         month: currentMonthKey,
-        rentCharged: effectiveMonthlyRate,
+        rentCharged: isFutureCheckIn ? 0 : effectiveMonthlyRate,
         rentPaid: 0,
         due: currentMonthRentDue,
-        status: currentMonthRentDue > 0 ? `₹${currentMonthRentDue.toLocaleString('en-IN')} Due` : 'Cleared'
+        status: currentMonthRentDue > 0 ? `₹${currentMonthRentDue.toLocaleString('en-IN')} Due` : (isFutureCheckIn ? 'Future Booking' : 'Cleared')
       });
     }
 
     // In the Room Rent Card:
     // Display effective monthly rate (reflecting prorated transition adjustments if any)
     const isCheckedInThisMonth = (booking.check_in || '').startsWith(activeBusinessDate.slice(0, 7));
-    roomRentRate = effectiveMonthlyRate;
+    roomRentRate = isFutureCheckIn ? 0 : effectiveMonthlyRate;
     roomRentPaid = currentMonthRentPaid > 0 
       ? currentMonthRentPaid 
       : (isCheckedInThisMonth && previousOverdueRent === 0 ? lifetimeRentPaid : 0);
