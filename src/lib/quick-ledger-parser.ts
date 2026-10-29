@@ -186,6 +186,7 @@ export function sanitizeGuestName(name: string): string {
 export function parseQuickLedgerText(input: string) {
   const text = (input || '').trim();
   const lower = text.toLowerCase();
+  const now = new Date();
 
   // Date extraction: 'on 1st', 'on 1st october', 'joined on 1st october', 'paid 1st october', 'date 1st', '1st october 2026'
   const months: Record<string, number> = {
@@ -256,17 +257,59 @@ export function parseQuickLedgerText(input: string) {
     };
   }
 
-  // 0c-0. INDIVIDUAL TENANT REPORT / STATEMENT CHECK
-  // e.g. "report of srikanth 201", "srikanth 201 report", "dues of srikanth 201", "how much did srikanth pay", "statement of srikanth"
+  // 0b-1. MONTHLY REVENUE & EXPENSES REPORT CHECK
+  // e.g. "revenue generated in the month of october", "revenue generated in the month of november", "october revenue", "revenue of october", "expenses of october", "i want a report of expences and revenue generated in this month"
+  const isMonthlyReport = (
+    /(?:revenue|income|collection|turnover|expenses?|expences?|pnl|profit|financial|report|summary|statement)\b/i.test(lower) &&
+    /(?:month(?:\s+of)?|in\s+(?:the\s+)?month|this\s+month|current\s+month|monthly)\b/i.test(lower)
+  ) || (
+    /(?:revenue|income|expenses?|collection)\s+(?:of|for|in)?\s*(?:the\s+month\s+of\s+)?(?:january|february|march|april|may|june|july|august|september|october|november|december)\b/i.test(lower)
+  ) || (
+    /(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+(?:month\s+)?(?:revenue|income|collection|expenses?|report|summary)\b/i.test(lower)
+  );
+
+  const isCheckout = /\b(?:checkout|check\s*out|vacate)\b/i.test(lower);
   const isPaymentAction = /\b(?:record|log|enter|received?)\s+(?:a\s+)?payment\b/i.test(lower);
   const hasPaymentAmount = /\b(?:paid|sent)\s*[:=]?\s*\d+/i.test(lower) || 
                            /\b\d+\s*(?:paid|sent)\b/i.test(lower) ||
                            /\b(?:payment|amount|ammount|fee|rent)\s*(?:of)?\s*\d+/i.test(lower);
   const hasClearAction = /\b(?:clear(?:ed)?|settl(?:ed)?)\b/i.test(lower) && /\b\d{3,6}\b/.test(lower);
-  const isCheckout = /\b(?:checkout|check\s*out|vacate)\b/i.test(lower);
   const isUpdateIntent = /\b(?:change|update|shift|switch|modify|wants\s+to\s+change)\b/i.test(lower);
   const isMoveIntent = /\b(?:move|transfer)\b/i.test(lower);
   const isAddIntent = /^\s*(?:add|assign|new\s+tenant|join\b)/i.test(lower) || /\b(?:joined\s+on|check-?in|admission)\b/i.test(lower);
+
+  if (isMonthlyReport && !isCheckout && !isUpdateIntent && !isMoveIntent && !isAddIntent && !hasPaymentAmount && !hasClearAction && !isPaymentAction) {
+    const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+    let targetMonth: string | null = null;
+    let targetYear = now.getFullYear();
+
+    const yrMatch = lower.match(/\b(20\d{2})\b/);
+    if (yrMatch) {
+      targetYear = parseInt(yrMatch[1], 10);
+    }
+
+    for (const m of monthNames) {
+      if (new RegExp(`\\b${m}\\b`, 'i').test(lower)) {
+        targetMonth = m.charAt(0).toUpperCase() + m.slice(1);
+        break;
+      }
+    }
+
+    if (!targetMonth) {
+      const currentMonthIndex = now.getMonth();
+      targetMonth = monthNames[currentMonthIndex].charAt(0).toUpperCase() + monthNames[currentMonthIndex].slice(1);
+    }
+
+    const monthNum = months[targetMonth.toLowerCase()] || (now.getMonth() + 1);
+    const periodKey = `${targetYear}-${String(monthNum).padStart(2, '0')}`;
+
+    return {
+      type: 'monthly_report' as const,
+      targetMonth,
+      targetYear,
+      periodKey
+    };
+  }
   const isIndividualReport = /(?:report|statement|ledger|history|status|dues?|balance|details|summary|how\s+much|info)/i.test(lower) &&
                              !isCheckout &&
                              !isPaymentAction &&

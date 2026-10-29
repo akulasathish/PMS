@@ -53,11 +53,30 @@ export interface QuickLedgerTenantReport {
   payments: QuickLedgerPaymentRecord[];
 }
 
+export interface QuickLedgerMonthlyReport {
+  monthName: string;
+  periodKey: string;
+  rentRevenue: number;
+  rentPaymentsCount: number;
+  maintenanceRevenue: number;
+  maintenanceCount: number;
+  totalRevenue: number;
+  securityDepositsCollected: number;
+  securityDepositsCount: number;
+  totalExpenses: number;
+  expensesCount: number;
+  netProfit: number;
+  expensesByCategory: Array<{ category: string; amount: number; count: number }>;
+  revenueList: Array<{ guestName: string; roomNumber: string; amount: number; type: string; date: string }>;
+  expenseList: Array<{ description: string; category: string; amount: number; date: string }>;
+}
+
 export interface QuickLedgerResult {
   success: boolean;
-  type?: 'revenue' | 'expense' | 'assign' | 'dues_report' | 'today_summary' | 'update_tenant' | 'checkout' | 'tenant_report' | 'move_tenant';
+  type?: 'revenue' | 'expense' | 'assign' | 'dues_report' | 'today_summary' | 'update_tenant' | 'checkout' | 'tenant_report' | 'move_tenant' | 'monthly_report';
   message: string;
   error?: string;
+  monthlyReport?: QuickLedgerMonthlyReport;
   
   // Checkout specific
   hasPendingDues?: boolean;
@@ -535,6 +554,173 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         todayExpenseCount: expenses.length,
         todayDateStr: businessDate,
         message: `Today's Summary (${businessDate}): Collected ₹${todayRevenue.toLocaleString('en-IN')}, Spent ₹${todayExpense.toLocaleString('en-IN')}. Net: ₹${todayNet.toLocaleString('en-IN')}.`
+      };
+    }
+
+    // ==========================================
+    // EXECUTE MONTHLY REVENUE & EXPENSES REPORT
+    // ==========================================
+    if (parsed.type === 'monthly_report') {
+      const { targetMonth, targetYear, periodKey } = parsed as any;
+      const monthDisplay = `${targetMonth} ${targetYear}`;
+
+      const [paymentsRes, expensesRes, bookingsRes, roomsRes] = await Promise.all([
+        admin
+          .from('payments')
+          .select('id, booking_id, amount, allocation, transaction_id, billing_period, payment_method, method, business_date, created_at, is_void')
+          .eq('property_id', activePropertyId)
+          .eq('is_void', false),
+        admin
+          .from('expenses')
+          .select('id, amount, description, category, business_date')
+          .eq('property_id', activePropertyId),
+        admin
+          .from('bookings')
+          .select('id, guest_name, room_id, is_monthly')
+          .eq('property_id', activePropertyId),
+        admin
+          .from('rooms')
+          .select('id, room_number')
+          .eq('property_id', activePropertyId)
+      ]);
+
+      const payments = paymentsRes.data || [];
+      const allExpenses = expensesRes.data || [];
+      const bookings = bookingsRes.data || [];
+      const rooms = roomsRes.data || [];
+
+      const roomMap = new Map(rooms.map(r => [r.id, r.room_number?.toString() || '']));
+      const bookingMap = new Map(bookings.map(b => [b.id, {
+        guestName: b.guest_name || 'Guest',
+        roomNumber: roomMap.get(b.room_id) || 'Unknown'
+      }]));
+
+      const isMaint = (p: any) =>
+        ((p.allocation as string | null) && ((p.allocation as string).toLowerCase().includes('maint') || (p.allocation as string).toLowerCase().includes('maintenance'))) ||
+        (p.transaction_id && p.transaction_id.toLowerCase().includes('maint'));
+      const isDep = (p: any) =>
+        ((p.allocation as string | null) && ((p.allocation as string).toLowerCase().includes('deposit') || (p.allocation as string).toLowerCase().includes('refundable') || (p.allocation as string).toLowerCase().includes('security'))) ||
+        (p.transaction_id && p.transaction_id.toLowerCase().includes('deposit'));
+      const isRent = (p: any) => !isMaint(p) && !isDep(p);
+
+      const revenueList: Array<{ guestName: string; roomNumber: string; amount: number; type: string; date: string }> = [];
+
+      // 1. Room rent belonging to target month
+      const rentPayments = payments.filter(p => {
+        if (!isRent(p)) return false;
+        if (p.billing_period) {
+          const bp = p.billing_period.toLowerCase();
+          return bp.includes(targetMonth.toLowerCase()) && (!bp.match(/\b20\d{2}\b/) || bp.includes(targetYear.toString()));
+        }
+        return p.business_date && p.business_date.startsWith(periodKey);
+      });
+
+      let rentRevenue = 0;
+      for (const p of rentPayments) {
+        const amt = Number(p.amount || 0);
+        rentRevenue += amt;
+        const info = bookingMap.get(p.booking_id) || { guestName: 'Guest', roomNumber: 'Unknown' };
+        revenueList.push({
+          guestName: info.guestName,
+          roomNumber: info.roomNumber,
+          amount: amt,
+          type: 'Room Rent',
+          date: p.business_date || p.created_at?.slice(0, 10) || ''
+        });
+      }
+
+      // 2. Maintenance fee paid in target month
+      const maintPayments = payments.filter(p => {
+        if (!isMaint(p)) return false;
+        if (p.billing_period) {
+          const bp = p.billing_period.toLowerCase();
+          return bp.includes(targetMonth.toLowerCase());
+        }
+        return p.business_date && p.business_date.startsWith(periodKey);
+      });
+
+      let maintenanceRevenue = 0;
+      for (const p of maintPayments) {
+        const amt = Number(p.amount || 0);
+        maintenanceRevenue += amt;
+        const info = bookingMap.get(p.booking_id) || { guestName: 'Guest', roomNumber: 'Unknown' };
+        revenueList.push({
+          guestName: info.guestName,
+          roomNumber: info.roomNumber,
+          amount: amt,
+          type: 'Maintenance Fee',
+          date: p.business_date || p.created_at?.slice(0, 10) || ''
+        });
+      }
+
+      // 3. Security deposits collected in target month (EXCLUDED from revenue, tracked separately)
+      const depPayments = payments.filter(p => {
+        if (!isDep(p)) return false;
+        return p.business_date && p.business_date.startsWith(periodKey);
+      });
+      const securityDepositsCollected = depPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
+
+      // Total operational revenue = Rent + Maintenance
+      const totalRevenue = rentRevenue + maintenanceRevenue;
+
+      // 4. Expenses for target month
+      const monthExpenses = allExpenses.filter(e => e.business_date && e.business_date.startsWith(periodKey));
+      const totalExpenses = monthExpenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+
+      // Expenses by category
+      const expCatMap = new Map<string, { amount: number; count: number }>();
+      const expenseList: Array<{ description: string; category: string; amount: number; date: string }> = [];
+
+      for (const e of monthExpenses) {
+        const cat = e.category || 'General';
+        const amt = Number(e.amount || 0);
+        const existing = expCatMap.get(cat) || { amount: 0, count: 0 };
+        expCatMap.set(cat, { amount: existing.amount + amt, count: existing.count + 1 });
+        expenseList.push({
+          description: e.description || 'Expense',
+          category: cat,
+          amount: amt,
+          date: e.business_date || ''
+        });
+      }
+
+      const expensesByCategory = Array.from(expCatMap.entries()).map(([category, data]) => ({
+        category,
+        amount: data.amount,
+        count: data.count
+      })).sort((a, b) => b.amount - a.amount);
+
+      const netProfit = totalRevenue - totalExpenses;
+
+      const monthlyReport: QuickLedgerMonthlyReport = {
+        monthName: monthDisplay,
+        periodKey,
+        rentRevenue,
+        rentPaymentsCount: rentPayments.length,
+        maintenanceRevenue,
+        maintenanceCount: maintPayments.length,
+        totalRevenue,
+        securityDepositsCollected,
+        securityDepositsCount: depPayments.length,
+        totalExpenses,
+        expensesCount: monthExpenses.length,
+        netProfit,
+        expensesByCategory,
+        revenueList,
+        expenseList
+      };
+
+      const depNote = securityDepositsCollected > 0
+        ? ` • Refundable Deposits in Escrow: ₹${securityDepositsCollected.toLocaleString('en-IN')} (Excluded from Revenue)`
+        : '';
+
+      const message = `📊 Financial Report for ${monthDisplay}: Total Operational Revenue: ₹${totalRevenue.toLocaleString('en-IN')} (Rent: ₹${rentRevenue.toLocaleString('en-IN')} from ${rentPayments.length} payments • Maint: ₹${maintenanceRevenue.toLocaleString('en-IN')} from ${maintPayments.length} payments) • Total Expenses: ₹${totalExpenses.toLocaleString('en-IN')} (${monthExpenses.length} entries) • Net Operating Surplus: ₹${netProfit.toLocaleString('en-IN')}${depNote}.`;
+
+      return {
+        success: true,
+        type: 'monthly_report',
+        monthlyReport,
+        message
       };
     }
 

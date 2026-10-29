@@ -1198,6 +1198,81 @@ export default function QuickLedgerAssistant() {
                                   </>
                                 )}
                               </div>
+                            ) : msg.result.type === 'monthly_report' && msg.result.monthlyReport ? (
+                              /* MONTHLY REVENUE & EXPENSE REPORT CARD */
+                              <div className="bg-gradient-to-br from-emerald-950/40 via-zinc-950/70 to-cyan-950/40 border border-emerald-500/40 rounded-2xl p-4 shadow-xl space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-1.5 text-emerald-400 font-black text-[11px] uppercase tracking-wider">
+                                    <Sparkles size={15} />
+                                    <span>Monthly Financial Statement</span>
+                                  </div>
+                                  <span className="text-[10px] font-bold text-amber-300 font-mono px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20">
+                                    {msg.result.monthlyReport.monthName}
+                                  </span>
+                                </div>
+
+                                {/* 4-Card Performance Grid */}
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                                  <div className="bg-black/50 rounded-xl p-2.5 border border-emerald-500/20">
+                                    <div className="text-[9px] uppercase font-bold text-zinc-400">Operational Revenue</div>
+                                    <div className="text-sm font-black text-emerald-400 mt-0.5">
+                                      ₹{msg.result.monthlyReport.totalRevenue.toLocaleString('en-IN')}
+                                    </div>
+                                    <div className="text-[8px] text-zinc-400 mt-0.5">
+                                      Rent: ₹{msg.result.monthlyReport.rentRevenue.toLocaleString('en-IN')} • Maint: ₹{msg.result.monthlyReport.maintenanceRevenue.toLocaleString('en-IN')}
+                                    </div>
+                                  </div>
+
+                                  <div className="bg-black/50 rounded-xl p-2.5 border border-rose-500/20">
+                                    <div className="text-[9px] uppercase font-bold text-zinc-400">Total Expenses</div>
+                                    <div className="text-sm font-black text-rose-400 mt-0.5">
+                                      ₹{msg.result.monthlyReport.totalExpenses.toLocaleString('en-IN')}
+                                    </div>
+                                    <div className="text-[8px] text-zinc-400 mt-0.5">
+                                      {msg.result.monthlyReport.expensesCount} bill(s) recorded
+                                    </div>
+                                  </div>
+
+                                  <div className="bg-black/50 rounded-xl p-2.5 border border-cyan-500/20">
+                                    <div className="text-[9px] uppercase font-bold text-zinc-400">Net Surplus / Profit</div>
+                                    <div className={`text-sm font-black mt-0.5 ${msg.result.monthlyReport.netProfit >= 0 ? 'text-cyan-400' : 'text-rose-400'}`}>
+                                      ₹{msg.result.monthlyReport.netProfit.toLocaleString('en-IN')}
+                                    </div>
+                                    <div className="text-[8px] text-zinc-400 mt-0.5">
+                                      {msg.result.monthlyReport.netProfit >= 0 ? 'Operating Profit' : 'Operating Deficit'}
+                                    </div>
+                                  </div>
+
+                                  <div className="bg-black/50 rounded-xl p-2.5 border border-white/5">
+                                    <div className="text-[9px] uppercase font-bold text-zinc-400">Refundable Deposits</div>
+                                    <div className="text-sm font-black text-purple-300 mt-0.5">
+                                      ₹{msg.result.monthlyReport.securityDepositsCollected.toLocaleString('en-IN')}
+                                    </div>
+                                    <div className="text-[8px] text-zinc-400 mt-0.5 italic">
+                                      In Escrow (Excluded from Rev)
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Expense Category Breakdown (if any) */}
+                                {msg.result.monthlyReport.expensesByCategory && msg.result.monthlyReport.expensesByCategory.length > 0 ? (
+                                  <div className="space-y-1.5 pt-1">
+                                    <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider px-1">Expenses by Category</div>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                                      {msg.result.monthlyReport.expensesByCategory.map((c, idx) => (
+                                        <div key={idx} className="bg-black/30 rounded-lg p-2 border border-white/5 flex items-center justify-between text-[11px]">
+                                          <span className="text-zinc-300 capitalize">{c.category}</span>
+                                          <span className="font-bold text-rose-400 font-mono">₹{c.amount.toLocaleString('en-IN')}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="bg-black/30 rounded-xl p-2 text-center text-[10px] text-zinc-500 italic">
+                                    No expenses logged for {msg.result.monthlyReport.monthName} yet.
+                                  </div>
+                                )}
+                              </div>
                             ) : msg.result.type === 'today_summary' ? (
                               /* TODAY SUMMARY CARD */
                               <div className="bg-gradient-to-br from-indigo-950/40 via-purple-950/30 to-zinc-900 border border-indigo-500/30 rounded-2xl p-4 shadow-lg space-y-3">
