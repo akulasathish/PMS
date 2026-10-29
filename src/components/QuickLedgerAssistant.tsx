@@ -27,6 +27,7 @@ import {
   ArrowRightLeft
 } from 'lucide-react';
 import { processQuickLedger, undoQuickLedgerAction, QuickLedgerResult } from '@/app/actions/quick-ledger';
+import { formatDayOrdinal } from '@/lib/quick-ledger-parser';
 import { useRouter, usePathname } from 'next/navigation';
 
 interface ChatMessage {
@@ -881,7 +882,7 @@ export default function QuickLedgerAssistant() {
                                       ) : null}
                                       <div className="flex justify-between items-baseline pt-1 border-t border-white/10">
                                         <span className="text-[11px] text-zinc-400">Rent Due Day</span>
-                                        <span className="text-xs font-semibold text-zinc-200">{msg.result.dueDay}th of every month</span>
+                                        <span className="text-xs font-semibold text-zinc-200">{formatDayOrdinal(msg.result.dueDay)} of every month</span>
                                       </div>
                                     </>
                                   )}
@@ -964,7 +965,7 @@ export default function QuickLedgerAssistant() {
                                   {msg.result.dueDay ? (
                                     <div className="flex justify-between items-baseline">
                                       <span className="text-[11px] text-zinc-400">Rent Due Date</span>
-                                      <span className="text-xs font-bold text-amber-300">{msg.result.dueDay}th of month</span>
+                                      <span className="text-xs font-bold text-amber-300">{formatDayOrdinal(msg.result.dueDay)} of month</span>
                                     </div>
                                   ) : null}
                                   {msg.result.monthlyRent ? (
@@ -1056,7 +1057,7 @@ export default function QuickLedgerAssistant() {
                                       </span>
                                     </div>
                                     <div className="text-[10px] text-zinc-400 mt-0.5">
-                                      Joined: <span className="text-amber-300 font-medium">{msg.result.tenantReport.checkInDate || 'N/A'}</span> • Due Day: <span className="text-zinc-200 font-medium">{msg.result.tenantReport.dueDay}th of month</span>
+                                      Joined: <span className="text-amber-300 font-medium">{msg.result.tenantReport.checkInDate || 'N/A'}</span> • Due Day: <span className="text-zinc-200 font-medium">{formatDayOrdinal(msg.result.tenantReport.dueDay)} of month</span>
                                     </div>
                                   </div>
                                   <div className="text-right">
@@ -1185,7 +1186,7 @@ export default function QuickLedgerAssistant() {
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-1.5 text-amber-400 font-black text-[11px] uppercase tracking-wider">
                                     <FileText size={15} />
-                                    <span>Pending Dues Report</span>
+                                    <span>Room-Wise Pending Dues Report</span>
                                   </div>
                                   <span className="text-[10px] text-zinc-500 font-mono">{msg.timestamp}</span>
                                 </div>
@@ -1212,48 +1213,81 @@ export default function QuickLedgerAssistant() {
                                       </div>
                                     </div>
 
-                                    {/* Tenant Dues List */}
-                                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                                      {msg.result.duesList?.map((d, idx) => (
-                                        <div
-                                          key={idx}
-                                          className="bg-black/40 rounded-xl p-2.5 px-3 border border-white/5 hover:border-amber-500/30 transition-all flex items-center justify-between"
-                                        >
-                                          <div>
-                                            <div className="font-bold text-white text-xs capitalize flex items-center gap-1.5">
-                                              <span>{d.guestName}</span>
-                                              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-300">
-                                                Room {d.roomNumber}
-                                              </span>
-                                            </div>
-                                            <div className="text-[10px] text-zinc-400 mt-0.5">
-                                              Rent: ₹{d.monthlyRent.toLocaleString('en-IN')}/mo • Due day: {d.dueDay}th
-                                            </div>
-                                            {((d.maintDue && d.maintDue > 0) || (d.depositDue && d.depositDue > 0)) ? (
-                                              <div className="text-[9px] text-amber-400/90 font-medium mt-0.5">
-                                                {[
-                                                  d.rentDue !== undefined && d.rentDue > 0 ? `Rent: ₹${d.rentDue.toLocaleString('en-IN')}` : null,
-                                                  d.maintDue && d.maintDue > 0 ? `Maint: ₹${d.maintDue.toLocaleString('en-IN')}` : null,
-                                                  d.depositDue && d.depositDue > 0 ? `Deposit: ₹${d.depositDue.toLocaleString('en-IN')}` : null
-                                                ].filter(Boolean).join(' • ')}
-                                              </div>
-                                            ) : null}
-                                          </div>
+                                    {/* Room-Wise Dues Grouped List */}
+                                    <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                                      {(() => {
+                                        const roomGroups: { [room: string]: typeof msg.result.duesList } = {};
+                                        for (const d of msg.result.duesList || []) {
+                                          const r = d.roomNumber || 'Unknown';
+                                          if (!roomGroups[r]) roomGroups[r] = [];
+                                          roomGroups[r]!.push(d);
+                                        }
 
-                                          <div className="text-right">
-                                            <div className="text-xs font-black text-amber-400">
-                                              ₹{d.due.toLocaleString('en-IN')}
-                                            </div>
-                                            {d.paid > 0 ? (
-                                              <div className="text-[9px] text-emerald-400">
-                                                Paid: ₹{d.paid.toLocaleString('en-IN')}
+                                        const sortedRoomKeys = Object.keys(roomGroups).sort((a, b) => {
+                                          const numA = parseInt(a.replace(/\D/g, ''), 10);
+                                          const numB = parseInt(b.replace(/\D/g, ''), 10);
+                                          if (!isNaN(numA) && !isNaN(numB) && numA !== numB) return numA - numB;
+                                          return a.localeCompare(b);
+                                        });
+
+                                        return sortedRoomKeys.map(rNum => {
+                                          const residents = roomGroups[rNum] || [];
+                                          const roomTotal = residents.reduce((sum, d) => sum + d.due, 0);
+
+                                          return (
+                                            <div key={rNum} className="bg-black/40 rounded-xl border border-white/5 overflow-hidden">
+                                              {/* Room Header */}
+                                              <div className="bg-white/[0.04] px-3 py-1.5 border-b border-white/5 flex items-center justify-between">
+                                                <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
+                                                  Room {rNum}
+                                                </span>
+                                                <span className="text-[11px] font-black text-amber-400 font-mono">
+                                                  ₹{roomTotal.toLocaleString('en-IN')}
+                                                </span>
                                               </div>
-                                            ) : (
-                                              <div className="text-[9px] text-zinc-500">Unpaid</div>
-                                            )}
-                                          </div>
-                                        </div>
-                                      ))}
+
+                                              {/* Occupants in this Room */}
+                                              <div className="divide-y divide-white/5">
+                                                {residents.map((d, idx) => (
+                                                  <div key={idx} className="p-2.5 px-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors">
+                                                    <div>
+                                                      <div className="font-bold text-white text-xs capitalize flex items-center gap-1.5">
+                                                        <span>{d.guestName}</span>
+                                                      </div>
+                                                      <div className="text-[10px] text-zinc-400 mt-0.5">
+                                                        Rent: ₹{d.monthlyRent.toLocaleString('en-IN')}/mo • Due day: {formatDayOrdinal(d.dueDay)}
+                                                      </div>
+                                                      {((d.maintDue && d.maintDue > 0) || (d.depositDue && d.depositDue > 0)) ? (
+                                                        <div className="text-[9px] text-amber-400/90 font-medium mt-0.5">
+                                                          {[
+                                                            d.rentDue !== undefined && d.rentDue > 0 ? `Rent: ₹${d.rentDue.toLocaleString('en-IN')}` : null,
+                                                            d.maintDue && d.maintDue > 0 ? `Maint: ₹${d.maintDue.toLocaleString('en-IN')}` : null,
+                                                            d.depositDue && d.depositDue > 0 ? `Deposit: ₹${d.depositDue.toLocaleString('en-IN')}` : null
+                                                          ].filter(Boolean).join(' • ')}
+                                                        </div>
+                                                      ) : null}
+                                                    </div>
+
+                                                    <div className="text-right">
+                                                      <div className="text-xs font-black text-amber-400">
+                                                        ₹{d.due.toLocaleString('en-IN')}
+                                                      </div>
+                                                      {d.paid > 0 ? (
+                                                        <div className="text-[9px] text-emerald-400">
+                                                          Paid: ₹{d.paid.toLocaleString('en-IN')}
+                                                        </div>
+                                                      ) : (
+                                                        <div className="text-[9px] text-zinc-500">Unpaid</div>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          );
+                                        });
+                                      })()}
                                     </div>
 
                                     <div className="pt-1 text-[10px] text-zinc-500 flex items-center justify-between">

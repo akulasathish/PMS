@@ -5,6 +5,24 @@ export interface MonthPaymentBreakdown {
   isFullPayment?: boolean;
 }
 
+export function formatDayOrdinal(day: number | string | undefined | null): string {
+  if (day === undefined || day === null || day === '') return '';
+  const d = typeof day === 'string' ? parseInt(day, 10) : day;
+  if (isNaN(d)) return String(day);
+  const j = d % 10;
+  const k = d % 100;
+  if (j === 1 && k !== 11) {
+    return `${d}st`;
+  }
+  if (j === 2 && k !== 12) {
+    return `${d}nd`;
+  }
+  if (j === 3 && k !== 13) {
+    return `${d}rd`;
+  }
+  return `${d}th`;
+}
+
 export interface QuickLedgerItem {
   id?: string;
   amount: number;

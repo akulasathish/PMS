@@ -1,7 +1,7 @@
 "use server";
 
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { parseQuickLedgerText, QuickLedgerItem, isResidentNameMatch, sanitizeGuestName } from '@/lib/quick-ledger-parser';
+import { parseQuickLedgerText, QuickLedgerItem, isResidentNameMatch, sanitizeGuestName, formatDayOrdinal } from '@/lib/quick-ledger-parser';
 import { getFolioSummary } from '@/app/actions/folio';
 
 export interface QuickLedgerDueItem {
@@ -341,10 +341,46 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         }
       }
 
-      // Sort by due amount descending
-      duesList.sort((a, b) => b.due - a.due);
+      // Sort room-wise naturally (e.g. 201, 202, 301, 401, 505...)
+      const getRoomSortKey = (room: string) => {
+        const num = parseInt((room || '').replace(/\D/g, ''), 10);
+        return isNaN(num) ? 999999 : num;
+      };
+
+      duesList.sort((a, b) => {
+        const keyA = getRoomSortKey(a.roomNumber || '');
+        const keyB = getRoomSortKey(b.roomNumber || '');
+        if (keyA !== keyB) return keyA - keyB;
+        return (a.guestName || '').localeCompare(b.guestName || '');
+      });
 
       const totalDues = duesList.reduce((sum, item) => sum + item.due, 0);
+
+      // Group room-wise for clear summary reporting
+      const roomGroupMap = new Map<string, typeof duesList>();
+      for (const item of duesList) {
+        const rKey = item.roomNumber || 'Unknown';
+        if (!roomGroupMap.has(rKey)) roomGroupMap.set(rKey, []);
+        roomGroupMap.get(rKey)!.push(item);
+      }
+
+      const roomSummaryLines: string[] = [];
+      for (const [rNum, residents] of roomGroupMap.entries()) {
+        const roomTotal = residents.reduce((sum, r) => sum + r.due, 0);
+        const residentDetails = residents.map(r => {
+          const duesBreakdown: string[] = [];
+          if (r.rentDue && r.rentDue > 0) duesBreakdown.push(`Rent: ₹${r.rentDue.toLocaleString('en-IN')}`);
+          if (r.maintDue && r.maintDue > 0) duesBreakdown.push(`Maint: ₹${r.maintDue.toLocaleString('en-IN')}`);
+          if (r.depositDue && r.depositDue > 0) duesBreakdown.push(`Deposit: ₹${r.depositDue.toLocaleString('en-IN')}`);
+          const duesStr = duesBreakdown.length > 0 ? ` (${duesBreakdown.join(' + ')})` : '';
+          return `${r.guestName}: ₹${r.due.toLocaleString('en-IN')}${duesStr} [Due: ${formatDayOrdinal(r.dueDay)}]`;
+        }).join('; ');
+        roomSummaryLines.push(`• Room ${rNum} (Total: ₹${roomTotal.toLocaleString('en-IN')}): ${residentDetails}`);
+      }
+
+      const duesMessage = duesList.length === 0
+        ? '🎉 All active tenants are cleared till date! No pending dues.'
+        : `Found ${duesList.length} tenant(s) across ${roomGroupMap.size} room(s) with pending dues totaling ₹${totalDues.toLocaleString('en-IN')} (Room-wise breakdown):\n${roomSummaryLines.join('\n')}`;
 
       return {
         success: true,
@@ -352,9 +388,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         totalDues,
         duesCount: duesList.length,
         duesList,
-        message: duesList.length === 0
-          ? '🎉 All active tenants are cleared till date! No pending dues.'
-          : `Found ${duesList.length} tenant(s) with pending dues totaling ₹${totalDues.toLocaleString('en-IN')}.`
+        message: duesMessage
       };
     }
 
@@ -1515,7 +1549,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       if (newDueDay) {
         updates.rent_due_day = newDueDay;
         updates.billing_cycle_date = newDueDay;
-        changesList.push(`Rent Due Date: ${newDueDay}th`);
+        changesList.push(`Rent Due Date: ${formatDayOrdinal(newDueDay)}`);
 
         // If shifting due day for an active resident whose first cycle is completed, calculate transition prorated amount
         const oldDueDay = matchedBooking.rent_due_day || (matchedBooking.check_in ? parseInt(matchedBooking.check_in.split('-')[2], 10) : 1);
@@ -1534,8 +1568,8 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
             const discount = Math.max(0, monthlyRate - proratedDue);
 
             updates.discount_amount = discount;
-            updates.discount_reason = `Transition gap (${gapDays} days from ${oldDueDay}th to ${newDueDay}th: ₹${proratedDue.toLocaleString('en-IN')})`;
-            changesList.push(`Transition Prorated Due: ₹${proratedDue.toLocaleString('en-IN')} (${gapDays} days till ${newDueDay}th)`);
+            updates.discount_reason = `Transition gap (${gapDays} days from ${formatDayOrdinal(oldDueDay)} to ${formatDayOrdinal(newDueDay)}: ₹${proratedDue.toLocaleString('en-IN')})`;
+            changesList.push(`Transition Prorated Due: ₹${proratedDue.toLocaleString('en-IN')} (${gapDays} days till ${formatDayOrdinal(newDueDay)})`);
           }
         }
       }
@@ -2139,7 +2173,7 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
       if (!isBackdated && feeAmount > 0 && currentBalanceDue <= 0.01 && todayDay < dueDay && !input.toLowerCase().includes('paid')) {
         return {
           success: false,
-          message: `⚠️ ${matchedBooking.guest_name} (Room ${roomDisp}) has ₹0 pending rent due! Rent is already cleared till date (Next rent due date: ${dueDay}th). If this payment was made earlier (e.g. on 1st), type "paid on 1st". If for security deposit or advance, specify 'adv' (e.g. "${matchedBooking.guest_name} ${roomDisp} ${feeAmount} adv").`
+          message: `⚠️ ${matchedBooking.guest_name} (Room ${roomDisp}) has ₹0 pending rent due! Rent is already cleared till date (Next rent due date: ${formatDayOrdinal(dueDay)}). If this payment was made earlier (e.g. on 1st), type "paid on 1st". If for security deposit or advance, specify 'adv' (e.g. "${matchedBooking.guest_name} ${roomDisp} ${feeAmount} adv").`
         };
       }
 

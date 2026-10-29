@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { parseQuickLedgerText, isResidentNameMatch } from '@/lib/quick-ledger-parser';
+import { parseQuickLedgerText, isResidentNameMatch, formatDayOrdinal } from '@/lib/quick-ledger-parser';
 
 describe('Quick Ledger NLP Parser', () => {
   describe('Expense Parsing', () => {
@@ -804,6 +804,23 @@ describe('Quick Ledger NLP Parser', () => {
         expect(p.tenantName).toBe('manideep');
         expect(p.feeAmount).toBe(6300);
       }
+    });
+
+    it('should format day ordinals accurately (1st, 2nd, 3rd, 11th, 21st, 22nd, 23rd)', () => {
+      expect(formatDayOrdinal(1)).toBe('1st');
+      expect(formatDayOrdinal('1')).toBe('1st');
+      expect(formatDayOrdinal(2)).toBe('2nd');
+      expect(formatDayOrdinal(3)).toBe('3rd');
+      expect(formatDayOrdinal(4)).toBe('4th');
+      expect(formatDayOrdinal(5)).toBe('5th');
+      expect(formatDayOrdinal(10)).toBe('10th');
+      expect(formatDayOrdinal(11)).toBe('11th');
+      expect(formatDayOrdinal(12)).toBe('12th');
+      expect(formatDayOrdinal(13)).toBe('13th');
+      expect(formatDayOrdinal(21)).toBe('21st');
+      expect(formatDayOrdinal(22)).toBe('22nd');
+      expect(formatDayOrdinal(23)).toBe('23rd');
+      expect(formatDayOrdinal(31)).toBe('31st');
     });
   });
 });
