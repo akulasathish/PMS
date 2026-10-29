@@ -795,5 +795,15 @@ describe('Quick Ledger NLP Parser', () => {
         expect(p3.monthPayments?.[0].isOverdue).toBe(true);
       }
     });
+
+    it('should strip conversational words like "today he" in payment queries', () => {
+      const p = parseQuickLedgerText('manideep 505 payment today he paid 6300');
+      expect(p.type).toBe('revenue');
+      if (p.type === 'revenue') {
+        expect(p.roomNumber).toBe('505');
+        expect(p.tenantName).toBe('manideep');
+        expect(p.feeAmount).toBe(6300);
+      }
+    });
   });
 });

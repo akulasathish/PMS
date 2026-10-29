@@ -676,20 +676,84 @@ export default function QuickLedgerAssistant() {
                                       <span className="text-xs font-bold text-cyan-400">₹{msg.result.advPaid.toLocaleString('en-IN')}</span>
                                     </div>
                                   ) : null}
+                                  {msg.result.maintenancePaid ? (
+                                    <div className="flex justify-between items-baseline">
+                                      <span className="text-[11px] text-zinc-400">Maintenance Fee Paid</span>
+                                      <span className="text-xs font-bold text-teal-400">₹{msg.result.maintenancePaid.toLocaleString('en-IN')}</span>
+                                    </div>
+                                  ) : null}
                                   <div className="pt-1.5 border-t border-white/10 flex justify-between items-baseline">
-                                    <span className="text-[11px] font-semibold text-zinc-300">Total Collected</span>
+                                    <span className="text-[11px] font-semibold text-zinc-300">Total Collected Now</span>
                                     <span className="text-sm font-black text-white">₹{msg.result.totalPaid?.toLocaleString('en-IN')}</span>
                                   </div>
                                 </div>
 
-                                <div className="flex items-center justify-between pt-1">
-                                  <div className="text-[11px]">
-                                    <span className="text-zinc-500">Pending Due: </span>
-                                    <span className={`font-black ${msg.result.newBalanceDue && msg.result.newBalanceDue > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                                      ₹{Number(msg.result.newBalanceDue || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                {/* DUES & STATUS BREAKDOWN SECTION */}
+                                <div className="bg-black/40 rounded-xl p-3 border border-white/5 space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Balance & Dues Status</span>
+                                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                                      !msg.result.newBalanceDue || msg.result.newBalanceDue <= 0.01
+                                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                        : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                    }`}>
+                                      {!msg.result.newBalanceDue || msg.result.newBalanceDue <= 0.01 ? 'Fully Cleared' : (msg.result.paymentStatus || 'Pending Dues')}
                                     </span>
                                   </div>
 
+                                  <div className="grid grid-cols-2 gap-2 pt-1 text-[11px]">
+                                    <div>
+                                      <span className="text-zinc-500 block text-[10px]">Room Rent Due</span>
+                                      <span className={`font-bold ${msg.result.pendingRentDue && msg.result.pendingRentDue > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                        {msg.result.pendingRentDue && msg.result.pendingRentDue > 0
+                                          ? `₹${msg.result.pendingRentDue.toLocaleString('en-IN')}`
+                                          : '₹0 (Cleared)'}
+                                      </span>
+                                    </div>
+                                    <div>
+                                      <span className="text-zinc-500 block text-[10px]">Maintenance Due</span>
+                                      <span className={`font-bold ${msg.result.pendingMaintDue && msg.result.pendingMaintDue > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                        {msg.result.pendingMaintDue && msg.result.pendingMaintDue > 0
+                                          ? `₹${msg.result.pendingMaintDue.toLocaleString('en-IN')}`
+                                          : '₹0 (Cleared)'}
+                                      </span>
+                                    </div>
+                                    {msg.result.pendingDepositDue !== undefined && msg.result.pendingDepositDue > 0 && (
+                                      <div>
+                                        <span className="text-zinc-500 block text-[10px]">Deposit Due</span>
+                                        <span className="font-bold text-amber-400">
+                                          ₹{msg.result.pendingDepositDue.toLocaleString('en-IN')}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="pt-2 border-t border-white/5 flex justify-between items-baseline">
+                                    <span className="text-[11px] font-semibold text-zinc-300">Total Outstanding</span>
+                                    <span className={`text-sm font-black ${
+                                      !msg.result.newBalanceDue || msg.result.newBalanceDue <= 0.01
+                                        ? 'text-emerald-400'
+                                        : 'text-rose-400'
+                                    }`}>
+                                      ₹{Number(msg.result.newBalanceDue || 0).toLocaleString('en-IN')}
+                                    </span>
+                                  </div>
+
+                                  {/* If month breakdown has pending dues, show breakdown */}
+                                  {msg.result.monthBreakdown && msg.result.monthBreakdown.some(m => m.due > 0) && (
+                                    <div className="pt-1.5 border-t border-white/5 text-[10px] text-zinc-400 space-y-1">
+                                      <div className="text-zinc-500 font-medium">Pending Cycles:</div>
+                                      {msg.result.monthBreakdown.filter(m => m.due > 0).map((m, idx) => (
+                                        <div key={idx} className="flex justify-between items-center text-zinc-300">
+                                          <span>{m.month}</span>
+                                          <span className="font-semibold text-amber-400">₹{m.due.toLocaleString('en-IN')} due ({m.status})</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center justify-end pt-1">
                                   <button
                                     onClick={() => handleUndo(msg)}
                                     disabled={msg.undoState === 'undoing' || msg.undoState === 'undone'}

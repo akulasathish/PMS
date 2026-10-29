@@ -91,6 +91,11 @@ export interface QuickLedgerResult {
   maintenancePaid?: number;
   totalPaid?: number;
   newBalanceDue?: number;
+  pendingRentDue?: number;
+  pendingMaintDue?: number;
+  pendingDepositDue?: number;
+  paymentStatus?: 'Fully Cleared' | 'Partial Payment' | 'Pending Dues';
+  monthBreakdown?: QuickLedgerMonthBreakdown[];
   paymentIds?: string[];
   bookingId?: string;
   advAmountAdded?: number;
@@ -2256,20 +2261,77 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         .filter(p => p.allocation === 'Rent')
         .reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
-      // Recalculate remaining due taking into account distinct billing months
-      const distinctMonths = new Set<string>();
-      for (const p of [...validPayments, ...paymentRows]) {
-        if (p.allocation === 'Rent' || !p.allocation) {
-          const mKey = p.billing_period || (p.business_date ? p.business_date.slice(0, 7) : null);
-          if (mKey) distinctMonths.add(mKey);
+      // Recalculate remaining dues using authoritative getFolioSummary
+      const folioRes = await getFolioSummary(matchedBooking.id);
+      let pendingRentDue = 0;
+      let pendingMaintDue = 0;
+      let pendingDepositDue = 0;
+      let totalOutstanding = 0;
+      let monthBreakdown: QuickLedgerMonthBreakdown[] = [];
+      let paymentStatus: 'Fully Cleared' | 'Partial Payment' | 'Pending Dues' = 'Fully Cleared';
+      let fullTenantReport: QuickLedgerTenantReport | undefined = undefined;
+
+      if (folioRes.success && folioRes.data) {
+        const folioData = folioRes.data;
+        pendingRentDue = folioData.roomRentDue;
+        pendingMaintDue = folioData.maintenanceDue;
+        pendingDepositDue = folioData.securityDepositDue;
+        totalOutstanding = folioData.totalOutstanding;
+        paymentStatus = totalOutstanding <= 0.01 ? 'Fully Cleared' : 'Partial Payment';
+        monthBreakdown = (folioData.monthBreakdown || []).map(m => ({
+          month: m.month,
+          rentCharged: m.rentCharged,
+          rentPaid: m.rentPaid,
+          due: m.due,
+          status: m.status
+        }));
+
+        fullTenantReport = {
+          bookingId: matchedBooking.id,
+          guestName: matchedBooking.guest_name,
+          roomNumber: roomDisp,
+          checkInDate: matchedBooking.check_in || '',
+          dueDay,
+          monthlyRent: folioData.monthlyRentRate || matchedBooking.monthly_rent || 0,
+          totalAccruedRent: folioData.lifetimeRentPaid + folioData.roomRentDue,
+          totalRentPaid: folioData.lifetimeRentPaid,
+          pendingRentDue: folioData.roomRentDue,
+          refundableDeposit: folioData.securityDepositRequired,
+          depositPaid: folioData.securityDepositPaid,
+          maintenanceFee: folioData.expectedMaintenance,
+          maintenancePaid: folioData.maintenancePaid,
+          totalPaidOverall: folioData.totalPaidTillDate,
+          monthBreakdown,
+          payments: []
+        };
+      } else {
+        // Fallback calculation
+        const distinctMonths = new Set<string>();
+        for (const p of [...validPayments, ...paymentRows]) {
+          if (p.allocation === 'Rent' || !p.allocation) {
+            const mKey = p.billing_period || (p.business_date ? p.business_date.slice(0, 7) : null);
+            if (mKey) distinctMonths.add(mKey);
+          }
         }
+        const monthsCount = Math.max(1, distinctMonths.size);
+        const totalRentOwed = matchedBooking.is_monthly
+          ? Number(matchedBooking.monthly_rent || matchedBooking.monthly_rate || 0) * monthsCount
+          : baseRoomCharge;
+        const newRentPaid = rentPaidBeforeThis + totalRentRecorded;
+        totalOutstanding = Math.max(0, (totalRentOwed + incidentalsSum) - newRentPaid);
+        pendingRentDue = totalOutstanding;
+        paymentStatus = totalOutstanding <= 0.01 ? 'Fully Cleared' : 'Partial Payment';
       }
-      const monthsCount = Math.max(1, distinctMonths.size);
-      const totalRentOwed = matchedBooking.is_monthly
-        ? Number(matchedBooking.monthly_rent || matchedBooking.monthly_rate || 0) * monthsCount
-        : baseRoomCharge;
-      const newRentPaid = rentPaidBeforeThis + totalRentRecorded;
-      const newBalanceDue = Math.max(0, (totalRentOwed + incidentalsSum) - newRentPaid);
+
+      // Build a clear dues status breakdown message
+      const duesBreakdownParts: string[] = [];
+      if (pendingRentDue > 0) duesBreakdownParts.push(`₹${pendingRentDue.toLocaleString('en-IN')} Room Rent Due`);
+      if (pendingMaintDue > 0) duesBreakdownParts.push(`₹${pendingMaintDue.toLocaleString('en-IN')} Maintenance Due`);
+      if (pendingDepositDue > 0) duesBreakdownParts.push(`₹${pendingDepositDue.toLocaleString('en-IN')} Deposit Due`);
+
+      const duesStatusText = totalOutstanding <= 0.01
+        ? 'Status: ✅ Fully Cleared (₹0 Due)'
+        : `Status: ⚠️ Partial Payment (Total Outstanding: ₹${totalOutstanding.toLocaleString('en-IN')}${duesBreakdownParts.length > 0 ? ` [${duesBreakdownParts.join(' + ')}]` : ''})`;
 
       return {
         success: true,
@@ -2281,11 +2343,17 @@ export async function processQuickLedger(input: string, propertyId?: string): Pr
         maintenancePaid: parsedMaintenance,
         totalPaid: totalRecordedPaid,
         paymentDate: effectivePaymentDate,
-        newBalanceDue,
+        newBalanceDue: totalOutstanding,
+        pendingRentDue,
+        pendingMaintDue,
+        pendingDepositDue,
+        paymentStatus,
+        monthBreakdown,
+        tenantReport: fullTenantReport,
         paymentIds,
         bookingId: matchedBooking.id,
         advAmountAdded: advAmount,
-        message: `Recorded payment for ${matchedBooking.guest_name} (Room ${roomDisp}) on ${effectivePaymentDate}: ${paymentBreakdownDesc.join(' • ')}. Updated Pending Due: ₹${newBalanceDue.toLocaleString('en-IN')}`
+        message: `Recorded payment for ${matchedBooking.guest_name} (Room ${roomDisp}) on ${effectivePaymentDate}: ${paymentBreakdownDesc.join(' • ')}. ${duesStatusText}`
       };
     }
 

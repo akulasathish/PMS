@@ -1287,6 +1287,7 @@ export function parseQuickLedgerText(input: string) {
     'maintainance', 'maintenance', 'maintance', 'maintence', 'maintanace', 'maintanance', 'maintanence', 'maint',
     'refundable', 'refundabale', 'refundble', 'ammount', 'amount',
     'revenue', 'on', 'date', 'joined', 'joining', 'join', 'guest', 'tenant', 'resident', 'name', 'called', 'named', 'please', 'the', 'a', 'an',
+    'today', 'yesterday', 'tomorrow', 'he', 'she', 'his', 'her', 'they', 'them',
     'jan', 'january', 'feb', 'february', 'mar', 'march', 'apr', 'april', 'may', 'jun', 'june',
     'jul', 'july', 'aug', 'august', 'sep', 'september', 'oct', 'october', 'nov', 'november', 'dec', 'december'
   ];
