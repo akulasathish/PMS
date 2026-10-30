@@ -33,8 +33,9 @@ async function getPgContext(propertyId = DEFAULT_PROPERTY_ID): Promise<string> {
     const [roomsRes, bookingsRes, settingsRes] = await Promise.all([
       admin
         .from("rooms")
-        .select("id, room_number, room_type, capacity, base_rate, status")
+        .select("id, room_number, type, sharing_capacity, status")
         .eq("property_id", propertyId)
+        .eq("is_deleted", false)
         .order("room_number"),
       admin
         .from("bookings")
@@ -80,11 +81,13 @@ async function getPgContext(propertyId = DEFAULT_PROPERTY_ID): Promise<string> {
 
     for (const room of rooms) {
       const occupants = tenantsByRoom.get(room.id) || [];
-      const vacant =
-        (Number(room.capacity) || 1) - occupants.length;
+      const capacity = Number((room as any).sharing_capacity) || 1;
+      const vacant = capacity - occupants.length;
+      const roomType = (room as any).type || "Standard";
+
       if (occupants.length === 0) {
         lines.push(
-          `Room ${room.room_number} [${room.room_type || "Standard"}] — VACANT (capacity: ${room.capacity || 1}, base rate: ₹${room.base_rate || 0}/mo)`
+          `Room ${room.room_number} [${roomType}] — VACANT (capacity: ${capacity} beds)`
         );
       } else {
         const tenantList = occupants
@@ -94,7 +97,7 @@ async function getPgContext(propertyId = DEFAULT_PROPERTY_ID): Promise<string> {
           )
           .join(", ");
         lines.push(
-          `Room ${room.room_number} [${room.room_type || "Standard"}] — OCCUPIED by ${tenantList}${vacant > 0 ? ` | ${vacant} bed(s) vacant` : ""}`
+          `Room ${room.room_number} [${roomType}] — OCCUPIED (${occupants.length}/${capacity} beds occupied): ${tenantList}${vacant > 0 ? ` | ${vacant} bed(s) vacant` : " | FULL"}`
         );
       }
     }
