@@ -467,15 +467,15 @@ export default function QuickLedgerAssistant() {
         onClick={() => setIsOpen(true)}
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
-        className="fixed bottom-6 right-6 md:bottom-8 md:right-8 z-50 flex items-center gap-2.5 px-4 py-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 text-white font-bold text-xs rounded-full shadow-[0_8px_30px_rgba(16,185,129,0.35)] hover:shadow-[0_8px_35px_rgba(99,102,241,0.45)] border border-white/20 backdrop-blur-xl transition-all"
+        className="fixed bottom-20 left-4 md:bottom-8 md:right-8 md:left-auto z-40 flex items-center gap-2 px-3.5 py-2.5 md:px-4 md:py-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 text-white font-bold text-xs rounded-full shadow-[0_8px_30px_rgba(16,185,129,0.35)] hover:shadow-[0_8px_35px_rgba(99,102,241,0.45)] border border-white/20 backdrop-blur-xl transition-all"
         title="AI Ledger Assistant"
       >
-        <span className="relative flex h-2.5 w-2.5">
+        <span className="relative flex h-2 w-2 md:h-2.5 md:w-2.5">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-300"></span>
+          <span className="relative inline-flex rounded-full h-2 w-2 md:h-2.5 md:w-2.5 bg-emerald-300"></span>
         </span>
-        <Zap size={16} className="text-yellow-300 fill-yellow-300" />
-        <span className="tracking-wide font-black uppercase text-[11px]">AI Ledger</span>
+        <Zap size={15} className="text-yellow-300 fill-yellow-300" />
+        <span className="tracking-wide font-black uppercase text-[10px] md:text-[11px]">AI Ledger</span>
       </motion.button>
 
       {/* Slide-Up Chat Drawer */}
