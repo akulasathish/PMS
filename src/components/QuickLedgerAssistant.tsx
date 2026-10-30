@@ -241,6 +241,39 @@ export default function QuickLedgerAssistant() {
         // ── Quick Ledger (regex) path ──────────────────────────────────────
         const res = await processQuickLedger(textToSend, pId);
 
+        if (!res.success) {
+          // If regex command wasn't understood or had an issue, fallback to AI Agent
+          const agentRes = await askAiAgent(textToSend, aiHistoryRef.current, pId);
+          if (agentRes.success) {
+            aiHistoryRef.current = [
+              ...aiHistoryRef.current,
+              { role: 'user' as const, text: textToSend },
+              { role: 'model' as const, text: agentRes.reply },
+            ].slice(-20);
+
+            const botMsgId = 'bot_' + Date.now();
+            setMessages(prev => [
+              ...prev,
+              {
+                id: botMsgId,
+                sender: 'bot',
+                aiReply: agentRes.reply,
+                actionsTaken: agentRes.actionsTaken,
+                timestamp: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+              }
+            ]);
+
+            if (agentRes.actionsTaken.length > 0) {
+              if (typeof window !== 'undefined') {
+                try { navigator.vibrate?.(40); } catch {}
+                window.dispatchEvent(new CustomEvent('pms_quick_ledger_updated'));
+                router.refresh();
+              }
+            }
+            return;
+          }
+        }
+
         const botMsgId = 'bot_' + Date.now();
         setMessages(prev => [
           ...prev,

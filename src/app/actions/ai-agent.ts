@@ -21,11 +21,12 @@ export interface AiAgentResult {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-const PROPERTY_ID = "64f41226-e209-42fe-b01c-35d16d169818";
-const MODEL = "gemini-2.5-flash-preview-05-20";
+const DEFAULT_PROPERTY_ID = "64f41226-e209-42fe-b01c-35d16d169818";
+const PRIMARY_MODEL = "gemini-3.1-flash-lite";
+const FALLBACK_MODEL = "gemini-3-flash-preview";
 
 /** Get live PG context for the system prompt */
-async function getPgContext(): Promise<string> {
+async function getPgContext(propertyId = DEFAULT_PROPERTY_ID): Promise<string> {
   try {
     const admin = getSupabaseAdmin();
 
@@ -33,14 +34,14 @@ async function getPgContext(): Promise<string> {
       admin
         .from("rooms")
         .select("id, room_number, room_type, capacity, base_rate, status")
-        .eq("property_id", PROPERTY_ID)
+        .eq("property_id", propertyId)
         .order("room_number"),
       admin
         .from("bookings")
         .select(
           "id, guest_name, room_id, status, monthly_rent, rent_due_day, check_in, notes"
         )
-        .eq("property_id", PROPERTY_ID)
+        .eq("property_id", propertyId)
         .in("status", ["Checked In", "Confirmed", "in_house"]),
       admin
         .from("app_settings")
@@ -112,12 +113,12 @@ async function toolRecordPayment(args: {
   amount: number;
   payment_type?: string;
   month?: string;
-}): Promise<string> {
+}, propId = DEFAULT_PROPERTY_ID): Promise<string> {
   const { tenant_name, room_number, amount, payment_type, month } = args;
   const typeStr = payment_type === "maintenance" ? "maintenance" : "room fee";
   const monthStr = month ? ` for ${month}` : "";
   const cmd = `${tenant_name} room ${room_number} paid ${amount} ${typeStr}${monthStr}`;
-  const res = await processQuickLedger(cmd, PROPERTY_ID);
+  const res = await processQuickLedger(cmd, propId);
   return res.success
     ? `✅ Recorded ₹${amount.toLocaleString("en-IN")} payment for ${tenant_name} (Room ${room_number}). ${res.message}`
     : `❌ Failed: ${res.message}`;
@@ -130,11 +131,11 @@ async function toolRecordAdvance(args: {
   join_date: string;
   advance_amount: number;
   maintenance?: number;
-}): Promise<string> {
+}, propId = DEFAULT_PROPERTY_ID): Promise<string> {
   const { tenant_name, room_number, rent, join_date, advance_amount, maintenance } = args;
   const maintStr = maintenance ? ` maintenance ${maintenance}` : "";
   const cmd = `assign ${tenant_name} to room ${room_number} joining on ${join_date} rent ${rent} adv ${advance_amount}${maintStr}`;
-  const res = await processQuickLedger(cmd, PROPERTY_ID);
+  const res = await processQuickLedger(cmd, propId);
   return res.success
     ? `✅ Registered ${tenant_name} for Room ${room_number} joining ${join_date} with ₹${advance_amount.toLocaleString("en-IN")} advance. ${res.message}`
     : `❌ Failed: ${res.message}`;
@@ -147,36 +148,36 @@ async function toolAssignTenant(args: {
   join_date?: string;
   advance?: number;
   maintenance?: number;
-}): Promise<string> {
+}, propId = DEFAULT_PROPERTY_ID): Promise<string> {
   const { tenant_name, room_number, rent, join_date, advance, maintenance } = args;
   const advStr = advance ? ` adv ${advance}` : "";
   const maintStr = maintenance ? ` maintenance ${maintenance}` : "";
   const joinStr = join_date ? ` joining on ${join_date}` : "";
   const cmd = `assign ${tenant_name} to room ${room_number}${joinStr} rent ${rent}${advStr}${maintStr}`;
-  const res = await processQuickLedger(cmd, PROPERTY_ID);
+  const res = await processQuickLedger(cmd, propId);
   return res.success
     ? `✅ Assigned ${tenant_name} to Room ${room_number} at ₹${rent.toLocaleString("en-IN")}/mo. ${res.message}`
     : `❌ Failed: ${res.message}`;
 }
 
-async function toolGetPendingDues(_args: Record<string, unknown>): Promise<string> {
-  const res = await processQuickLedger("all pending dues", PROPERTY_ID);
+async function toolGetPendingDues(_args: Record<string, unknown>, propId = DEFAULT_PROPERTY_ID): Promise<string> {
+  const res = await processQuickLedger("all pending dues", propId);
   return res.message;
 }
 
-async function toolGetRoomStatus(_args: Record<string, unknown>): Promise<string> {
-  return await getPgContext();
+async function toolGetRoomStatus(_args: Record<string, unknown>, propId = DEFAULT_PROPERTY_ID): Promise<string> {
+  return await getPgContext(propId);
 }
 
 async function toolGetTenantStatement(args: {
   tenant_name: string;
   room_number?: string;
-}): Promise<string> {
+}, propId = DEFAULT_PROPERTY_ID): Promise<string> {
   const { tenant_name, room_number } = args;
   const cmd = room_number
     ? `statement ${tenant_name} room ${room_number}`
     : `statement ${tenant_name}`;
-  const res = await processQuickLedger(cmd, PROPERTY_ID);
+  const res = await processQuickLedger(cmd, propId);
   return res.message;
 }
 
@@ -184,11 +185,11 @@ async function toolChangeTenantRent(args: {
   tenant_name?: string;
   room_number: string | number;
   new_rent: number;
-}): Promise<string> {
+}, propId = DEFAULT_PROPERTY_ID): Promise<string> {
   const { tenant_name, room_number, new_rent } = args;
   const nameStr = tenant_name ? `${tenant_name} ` : "";
   const cmd = `change room fee of ${nameStr}room ${room_number} to ${new_rent}`;
-  const res = await processQuickLedger(cmd, PROPERTY_ID);
+  const res = await processQuickLedger(cmd, propId);
   return res.success
     ? `✅ Updated room fee for Room ${room_number} to ₹${new_rent.toLocaleString("en-IN")}/mo. ${res.message}`
     : `❌ Failed: ${res.message}`;
@@ -197,10 +198,10 @@ async function toolChangeTenantRent(args: {
 async function toolCheckoutTenant(args: {
   tenant_name: string;
   room_number: string | number;
-}): Promise<string> {
+}, propId = DEFAULT_PROPERTY_ID): Promise<string> {
   const { tenant_name, room_number } = args;
   const cmd = `checkout ${tenant_name} room ${room_number}`;
-  const res = await processQuickLedger(cmd, PROPERTY_ID);
+  const res = await processQuickLedger(cmd, propId);
   return res.success
     ? `✅ Checked out ${tenant_name} from Room ${room_number}. ${res.message}`
     : `❌ Failed: ${res.message}`;
@@ -210,11 +211,11 @@ async function toolRecordExpense(args: {
   description: string;
   amount: number;
   category?: string;
-}): Promise<string> {
+}, propId = DEFAULT_PROPERTY_ID): Promise<string> {
   const { description, amount, category } = args;
   const catStr = category ? ` ${category}` : "";
   const cmd = `expense ${description}${catStr} ${amount}`;
-  const res = await processQuickLedger(cmd, PROPERTY_ID);
+  const res = await processQuickLedger(cmd, propId);
   return res.success
     ? `✅ Recorded expense: ${description} — ₹${amount.toLocaleString("en-IN")}. ${res.message}`
     : `❌ Failed: ${res.message}`;
@@ -441,17 +442,18 @@ export async function askAiAgent(
   if (!apiKey) {
     return {
       success: false,
-      reply: "⚠️ Gemini API key not configured. Please add GEMINI_API_KEY to .env.local",
+      reply: "⚠️ Gemini API key not configured. Please ensure GEMINI_API_KEY is set in your environment variables.",
       actionsTaken: [],
       error: "Missing GEMINI_API_KEY",
     };
   }
 
+  const activePropId = propertyId || DEFAULT_PROPERTY_ID;
   const actionsTaken: string[] = [];
 
   try {
     const ai = new GoogleGenAI({ apiKey });
-    const pgContext = await getPgContext();
+    const pgContext = await getPgContext(activePropId);
 
     const systemPrompt = `You are a smart AI assistant for a PG (Paying Guest) accommodation called "Staysync Mens Premium PG" in India.
 Your job is to help the PG owner manage their property by understanding natural language and performing actions.
@@ -497,15 +499,29 @@ IMPORTANT RULES:
     while (iterations < MAX_ITERATIONS) {
       iterations++;
 
-      const response = await ai.models.generateContent({
-        model: MODEL,
-        contents: loopContents,
-        config: {
-          systemInstruction: systemPrompt,
-          tools: [{ functionDeclarations: TOOLS }],
-          temperature: 0.3,
-        },
-      });
+      let response;
+      try {
+        response = await ai.models.generateContent({
+          model: PRIMARY_MODEL,
+          contents: loopContents,
+          config: {
+            systemInstruction: systemPrompt,
+            tools: [{ functionDeclarations: TOOLS }],
+            temperature: 0.3,
+          },
+        });
+      } catch (primaryErr: any) {
+        console.warn(`[AI Agent] ${PRIMARY_MODEL} error (${primaryErr?.message}), falling back to ${FALLBACK_MODEL}...`);
+        response = await ai.models.generateContent({
+          model: FALLBACK_MODEL,
+          contents: loopContents,
+          config: {
+            systemInstruction: systemPrompt,
+            tools: [{ functionDeclarations: TOOLS }],
+            temperature: 0.3,
+          },
+        });
+      }
 
       const candidate = response.candidates?.[0];
       if (!candidate) {
@@ -533,31 +549,31 @@ IMPORTANT RULES:
           try {
             switch (fc.name) {
               case "record_payment":
-                result = await toolRecordPayment(args as any);
+                result = await toolRecordPayment(args as any, activePropId);
                 break;
               case "record_advance":
-                result = await toolRecordAdvance(args as any);
+                result = await toolRecordAdvance(args as any, activePropId);
                 break;
               case "assign_tenant":
-                result = await toolAssignTenant(args as any);
+                result = await toolAssignTenant(args as any, activePropId);
                 break;
               case "get_pending_dues":
-                result = await toolGetPendingDues(args);
+                result = await toolGetPendingDues(args, activePropId);
                 break;
               case "get_room_status":
-                result = await toolGetRoomStatus(args);
+                result = await toolGetRoomStatus(args, activePropId);
                 break;
               case "get_tenant_statement":
-                result = await toolGetTenantStatement(args as any);
+                result = await toolGetTenantStatement(args as any, activePropId);
                 break;
               case "change_tenant_rent":
-                result = await toolChangeTenantRent(args as any);
+                result = await toolChangeTenantRent(args as any, activePropId);
                 break;
               case "checkout_tenant":
-                result = await toolCheckoutTenant(args as any);
+                result = await toolCheckoutTenant(args as any, activePropId);
                 break;
               case "record_expense":
-                result = await toolRecordExpense(args as any);
+                result = await toolRecordExpense(args as any, activePropId);
                 break;
               default:
                 result = `Unknown tool: ${fc.name}`;
@@ -574,6 +590,7 @@ IMPORTANT RULES:
             functionResponse: {
               name: fc.name,
               response: { result },
+              ...(fc.id ? { id: fc.id } : {}),
             },
           };
         })
