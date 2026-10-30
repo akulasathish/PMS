@@ -568,6 +568,47 @@ describe('Quick Ledger NLP Parser', () => {
       }
     });
 
+    it('should parse room fee change commands like "change room fee of sipai 306 to 7200"', () => {
+      const r1 = parseQuickLedgerText('change room fee of sipai 306 to 7200');
+      expect(r1.type).toBe('update_tenant');
+      if (r1.type === 'update_tenant') {
+        expect(r1.roomNumber).toBe('306');
+        expect(r1.tenantName?.toLowerCase()).toBe('sipai');
+        expect(r1.newMonthlyRent).toBe(7200);
+      }
+
+      const r2 = parseQuickLedgerText('change sipai 306 rent to 7200');
+      expect(r2.type).toBe('update_tenant');
+      if (r2.type === 'update_tenant') {
+        expect(r2.roomNumber).toBe('306');
+        expect(r2.tenantName?.toLowerCase()).toBe('sipai');
+        expect(r2.newMonthlyRent).toBe(7200);
+      }
+
+      const r3 = parseQuickLedgerText('modify room 306 sipai fee 7200');
+      expect(r3.type).toBe('update_tenant');
+      if (r3.type === 'update_tenant') {
+        expect(r3.roomNumber).toBe('306');
+        expect(r3.tenantName?.toLowerCase()).toBe('sipai');
+        expect(r3.newMonthlyRent).toBe(7200);
+      }
+
+      const r4 = parseQuickLedgerText('sipai 306 room fee is 8000 current but i need to change to 7200');
+      expect(r4.type).toBe('update_tenant');
+      if (r4.type === 'update_tenant') {
+        expect(r4.roomNumber).toBe('306');
+        expect(r4.tenantName?.toLowerCase()).toBe('sipai');
+        expect(r4.newMonthlyRent).toBe(7200);
+      }
+
+      const r5 = parseQuickLedgerText('change room 306 rent to 7200');
+      expect(r5.type).toBe('update_tenant');
+      if (r5.type === 'update_tenant') {
+        expect(r5.roomNumber).toBe('306');
+        expect(r5.newMonthlyRent).toBe(7200);
+      }
+    });
+
     it('should parse "move akshith to room 201"', () => {
       const result = parseQuickLedgerText('move akshith to room 201');
       expect(result.type).toBe('move_tenant');

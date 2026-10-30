@@ -414,8 +414,9 @@ export function parseQuickLedgerText(input: string) {
   }
 
   // 0b2. MOVE / SHIFT / TRANSFER TENANT TO ANOTHER ROOM
-  const isMove = /\b(?:move|shift|transfer|relocate)\b/i.test(lower) ||
-                 (/\bchange\s*room\b/i.test(lower));
+  const isMove = (/\b(?:move|shift|transfer|relocate)\b/i.test(lower) ||
+                 (/\bchange\s*room\b/i.test(lower) && !/\b(?:rent|fee|feee|rate|price|tariff|charge|charges)\b/i.test(lower))) &&
+                 !/\b(?:change\s*due\s*date|change\s*joining\s*date)\b/i.test(lower);
   if (isMove) {
     let cleaned = lower;
 
@@ -550,23 +551,32 @@ export function parseQuickLedgerText(input: string) {
       cleaned = cleaned.replace(new RegExp('\\b(?:to|is|as|on|=|:)?\\s*' + newDueDay + '(?:st|nd|rd|th)?\\b', 'i'), ' ');
     }
 
-    // 4. New Monthly Rent / Fee: 'rent 8500', 'fee 8500', 'rent to 8500', 'romm fee paid 9000'
+    // 4. New Monthly Rent / Fee: 'rent 8500', 'fee 8500', 'rent to 8500', 'romm fee paid 9000', 'change to 7200', 'to 7200'
     let newMonthlyRent: number | null = null;
+    const changeToMatch = cleaned.match(/\b(?:change|modify|update|set|make\s+it|reduce|increase)\s*(?:it\s*)?(?:to|as)?\s*(\d+(?:\.\d+)?)(k)?\b/i);
     const rentPaidExplicitInRent = cleaned.match(/\b(?:r+o+m+|rm)?\s*(?:fee|feee|r+e+n+t+|ent|ren|rnt|reent|remt)\s*(?:is\s*)?(?:paid|sent)\s*[:=]?\s*(\d+(?:\.\d+)?)(k)?\b/i);
-    if (rentPaidExplicitInRent) {
+    const rentDirectMatch = cleaned.match(/\b(?:r+e+n+t+|ent|ren|rnt|reent|remt|monthly\s*rent|r+o+m+\s*fee|rm\s*fee|fee|feee|monthly)\s*(?:to|as|is|=|:)?\s*(\d+(?:\.\d+)?)(k)?\b/i);
+    const toRentMatch = cleaned.match(/\b(?:to|as|is|=|:)\s*(\d+(?:\.\d+)?)(k)?\b/i);
+
+    if (changeToMatch && (cleaned.includes('rent') || cleaned.includes('fee') || cleaned.includes('room') || cleaned.includes('rate'))) {
+      newMonthlyRent = parseFloat(changeToMatch[1]) * (changeToMatch[2] ? 1000 : 1);
+      cleaned = cleaned.replace(changeToMatch[0], ' ');
+      // Also clean any previous "fee is 8000" or "rent 8000" so it doesn't get confused
+      cleaned = cleaned.replace(/\b(?:fee|feee|rent|rate)\s*(?:is|was)?\s*[:=]?\s*\d+(?:\.\d+)?(?:k)?\b/gi, ' ');
+    } else if (rentPaidExplicitInRent) {
       newMonthlyRent = parseFloat(rentPaidExplicitInRent[1]) * (rentPaidExplicitInRent[2] ? 1000 : 1);
       cleaned = cleaned.replace(rentPaidExplicitInRent[0], ' ');
+    } else if (rentDirectMatch) {
+      newMonthlyRent = parseFloat(rentDirectMatch[1]) * (rentDirectMatch[2] ? 1000 : 1);
+      cleaned = cleaned.replace(rentDirectMatch[0], ' ');
+    } else if (toRentMatch && (cleaned.includes('rent') || cleaned.includes('fee') || cleaned.includes('rate'))) {
+      newMonthlyRent = parseFloat(toRentMatch[1]) * (toRentMatch[2] ? 1000 : 1);
+      cleaned = cleaned.replace(toRentMatch[0], ' ');
     } else {
-      const rentMatch = cleaned.match(/\b(?:r+e+n+t+|ent|ren|rnt|reent|remt|monthly\s*rent|r+o+m+\s*fee|rm\s*fee|fee|feee|monthly)\b[^\d]*?(\d+(?:\.\d+)?)(k)?\b/i);
-      if (rentMatch) {
-        newMonthlyRent = parseFloat(rentMatch[1]) * (rentMatch[2] ? 1000 : 1);
-        cleaned = cleaned.replace(rentMatch[0], ' ');
-      } else {
-        const rentBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:r+e+n+t+|ent|ren|rnt|reent|remt|r+o+m+\s*fee|rm\s*fee|fee|feee)\b/i);
-        if (rentBefore) {
-          newMonthlyRent = parseFloat(rentBefore[1]) * (rentBefore[2] ? 1000 : 1);
-          cleaned = cleaned.replace(rentBefore[0], ' ');
-        }
+      const rentBefore = cleaned.match(/(\d+(?:\.\d+)?)(k)?\s*(?:r+e+n+t+|ent|ren|rnt|reent|remt|r+o+m+\s*fee|rm\s*fee|fee|feee)\b/i);
+      if (rentBefore) {
+        newMonthlyRent = parseFloat(rentBefore[1]) * (rentBefore[2] ? 1000 : 1);
+        cleaned = cleaned.replace(rentBefore[0], ' ');
       }
     }
 
@@ -596,12 +606,13 @@ export function parseQuickLedgerText(input: string) {
       'please', 'existing', 'modify', 'change', 'update', 'set', 'edit', 'correct',
       'tenant', 'resident', 'guest', 'room', 'rm', 'rom', 'romm', 'rroom', 'rooom', 'rrom', 'rooomm',
       'rent', 'ent', 'ren', 'rnt', 'reent', 'rrent', 'remt', 'fee', 'feee', 'to', 'for', 'of',
-      'and', '&', 'is', 'as', 'the', 'in', 'on', 'bed', 'paid', 'sent',
+      'and', '&', 'is', 'was', 'as', 'the', 'in', 'on', 'bed', 'paid', 'sent',
       'name', 'called', 'named', 'person', 'wants', 'want', 'his', 'her', 'their',
       'every', 'month', 'months', 'monthly', 'each', 'per', 'year', 'weekly', 'week',
       'maintainance', 'maintenance', 'maintance', 'maintence', 'maintanace', 'maintanance', 'maintanence', 'maint',
       'refundable', 'refundabale', 'refundble', 'deposit', 'ammount', 'amount',
       'adv', 'advance', 'due', 'date', 'day', 'joining', 'joined', 'join', 'non',
+      'current', 'currently', 'old', 'new', 'need', 'needs', 'i', 'we', 'but', 'so', 'soo', 'would', 'like', 'it',
       'january', 'jan', 'february', 'feb', 'march', 'mar', 'april', 'apr', 'may', 'june', 'jun',
       'july', 'jul', 'august', 'aug', 'september', 'sep', 'october', 'oct', 'november', 'nov', 'december', 'dec'
     ]);
