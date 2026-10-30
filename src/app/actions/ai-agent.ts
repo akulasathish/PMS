@@ -25,16 +25,29 @@ const DEFAULT_PROPERTY_ID = "64f41226-e209-42fe-b01c-35d16d169818";
 const PRIMARY_MODEL = "gemini-3.1-flash-lite";
 const FALLBACK_MODEL = "gemini-3-flash-preview";
 
+async function getEffectivePropertyId(admin: any, requestedId?: string): Promise<string> {
+  if (requestedId) {
+    const { count } = await admin
+      .from("rooms")
+      .select("id", { count: "exact", head: true })
+      .eq("property_id", requestedId)
+      .eq("is_deleted", false);
+    if (count && count > 0) return requestedId;
+  }
+  return DEFAULT_PROPERTY_ID;
+}
+
 /** Get live PG context for the system prompt */
 async function getPgContext(propertyId = DEFAULT_PROPERTY_ID): Promise<string> {
   try {
     const admin = getSupabaseAdmin();
+    const activeId = await getEffectivePropertyId(admin, propertyId);
 
     const [roomsRes, bookingsRes, settingsRes] = await Promise.all([
       admin
         .from("rooms")
         .select("id, room_number, type, sharing_capacity, status")
-        .eq("property_id", propertyId)
+        .eq("property_id", activeId)
         .eq("is_deleted", false)
         .order("room_number"),
       admin
@@ -42,7 +55,7 @@ async function getPgContext(propertyId = DEFAULT_PROPERTY_ID): Promise<string> {
         .select(
           "id, guest_name, room_id, status, monthly_rent, rent_due_day, check_in, notes"
         )
-        .eq("property_id", propertyId)
+        .eq("property_id", activeId)
         .in("status", ["Checked In", "Confirmed", "in_house"]),
       admin
         .from("app_settings")
@@ -70,34 +83,63 @@ async function getPgContext(propertyId = DEFAULT_PROPERTY_ID): Promise<string> {
       tenantsByRoom.get(b.room_id)!.push(b);
     }
 
+    // Pre-calculate exact occupancy summary statistics
+    const totalCapacity = rooms.reduce(
+      (sum, r) => sum + (Number((r as any).sharing_capacity) || 1),
+      0
+    );
+    const totalOccupiedBeds = bookings.length;
+    const totalVacantBeds = Math.max(0, totalCapacity - totalOccupiedBeds);
+
+    const completelyEmptyRooms = rooms
+      .filter((r) => (tenantsByRoom.get(r.id) || []).length === 0)
+      .map((r) => r.room_number);
+
+    const partiallyVacantRooms = rooms
+      .filter((r) => {
+        const occ = (tenantsByRoom.get(r.id) || []).length;
+        const cap = Number((r as any).sharing_capacity) || 1;
+        return occ > 0 && occ < cap;
+      })
+      .map((r) => {
+        const occ = (tenantsByRoom.get(r.id) || []).length;
+        const cap = Number((r as any).sharing_capacity) || 1;
+        return `Room ${r.room_number} (${cap - occ} vacant bed${cap - occ > 1 ? "s" : ""})`;
+      });
+
     const lines: string[] = [
-      `Property: ${propertyName}`,
-      `Today's Business Date: ${businessDate}`,
-      `Total rooms: ${rooms.length}`,
-      `Active tenants: ${bookings.length}`,
+      `Property Name: ${propertyName}`,
+      `Current Business Date: ${businessDate}`,
+      `=== LIVE OCCUPANCY METRICS ===`,
+      `• Total Rooms: ${rooms.length}`,
+      `• Total Bed Capacity: ${totalCapacity} beds`,
+      `• Total Occupied Beds: ${totalOccupiedBeds} (${bookings.length} active tenants)`,
+      `• Total Vacant Beds Available: ${totalVacantBeds} beds`,
+      `• Completely Empty Rooms (${completelyEmptyRooms.length}): ${completelyEmptyRooms.length > 0 ? completelyEmptyRooms.join(", ") : "None"}`,
+      `• Partially Vacant Rooms (${partiallyVacantRooms.length}): ${partiallyVacantRooms.length > 0 ? partiallyVacantRooms.join("; ") : "None"}`,
       ``,
-      `=== ROOM STATUS ===`,
+      `=== ROOM-BY-ROOM DETAILS ===`,
     ];
 
     for (const room of rooms) {
       const occupants = tenantsByRoom.get(room.id) || [];
       const capacity = Number((room as any).sharing_capacity) || 1;
-      const vacant = capacity - occupants.length;
+      const vacant = Math.max(0, capacity - occupants.length);
       const roomType = (room as any).type || "Standard";
 
       if (occupants.length === 0) {
         lines.push(
-          `Room ${room.room_number} [${roomType}] — VACANT (capacity: ${capacity} beds)`
+          `Room ${room.room_number} [${roomType}] — COMPLETELY VACANT (${capacity} beds free)`
         );
       } else {
         const tenantList = occupants
           .map(
             (o) =>
-              `${o.guest_name} (rent: ₹${o.monthly_rent || 0}/mo, due: ${o.rent_due_day || 1}st, joined: ${o.check_in || "?"})`
+              `${o.guest_name} (Rent: ₹${(o.monthly_rent || 0).toLocaleString("en-IN")}/mo, Due: ${o.rent_due_day || 1}st, Joined: ${o.check_in || "N/A"})`
           )
           .join(", ");
         lines.push(
-          `Room ${room.room_number} [${roomType}] — OCCUPIED (${occupants.length}/${capacity} beds occupied): ${tenantList}${vacant > 0 ? ` | ${vacant} bed(s) vacant` : " | FULL"}`
+          `Room ${room.room_number} [${roomType}] — OCCUPIED (${occupants.length}/${capacity} beds filled): ${tenantList}${vacant > 0 ? ` | ${vacant} bed(s) vacant` : " | FULL"}`
         );
       }
     }
@@ -222,6 +264,50 @@ async function toolRecordExpense(args: {
   return res.success
     ? `✅ Recorded expense: ${description} — ₹${amount.toLocaleString("en-IN")}. ${res.message}`
     : `❌ Failed: ${res.message}`;
+}
+
+async function toolSearchTenant(args: {
+  tenant_name: string;
+}, propId = DEFAULT_PROPERTY_ID): Promise<string> {
+  const admin = getSupabaseAdmin();
+  const search = (args.tenant_name || "").trim().toLowerCase();
+  if (!search) return "Please specify a tenant name to search.";
+
+  const activeId = await getEffectivePropertyId(admin, propId);
+  const [bookingsRes, roomsRes] = await Promise.all([
+    admin
+      .from("bookings")
+      .select("id, guest_name, room_id, status, monthly_rent, rent_due_day, check_in, notes")
+      .eq("property_id", activeId)
+      .in("status", ["Checked In", "Confirmed", "in_house"]),
+    admin
+      .from("rooms")
+      .select("id, room_number")
+      .eq("property_id", activeId),
+  ]);
+
+  const roomMap = new Map((roomsRes.data || []).map((r) => [r.id, r.room_number]));
+  const matches = (bookingsRes.data || []).filter((b) =>
+    b.guest_name && b.guest_name.toLowerCase().includes(search)
+  );
+
+  if (matches.length === 0) {
+    return `No active tenant found matching "${args.tenant_name}".`;
+  }
+
+  const results = matches.map((m) => {
+    const rNum = roomMap.get(m.room_id) || "Unknown";
+    return `• ${m.guest_name} — Room ${rNum} (Rent: ₹${(m.monthly_rent || 0).toLocaleString("en-IN")}/mo, Due day: ${m.rent_due_day || 1}st, Joined: ${m.check_in || "N/A"})`;
+  });
+
+  return `Found ${matches.length} tenant(s):\n${results.join("\n")}`;
+}
+
+async function toolGetTodaySummary(_args: Record<string, unknown>, propId = DEFAULT_PROPERTY_ID): Promise<string> {
+  const admin = getSupabaseAdmin();
+  const activeId = await getEffectivePropertyId(admin, propId);
+  const res = await processQuickLedger("today summary", activeId);
+  return res.message;
 }
 
 // ─── Tool Definitions for Gemini ────────────────────────────────────────────
@@ -432,6 +518,31 @@ const TOOLS: any[] = [
       required: ["description", "amount"],
     },
   },
+  {
+    name: "search_tenant",
+    description:
+      "Find a tenant by name across all rooms to get their room number, monthly rent, rent due day, and joining date. Use when owner asks where someone is staying, who someone is, or mentions a tenant without their room.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        tenant_name: {
+          type: Type.STRING,
+          description: "Tenant's name (partial or full)",
+        },
+      },
+      required: ["tenant_name"],
+    },
+  },
+  {
+    name: "get_today_summary",
+    description:
+      "Get today's total revenue collected, expenses spent, and net profit. Use when owner asks 'today collection', 'today summary', 'today history', or how much was made/spent today.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {},
+      required: [],
+    },
+  },
 ];
 
 // ─── Main Agent Function ─────────────────────────────────────────────────────
@@ -477,7 +588,8 @@ export async function askAiAgent(
     };
   }
 
-  const activePropId = propertyId || DEFAULT_PROPERTY_ID;
+  const admin = getSupabaseAdmin();
+  const activePropId = await getEffectivePropertyId(admin, propertyId);
   const actionsTaken: string[] = [];
 
   try {
@@ -485,21 +597,28 @@ export async function askAiAgent(
     const pgContext = await getPgContext(activePropId);
 
     const systemPrompt = `You are a smart AI assistant for a PG (Paying Guest) accommodation called "Staysync Mens Premium PG" in India.
-Your job is to help the PG owner manage their property by understanding natural language and performing actions.
+Your job is to help the PG owner manage their property with 100% data accuracy by understanding natural language and taking database actions.
 
 === LIVE PG DATA (refreshed every call) ===
 ${pgContext}
 ===========================================
 
-IMPORTANT RULES:
-1. Always respond in the same language the owner uses (English, Telugu, Hindi mix is fine).
-2. For all money amounts, use Indian Rupee (₹) format with commas (e.g. ₹8,000).
-3. When you take an action, briefly confirm what you did.
-4. If unsure which tenant/room the owner means, ASK before acting — don't guess.
-5. For advance payments from future tenants (joining in 5+ days), use record_advance tool.
-6. For tenants joining today or already checked in, use assign_tenant or record_payment.
-7. Keep replies SHORT and friendly — the owner is busy running a PG.
-8. Current date: ${new Intl.DateTimeFormat("en-IN", { dateStyle: "full", timeZone: "Asia/Kolkata" }).format(new Date())}`;
+STRICT ACCURACY RULES:
+1. TRUTH IN METRICS: For total rooms, total bed capacity, occupied beds, vacant beds, and empty rooms, use the exact numbers from the "=== LIVE OCCUPANCY METRICS ===" section above. Never guess or contradict these pre-computed numbers.
+2. FINANCIAL ACCURACY: The room list above shows base rent rates, NOT payment status. When asked if a tenant has paid, how much someone owes, pending dues, or payment history, ALWAYS call 'get_tenant_statement' or 'get_pending_dues'. NEVER guess payment status.
+3. TODAY'S NUMBERS: When asked about today's collection, revenue, expenses, or income (e.g. "today summary", "today collection", "ee roju collection"), ALWAYS call 'get_today_summary'.
+4. TENANT SEARCH: If the owner mentions a person's name without room number (e.g. "where is Kalyan staying?", "who is Rahul?"), check the occupant lists above or call 'search_tenant'.
+5. ACTIONS (PAYMENTS & ASSIGNMENTS):
+   - When owner says someone paid money, call 'record_payment'.
+   - When owner registers someone joining in future days with an advance, call 'record_advance'.
+   - When assigning a new tenant immediately, call 'assign_tenant'.
+   - When owner asks to change rent/room fee, call 'change_tenant_rent'.
+   - When owner asks to vacate/checkout, call 'checkout_tenant'.
+   - When owner logs an expense, call 'record_expense'.
+6. MULTILINGUAL & SLANG: The owner speaks English, Telugu, Hindi, or Hinglish (e.g. "kalyan rent pay chesada?", "kali rooms enni unnay?", "306 lo evaru unnaru?"). Understand their intent and respond clearly and politely.
+7. MONEY FORMAT: Always format amounts in Indian Rupee format with commas (e.g. ₹8,000, ₹1,42,700).
+8. CONCISE & ACTION-ORIENTED: Keep replies direct, friendly, and structured. PG owners are busy running operations.
+Current Date: ${new Intl.DateTimeFormat("en-IN", { dateStyle: "full", timeZone: "Asia/Kolkata" }).format(new Date())}`;
 
     // Build conversation history for Gemini
     const contents: any[] = [];
@@ -603,6 +722,12 @@ IMPORTANT RULES:
                 break;
               case "record_expense":
                 result = await toolRecordExpense(args as any, activePropId);
+                break;
+              case "search_tenant":
+                result = await toolSearchTenant(args as any, activePropId);
+                break;
+              case "get_today_summary":
+                result = await toolGetTodaySummary(args as any, activePropId);
                 break;
               default:
                 result = `Unknown tool: ${fc.name}`;
