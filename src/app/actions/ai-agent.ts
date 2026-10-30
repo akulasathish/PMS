@@ -433,16 +433,42 @@ const TOOLS: any[] = [
 
 // ─── Main Agent Function ─────────────────────────────────────────────────────
 
+let cachedDbApiKey: string | null = null;
+
+async function resolveApiKey(): Promise<string | null> {
+  if (process.env.GEMINI_API_KEY) {
+    return process.env.GEMINI_API_KEY;
+  }
+  if (cachedDbApiKey) {
+    return cachedDbApiKey;
+  }
+  try {
+    const admin = getSupabaseAdmin();
+    const { data } = await admin
+      .from("app_settings")
+      .select("value")
+      .eq("key", "gemini_api_key")
+      .maybeSingle();
+    if (data?.value) {
+      cachedDbApiKey = data.value;
+      return cachedDbApiKey;
+    }
+  } catch (err) {
+    console.warn("[AI Agent] Could not retrieve gemini_api_key from DB:", err);
+  }
+  return null;
+}
+
 export async function askAiAgent(
   userMessage: string,
   history: AiAgentMessage[],
   propertyId?: string
 ): Promise<AiAgentResult> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = await resolveApiKey();
   if (!apiKey) {
     return {
       success: false,
-      reply: "⚠️ Gemini API key not configured. Please ensure GEMINI_API_KEY is set in your environment variables.",
+      reply: "⚠️ Gemini API key not configured. Please ensure GEMINI_API_KEY is set in your environment variables or in app_settings.",
       actionsTaken: [],
       error: "Missing GEMINI_API_KEY",
     };
