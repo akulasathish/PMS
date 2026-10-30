@@ -24,9 +24,12 @@ import {
   AlertTriangle,
   CreditCard,
   UserCheck,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Bot,
+  Wand2
 } from 'lucide-react';
 import { processQuickLedger, undoQuickLedgerAction, QuickLedgerResult } from '@/app/actions/quick-ledger';
+import { askAiAgent, AiAgentMessage } from '@/app/actions/ai-agent';
 import { formatDayOrdinal } from '@/lib/quick-ledger-parser';
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -35,6 +38,8 @@ interface ChatMessage {
   sender: 'user' | 'bot';
   text?: string;
   result?: QuickLedgerResult;
+  aiReply?: string;
+  actionsTaken?: string[];
   timestamp: string;
   undoState?: 'idle' | 'undoing' | 'undone';
 }
@@ -47,6 +52,8 @@ export default function QuickLedgerAssistant() {
   const [isListening, setIsListening] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [activePropertyId, setActivePropertyId] = useState<string | null>(null);
+  // AI agent conversation history (kept in memory, not localStorage)
+  const aiHistoryRef = useRef<AiAgentMessage[]>([]);
 
   const router = useRouter();
   const pathname = usePathname();
@@ -160,6 +167,28 @@ export default function QuickLedgerAssistant() {
     }
   };
 
+  // Detect if a message is conversational/natural language (route to AI agent)
+  // vs a strict quick-ledger syntax command (route to regex parser)
+  const isNaturalLanguage = (text: string): boolean => {
+    const lower = text.trim().toLowerCase();
+    // Known quick-ledger prefixes that we keep in regex parser for speed & undo support
+    const regexPrefixes = [
+      /^(join|add|assign)\s+\w+\s+to\s+room/i,
+      /^(checkout|force\s+checkout|vacate)\s/i,
+      /^(report\s+of|statement\s+of|statement\s+\w)/i,
+      /^(today\s+(summary|history))/i,
+      /^(paid\s+\d|expence|expense)\s/i,
+      /^change\s+(joining|due|rent|room\s+fee)/i,
+      /^move\s+\w+\s+(from|to)\s+room/i,
+      /^\w+\s+room\s+\d+\s+paid\s+\d/i,
+      /^\w+\s+\d{2,3}\s+(paid|room\s+fee|rent|maintenance)/i,
+      /^(all\s+pending|pending\s+dues|who\s+has\s+pending)/i,
+      /^(report\s+of\s+pending)/i,
+      /^monthly\s+report\s+(of\s+)?\w+/i,
+    ];
+    return !regexPrefixes.some(re => re.test(lower));
+  };
+
   const handleSend = async (customText?: string) => {
     const textToSend = (customText || input).trim();
     if (!textToSend || isLoading) return;
@@ -177,26 +206,59 @@ export default function QuickLedgerAssistant() {
 
     try {
       const pId = activePropertyId || localStorage.getItem('pms_active_property') || undefined;
-      const res = await processQuickLedger(textToSend, pId);
 
-      const botMsgId = 'bot_' + Date.now();
-      setMessages(prev => [
-        ...prev,
-        {
-          id: botMsgId,
-          sender: 'bot',
-          result: res,
-          timestamp: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-          undoState: 'idle'
+      if (isNaturalLanguage(textToSend)) {
+        // ── AI Agent path ──────────────────────────────────────────────────
+        const agentRes = await askAiAgent(textToSend, aiHistoryRef.current, pId);
+
+        // Update AI conversation history
+        aiHistoryRef.current = [
+          ...aiHistoryRef.current,
+          { role: 'user' as const, text: textToSend },
+          { role: 'model' as const, text: agentRes.reply },
+        ].slice(-20); // keep last 20 turns
+
+        const botMsgId = 'bot_' + Date.now();
+        setMessages(prev => [
+          ...prev,
+          {
+            id: botMsgId,
+            sender: 'bot',
+            aiReply: agentRes.reply,
+            actionsTaken: agentRes.actionsTaken,
+            timestamp: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+          }
+        ]);
+
+        if (agentRes.success && agentRes.actionsTaken.length > 0) {
+          if (typeof window !== 'undefined') {
+            try { navigator.vibrate?.(40); } catch {}
+            window.dispatchEvent(new CustomEvent('pms_quick_ledger_updated'));
+            router.refresh();
+          }
         }
-      ]);
+      } else {
+        // ── Quick Ledger (regex) path ──────────────────────────────────────
+        const res = await processQuickLedger(textToSend, pId);
 
-      if (res.success) {
-        if (typeof window !== 'undefined') {
-          // Play subtle vibration if supported on phone
-          try { navigator.vibrate?.(40); } catch {}
-          window.dispatchEvent(new CustomEvent('pms_quick_ledger_updated'));
-          router.refresh();
+        const botMsgId = 'bot_' + Date.now();
+        setMessages(prev => [
+          ...prev,
+          {
+            id: botMsgId,
+            sender: 'bot',
+            result: res,
+            timestamp: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+            undoState: 'idle'
+          }
+        ]);
+
+        if (res.success) {
+          if (typeof window !== 'undefined') {
+            try { navigator.vibrate?.(40); } catch {}
+            window.dispatchEvent(new CustomEvent('pms_quick_ledger_updated'));
+            router.refresh();
+          }
         }
       }
     } catch (err: any) {
@@ -373,14 +435,14 @@ export default function QuickLedgerAssistant() {
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         className="fixed bottom-6 right-6 md:bottom-8 md:right-8 z-50 flex items-center gap-2.5 px-4 py-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 text-white font-bold text-xs rounded-full shadow-[0_8px_30px_rgba(16,185,129,0.35)] hover:shadow-[0_8px_35px_rgba(99,102,241,0.45)] border border-white/20 backdrop-blur-xl transition-all"
-        title="Quick Ledger Chatbot"
+        title="AI Ledger Assistant"
       >
         <span className="relative flex h-2.5 w-2.5">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
           <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-300"></span>
         </span>
         <Zap size={16} className="text-yellow-300 fill-yellow-300" />
-        <span className="tracking-wide font-black uppercase text-[11px]">Quick Ledger</span>
+        <span className="tracking-wide font-black uppercase text-[11px]">AI Ledger</span>
       </motion.button>
 
       {/* Slide-Up Chat Drawer */}
@@ -597,7 +659,40 @@ export default function QuickLedgerAssistant() {
                         </div>
                       ) : (
                         <div className="max-w-[92%] w-full">
-                          {msg.result?.hasPendingDues ? (
+                          {msg.aiReply ? (
+                            /* ── AI AGENT REPLY CARD ────────────────────────── */
+                            <div className="bg-gradient-to-br from-violet-950/60 via-purple-950/50 to-indigo-950/60 border border-violet-500/30 rounded-2xl rounded-tl-sm p-4 shadow-lg space-y-2.5">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <div className="flex items-center justify-center w-5 h-5 rounded-full bg-violet-500/20 border border-violet-400/30">
+                                    <Bot size={11} className="text-violet-300" />
+                                  </div>
+                                  <span className="text-[10px] font-black text-violet-300 uppercase tracking-wider">AI Agent</span>
+                                  {msg.actionsTaken && msg.actionsTaken.length > 0 && (
+                                    <span className="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-full px-1.5 py-0.5 font-bold">
+                                      {msg.actionsTaken.length} action{msg.actionsTaken.length > 1 ? 's' : ''}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-[10px] text-zinc-500 font-mono">{msg.timestamp}</span>
+                              </div>
+
+                              {/* Actions taken pills */}
+                              {msg.actionsTaken && msg.actionsTaken.length > 0 && (
+                                <div className="flex flex-col gap-1">
+                                  {msg.actionsTaken.map((action, idx) => (
+                                    <div key={idx} className="flex items-start gap-1.5 bg-emerald-950/40 border border-emerald-500/20 rounded-lg px-2.5 py-1.5">
+                                      <CheckCircle2 size={11} className="text-emerald-400 mt-0.5 shrink-0" />
+                                      <span className="text-[11px] text-emerald-200 leading-snug">{action}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* AI text reply */}
+                              <p className="text-xs text-zinc-200 leading-relaxed whitespace-pre-wrap">{msg.aiReply}</p>
+                            </div>
+                          ) : msg.result?.hasPendingDues ? (
                             /* PENDING DUES DECISION CARD (2 OPTIONS) */
                             <div className="bg-rose-950/40 border border-rose-500/30 rounded-2xl p-4 shadow-lg space-y-3">
                               <div className="flex items-center justify-between">
@@ -1520,7 +1615,7 @@ export default function QuickLedgerAssistant() {
                     type="text"
                     value={input}
                     onChange={e => setInput(e.target.value)}
-                    placeholder={isListening ? 'Listening...' : 'e.g. "report of srikanth 201", "paid 1200 groceries", "join sathish to 201..."'}
+                    placeholder={isListening ? 'Listening...' : 'Ask anything — "Rahul gave 2000 advance, joining room 201 on 5th Nov, rent 8000" or use commands...'}
                     disabled={isLoading}
                     className="flex-1 bg-black/50 border border-white/10 rounded-2xl px-4 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500/50 transition-all"
                   />
